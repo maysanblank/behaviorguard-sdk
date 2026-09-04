@@ -1,195 +1,212 @@
-# BehaviorGuard Core — Spesifikasi Mesin v1.2.0
+# BehaviorGuard Core — Engine Specification v1.2.0
 
-Dokumen ini adalah **acuan normatif** mesin penilaian BehaviorGuard. Kalau kode dan
-dokumen ini berbeda, **dokumen ini yang benar dan kodenya yang bug.**
+This document is the **normative reference** for the BehaviorGuard scoring engine. If the
+code and this document disagree, **this document is right and the code is the bug.**
 
-Tujuannya satu: siapa pun, di bahasa apa pun, bisa menulis ulang mesin ini dan
-**membuktikan** hasilnya identik — bukan sekadar "kelihatannya mirip".
+It has one purpose: anyone, in any language, can reimplement this engine and **prove** the
+result is identical — not merely "looks about the same".
+
+> Indonesian original: [SPEC.id.md](SPEC.id.md). If the two ever diverge, this English
+> version is authoritative; the Indonesian one is kept as the historical source.
 
 ---
 
-## 1. Ruang lingkup
+## 1. Scope
 
-Spec v1.1.0 mencakup **seluruh jalur perhitungan** — dari event mentah sampai vonis:
+The spec covers the **entire computation path** — from raw events to verdict:
 
 ```
-event mentah  --[ §8 ekstraksi fitur ]-->  vektor 28-float  --[ §5 mesin ]-->  vonis
-     (v1.1)                                     (format tukar)          (v1.0)
+raw events  --[ §8 feature extraction ]-->  28-float vector  --[ §5 engine ]-->  verdict
+    (v1.1)                                   (exchange format)         (v1.0)
 ```
 
-- **§8 Ekstraksi fitur** (v1.1) — event mentah → vektor 28-float. Deterministik,
-  murni angka, tanpa DOM. Acuan: `sdk/core/features.js` = `bg_core.py:extract_features`.
-- **§2–§7 Mesin penilaian** (v1.0) — vektor 28-float → vonis.
+- **§8 Feature extraction** (v1.1) — raw events → 28-float vector. Deterministic, pure
+  arithmetic, no DOM. Reference: `sdk/core/features.js` = `bg_core.py:extract_features`.
+- **§2–§7 Scoring engine** (v1.0) — 28-float vector → verdict.
 
-**Tetap di luar** spec (khusus per platform, bukan angka murni):
+**Explicitly out of scope** (platform-specific, not pure arithmetic):
 
-- Penangkapan event (DOM/touch/native) — cuma *mengisi* struktur event di §8.1
-- Penyimpanan, jaringan, siklus sesi, rate-limit, integrity, challenge
+- Event capture (DOM/touch/native) — it only *populates* the event structure in §8.1
+- Storage, networking, session lifecycle, rate limiting, integrity checks, the challenge
 
-**Vektor 28-float adalah titik-tukar utama** sistem ini: itu yang disimpan
-`baselines.vectors_json` di server dan yang dibaca `reproduce_db.py` dari basis data
-riset. §8 kini menutup jalur *sebelum* titik-tukar itu, sehingga port bahasa lain bisa
-**membaca perilaku**, bukan cuma menghitung skor dari vektor jadi.
-
----
-
-## 2. Vektor fitur
-
-28 nama, **urutan tetap dan mengikat** — indeks ke-*i* bermakna sama di semua bahasa.
-Daftar persisnya ada di `core/golden.json` kolom `features` dan di `bg_core.py:F4`.
-
-Setiap elemen: bilangan pecahan presisi ganda (IEEE-754 binary64), selalu finit.
+**The 28-float vector is this system's primary exchange point**: it is what the server
+stores in `baselines.vectors_json` and what `reproduce_db.py` reads from the research
+database. §8 now closes the path *before* that exchange point, so a port in another
+language can **read behavior**, not just score an already-computed vector.
 
 ---
 
-## 3. Konstanta normatif
+## 2. Feature vector
 
-| Kunci | Nilai | Fungsi |
+28 names, in a **fixed and binding order** — index *i* means the same thing in every
+language. The exact list is in `core/golden.json` under `features`, and in `bg_core.py:F4`.
+
+Every element is a double-precision float (IEEE-754 binary64), and is always finite.
+
+---
+
+## 3. Normative constants
+
+| Key | Value | Purpose |
 |---|---|---|
-| `iforest.n_estimators` | 100 | jumlah pohon |
-| `iforest.max_samples` | 256 | ukuran subsampel |
-| `iforest.seed` | 42 | benih PRNG |
-| `weights` | IF 0.30 / SVM 0.70 / LSTM 0.00 | bobot campuran (detektor-2 = Mahalanobis, diberi mayoritas) |
-| `model2` / `mahalanobis.shrink` | `mahalanobis` / 0.3 | detektor-2 & shrinkage diagonal (v1.2) |
-| `ensembleMinSamples` | IF 8 / SVM 20 / LSTM 24 | gerbang: di bawah ini bobotnya dinolkan |
-| `calibrationMode` | `parametric` | mode kalibrasi ambang (v1.2) |
-| `k_low` / `k_med_extra` | 3.3 / 2.0 | kalibrasi parametrik: `low = mean − k·std` |
-| `q_low` / `q_med` | 0.10 / 0.033 | kuantil kalibrasi ambang (mode `quantile` lama) |
-| `blockAfterConsecutiveHigh` | 2 | aturan-run: block keras hanya bila HIGH berturut ≥ N (lapisan SDK) |
-| `baseline` / `retrainEvery` | 10 / 6 | siklus pendaftaran & latih-ulang |
-| `stdFloorEps` / `stdFloorValue` | 1e-9 / 1.0 | **S-1** lantai simpangan baku per-fitur |
-| `scoreStdMin` / `scoreStdMax` | 1e-3 / 10.0 | **S-2** clamp simpangan baku skor |
-| `zClamp` | 6.0 | **S-2** clamp nilai-z |
+| `iforest.n_estimators` | 100 | number of trees |
+| `iforest.max_samples` | 256 | subsample size |
+| `iforest.seed` | 42 | PRNG seed |
+| `weights` | IF 0.30 / SVM 0.70 / LSTM 0.00 | blend weights (detector-2 = Mahalanobis, given the majority) |
+| `model2` / `mahalanobis.shrink` | `mahalanobis` / 0.3 | detector-2 and diagonal shrinkage (v1.2) |
+| `ensembleMinSamples` | IF 8 / SVM 20 / LSTM 24 | gate: below this the weight is zeroed |
+| `calibrationMode` | `parametric` | threshold calibration mode (v1.2) |
+| `k_low` / `k_med_extra` | 3.3 / 2.0 | parametric calibration: `low = mean − k·std` |
+| `q_low` / `q_med` | 0.10 / 0.033 | threshold quantiles (legacy `quantile` mode) |
+| `blockAfterConsecutiveHigh` | 2 | run rule: hard block only after N consecutive HIGH (SDK layer) |
+| `baseline` / `retrainEvery` | 10 / 6 | enrollment and retraining cadence |
+| `stdFloorEps` / `stdFloorValue` | 1e-9 / 1.0 | **S-1** per-feature standard-deviation floor |
+| `scoreStdMin` / `scoreStdMax` | 1e-3 / 10.0 | **S-2** score standard-deviation clamp |
+| `zClamp` | 6.0 | **S-2** z-value clamp |
 
-**S-1 dan S-2 adalah titik perbedaan yang sudah terbukti** antara dua salinan kode di
-repo ini (`sdk/core/*.js` dan `tools/reproduce_db.py`). Nilai di atas = perilaku SDK JS
-yang benar-benar dipasang di situs orang. Lihat `core/DRIFT.md`.
+**S-1 and S-2 are proven divergence points** between the two copies of the engine in this
+repository (`sdk/core/*.js` and `tools/reproduce_db.py`). The values above are the
+behavior of the JS SDK that actually ships to users' sites. See `core/DRIFT.md`.
 
 ---
 
 ## 4. PRNG — `mulberry32`
 
-Semua keacakan berasal dari satu generator, dibenihi `seed`, dipanggil dalam urutan
-yang mengikat. Aritmetika **tak-bertanda, modulo 2³²**:
+All randomness comes from one generator, seeded by `seed`, called in a binding order.
+Arithmetic is **unsigned, modulo 2³²**:
 
 ```
 a := (a + 0x6D2B79F5) mod 2^32
 t := a
 t := ((t XOR (t >> 15)) * (t OR 1)) mod 2^32
 t := (t XOR (t + ((t XOR (t >> 7)) * (t OR 61)) mod 2^32)) mod 2^32
-keluaran := ((t XOR (t >> 14)) mod 2^32) / 2^32
+output := ((t XOR (t >> 14)) mod 2^32) / 2^32
 ```
 
-Bahasa dengan bilangan bulat 64-bit **wajib** memaskerkan tiap perkalian dengan
-`0xFFFFFFFF`. Kelalaian di sini adalah penyebab kegagalan port yang paling sering.
+Languages with 64-bit integers **must** mask every multiplication with `0xFFFFFFFF`.
+Missing this is the single most common cause of a failing port.
 
 ---
 
-## 5. Alur perhitungan
+## 5. Computation flow
 
-Urutannya mengikat. Tiap langkah harus persis di posisi ini.
+The order is binding. Each step must occur exactly at this position.
 
-### 5.1 Statistik baseline
-Rerata dan simpangan baku **populasi** (pembagi *n*, bukan *n−1*) per fitur.
-Lalu **S-1**: `std[i] := (sqrt(var[i]) < 1e-9) ? 1.0 : sqrt(var[i])`.
+### 5.1 Baseline statistics
+**Population** mean and standard deviation (divisor *n*, not *n−1*) per feature.
+Then **S-1**: `std[i] := (sqrt(var[i]) < 1e-9) ? 1.0 : sqrt(var[i])`.
 
-### 5.2 Standardisasi
-`x_std[i] := (x[i] − mean[i]) / std[i]`. Tanpa clamp di tahap ini.
+### 5.2 Standardization
+`x_std[i] := (x[i] − mean[i]) / std[i]`. No clamping at this stage.
 
 ### 5.3 Isolation Forest
-Untuk tiap dari 100 pohon, berurutan dengan **satu** aliran PRNG bersama:
+For each of the 100 trees, sequentially, sharing **one** PRNG stream:
 
-1. Fisher–Yates mundur atas indeks `0..n−1`, `j := floor(rng() × (i+1))`
-2. Ambil `n = min(256, |X|)` indeks pertama
-3. Bangun pohon rekursif, kedalaman maksimum `ceil(log2(n))`:
-   - daun bila `depth >= maxDepth` atau `|points| <= 1`
+1. Backward Fisher–Yates over indices `0..n−1`, `j := floor(rng() × (i+1))`
+2. Take the first `n = min(256, |X|)` indices
+3. Build the tree recursively, maximum depth `ceil(log2(n))`:
+   - leaf if `depth >= maxDepth` or `|points| <= 1`
    - `feat := floor(rng() × n_features)`
-   - daun bila `min == max` pada fitur itu
+   - leaf if `min == max` on that feature
    - `split := min + rng() × (max − min)`
-   - kiri `< split`, kanan `>= split`; daun bila salah satu sisi kosong
+   - left `< split`, right `>= split`; leaf if either side is empty
 
-Panjang lintasan: `depth + c(size_daun)`, dengan
+Path length: `depth + c(leaf_size)`, where
 `c(n) = 2(ln(n−1) + 0.5772156649) − 2(n−1)/n`, `c(0)=c(1)=0`, `c(2)=1`.
 
-Skor: `0.5 − 2^(−avg_h / c(n))`. **Makin negatif = makin anomali.**
+Score: `0.5 − 2^(−avg_h / c(n))`. **More negative = more anomalous.**
 
-### 5.4 Detektor-2: Mahalanobis + shrinkage diagonal (v1.2)
+### 5.4 Detector-2: Mahalanobis + diagonal shrinkage (v1.2)
 
-Menggantikan centroid-RBF lama (§5.4 v1.1). Satu rumus, portabel, nol dependensi —
-padanan `sdk/core/mahalanobis.js`. Dari kolam baseline terstandardisasi `X` (n×d):
+Replaces the legacy centroid-RBF (§5.4 in v1.1). One formula, portable, zero
+dependencies — equivalent to `sdk/core/mahalanobis.js`. From the standardized baseline
+pool `X` (n×d):
 
-1. `μ` = rerata per-fitur; `S` = kovarians `(Σ (x−μ)(x−μ)ᵀ)/(n−1)`.
-2. Shrinkage diagonal: `Σ := (1−a)·S + a·μ̄·I` dengan `a = shrink (0.3)`, `μ̄` = rerata
-   diagonal `S`; lalu `Σ_ii += 1e-6`.
-3. `Σ⁻¹` via Gauss-Jordan **pivot-parsial** (pivot = baris ber-|nilai| maksimum di kolom,
-   `>` ketat sehingga maksimum pertama menang; bila `|pivot| < 1e-12` → set `1e-12`).
-4. `score(x) = −√( (x−μ)ᵀ Σ⁻¹ (x−μ) )` (di-clamp ke 0 bila negatif). Higher = lebih normal.
+1. `μ` = per-feature mean; `S` = covariance `(Σ (x−μ)(x−μ)ᵀ)/(n−1)`.
+2. Diagonal shrinkage: `Σ := (1−a)·S + a·μ̄·I` where `a = shrink (0.3)` and `μ̄` is the
+   mean of the diagonal of `S`; then `Σ_ii += 1e-6`.
+3. `Σ⁻¹` by Gauss-Jordan with **partial pivoting** (pivot = the row with the maximum
+   |value| in the column, using a strict `>` so the first maximum wins; if
+   `|pivot| < 1e-12`, set it to `1e-12`).
+4. `score(x) = −√( (x−μ)ᵀ Σ⁻¹ (x−μ) )` (clamped to 0 if negative). Higher = more normal.
 
-Urutan operasi float (loop i-luar/j-dalam, normalisasi baris penuh, eliminasi)
-**wajib identik** antar bahasa agar bit-exact 1e-9. Rumus lama tetap ada di `ocsvm.js`
-untuk `model2='centroid'`. Latar: centroid menggepengkan kolam jadi satu titik → FAR 36%;
-Mahalanobis memperhitungkan kovarians → held-out FAR **5.4%**, FRR **16.1%**, AUC **0.942**, EER **11.9%** (kalibrasi parametrik; reproduksi: `python tools/experiment.py --calib parametric`). Lihat `DRIFT.md`.
+The float operation order (outer-i / inner-j loops, full row normalization, elimination)
+**must be identical** across languages to stay bit-exact within 1e-9. The legacy formula
+remains in `ocsvm.js` for `model2='centroid'`. Background: the centroid collapses the pool
+to a single point → FAR 36%; Mahalanobis accounts for covariance → held-out FAR **5.4%**,
+FRR **16.1%**, AUC **0.942**, EER **11.9%** (parametric calibration; reproduce with
+`python tools/experiment.py --calib parametric`). See `DRIFT.md`.
 
-### 5.5 Kalibrasi & campuran
-Untuk tiap sub-model: rerata + simpangan baku skor baseline, lalu **S-2**
-`std := clamp(std, 1e-3, 10.0)`. Nilai-z: `z := clamp((s − mean)/std, −6, +6)`.
+### 5.5 Calibration and blending
+For each sub-model: mean and standard deviation of its baseline scores, then **S-2**
+`std := clamp(std, 1e-3, 10.0)`. The z-value is `z := clamp((s − mean)/std, −6, +6)`.
 
-Bobot digerbang: bila `n < 20` maka `svm := 0`; bila `n < 24` maka `lstm := 0`;
-lalu dinormalkan agar berjumlah 1. Bila `svm == 0`, keluarannya `z_IF` murni.
-Selain itu: `skor := w_IF · z_IF + w_SVM · z_SVM`.
+Weights are gated: if `n < 20` then `svm := 0`; if `n < 24` then `lstm := 0`; then they
+are renormalized to sum to 1. If `svm == 0`, the output is `z_IF` alone. Otherwise:
+`score := w_IF · z_IF + w_SVM · z_SVM`.
 
-### 5.6 Ambang
-Mode **`parametric`** (default v1.2): dari skor baseline `mean`, `std` (populasi, `std:=1`
-bila varian ≤ 1e-12): `low := mean − k_low·std`, `med := mean − (k_low + k_med_extra)·std`.
-Tanpa clamp — pita lebih menempel sebaran skor pemilik ketimbang kuantil-10-sampel.
+> **Implementation note (not part of the numeric contract).** The gate decision is frozen
+> into the model when it is built, so a model built below a threshold keeps that detector
+> disabled until it is rebuilt. A host that stops retraining on convergence must still
+> force a rebuild when the pool crosses a gate threshold, or the detector never activates.
+> See `DRIFT.md` §C-15.
 
-Mode **`quantile`** (lama, `calibrationMode='quantile'`): kuantil interpolasi-linear atas
-skor terurut `low := Q(q_low)`, `med := Q(q_med)`; bila `low − med < 0.15` → `med := low − 0.25`;
-lalu `low := clamp(low, −3, 1)`, `med := clamp(med, −3, low − 0.05)`.
+### 5.6 Thresholds
+**`parametric`** mode (default in v1.2): from the baseline scores' `mean` and `std`
+(population; `std := 1` if the variance is ≤ 1e-12): `low := mean − k_low·std`,
+`med := mean − (k_low + k_med_extra)·std`. No clamping — the bands follow the owner's
+score distribution rather than a single order statistic of a 10-sample quantile.
 
-### 5.7 Vonis & aksi
-`skor <= med` → **HIGH**; `skor <= low` → **MEDIUM**; selain itu → **LOW**.
-`topFeatures` = 3 fitur dengan |z| terbesar, terurut menurun.
+**`quantile`** mode (legacy, `calibrationMode='quantile'`): linearly interpolated
+quantiles over the sorted scores, `low := Q(q_low)`, `med := Q(q_med)`; if
+`low − med < 0.15` then `med := low − 0.25`; then `low := clamp(low, −3, 1)` and
+`med := clamp(med, −3, low − 0.05)`.
 
-Aksi per-sesi (`to_action`, stateless): **HIGH → `REQUIRE_STEPUP`**, MEDIUM →
-`REQUIRE_MFA`, LOW → `ALLOW_SESSION`. HIGH **tidak** langsung memblokir: satu sesi
-menyimpang minta verifikasi step-up (pemilik lolos, penyusup gagal). **Pemblokiran keras
-(`BLOCK_SESSION`) dipicu lapisan stateful SDK** (`BehaviorGuard.assess`) hanya bila HIGH
-berturut ≥ `blockAfterConsecutiveHigh` — pemilik off-day bikin HIGH terpencar (step-up),
-pengambilalihan akun bikin HIGH beruntun (block). Held-out: block pemilik 9.7% → 2.4%,
-FAR tetap. Lapisan ini **di luar** golden (golden menguji `to_action` stateless).
+### 5.7 Verdict and action
+`score <= med` → **HIGH**; `score <= low` → **MEDIUM**; otherwise → **LOW**.
+`topFeatures` = the 3 features with the largest |z|, sorted descending.
+
+Per-session action (`to_action`, stateless): **HIGH → `REQUIRE_STEPUP`**, MEDIUM →
+`REQUIRE_MFA`, LOW → `ALLOW_SESSION`. HIGH does **not** block on its own: a single
+anomalous session asks for step-up verification (the owner passes, an impostor fails).
+**A hard block (`BLOCK_SESSION`) is raised by the stateful SDK layer**
+(`BehaviorGuard.assess`) only after `blockAfterConsecutiveHigh` consecutive HIGH verdicts —
+an owner having a bad day produces scattered HIGHs (step-up), while a real takeover
+produces consecutive ones (block). Held-out: owner block rate 9.7% → 2.4%, FAR unchanged.
+That layer is **outside** the golden file (which tests the stateless `to_action`).
 
 ---
 
-## 6. Kesesuaian — cara membuktikan port kamu benar
+## 6. Conformance — how to prove your port is correct
 
-Sebuah implementasi disebut **sesuai** hanya bila lulus `core/golden.json`,
-toleransi relatif **1e-9**:
+An implementation is **conformant** only if it passes `core/golden.json` at a relative
+tolerance of **1e-9**:
 
-- **§8 ekstraksi fitur** — 4 kasus fitur × 28 elemen = **112 pemeriksaan** vektor,
-  dari event mentah eksplisit di `feature_cases`.
-- **§2–§7 mesin** — 3 kasus, 16 probe = **115 pemeriksaan** vonis, dari `cases`.
-- Total **227 pemeriksaan**.
+- **§8 feature extraction** — 4 feature cases × 28 elements = **112 vector checks**, from
+  the explicit raw events in `feature_cases`.
+- **§2–§7 engine** — 3 cases, 16 probes = **115 verdict checks**, from `cases`.
+- **227 checks** in total.
 
-Golden menyimpan **input eksplisit** (bukan generator), jadi port tidak perlu meniru
-generator apa pun. Titik antara juga disimpan (`stats_*`, `if_stats`, `svm_stats`,
-`gated_weights`) supaya kegagalan bisa dilokalisasi, bukan cuma "hasilnya beda".
+The golden file stores **explicit inputs** (not generators), so a port never has to
+reproduce any generator. Intermediate values are stored too (`stats_*`, `if_stats`,
+`svm_stats`, `gated_weights`) so a failure can be localized rather than just reported as
+"the result differs".
 
-| Implementasi | Cara uji | Status |
+| Implementation | How to test | Status |
 |---|---|---|
-| Python `core/bg_core.py` | `python core/conformance.py` | **SESUAI** 227/227 |
-| JS `sdk/core/*.js` (browser) | buka `core/conformance.html` lewat server lokal | **SESUAI** 227/227 |
-| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **SESUAI** 227/227 |
-| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **SESUAI** 227/227 |
-| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **SESUAI** 227/227 |
-| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (atau `ports/wasm/index.html`) | **SESUAI** 227/227 |
-| Port baru (Go/Swift/C#) | tiru logika `conformance.py`; lihat `ports/README.md` | — |
+| Python `core/bg_core.py` | `python core/conformance.py` | **CONFORMANT** 227/227 |
+| JS `sdk/core/*.js` (browser) | open `core/conformance.html` over a local server | **CONFORMANT** 227/227 |
+| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **CONFORMANT** 227/227 |
+| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **CONFORMANT** 227/227 |
+| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **CONFORMANT** 227/227 |
+| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (or `ports/wasm/index.html`) | **CONFORMANT** 227/227 |
+| A new port (Go/Swift/C#) | mirror the logic of `conformance.py`; see `ports/README.md` | — |
 
-Semua port **nol dependensi** (pustaka standar saja, termasuk pembaca JSON kecil
-buatan sendiri di port terkompilasi). CI menjalankan keempatnya tiap push —
+All ports are **dependency-free** (standard library only, including a small hand-written
+JSON reader in the compiled ports). CI runs all of them on every push —
 `.github/workflows/conformance.yml`.
 
-Bikin ulang golden **hanya** kalau spec berubah, dan catat alasannya di `DRIFT.md`:
+Regenerate the golden file **only** when the spec changes, and record why in `DRIFT.md`:
 
 ```bash
 python core/gen_golden.py
@@ -197,148 +214,152 @@ python core/gen_golden.py
 
 ---
 
-## 7. Versi
+## 7. Versioning
 
-Semantik: **mayor** = angka berubah; **minor** = permukaan bertambah, angka lama tetap;
-**tambal** = klarifikasi dokumen saja. `golden.json` mencantumkan `spec_version` yang
-dipatuhinya.
+Semantics: **major** = numbers change; **minor** = surface added, existing numbers
+unchanged; **patch** = documentation clarification only. `golden.json` records the
+`spec_version` it complies with.
 
-- **v1.2.0** (2026-09-04) — **MAYOR**: detektor-2 centroid-RBF → **Mahalanobis+shrinkage**
-  (§5.4), kalibrasi ambang → **parametrik** (§5.6), bobot IF/SVM 0.70/0.30 → **0.30/0.70**,
-  aksi HIGH `BLOCK_SESSION` → **`REQUIRE_STEPUP`** + aturan-run block (§5.7). `golden.json`
-  di-regen; angka mesin berubah menyeluruh. Held-out: FAR 36.2% → **5.4%**, EER 21.0% → **11.9%**;
-  block pemilik 9.7% → **2.4%**. Ekstraksi fitur (§8) tak berubah. Lihat `DRIFT.md`.
-- **v1.1.0** (2026-09-03) — menambah §8 ekstraksi fitur. Angka mesin v1.0 **tidak
-  berubah** (golden `cases` identik). Satu-satunya perubahan angka: fitur
-  `temporal_time_of_day_score` kini dihitung UTC, bukan waktu lokal — perbaikan
-  portabilitas, bukan penyetelan akurasi. Lihat §9 dan `DRIFT.md` (F-1).
-- **v1.0.0** (2026-09-03) — mesin penilaian (vektor → vonis).
+- **v1.2.0** (2026-09-04) — **MAJOR**: detector-2 centroid-RBF → **Mahalanobis +
+  shrinkage** (§5.4), threshold calibration → **parametric** (§5.6), IF/SVM weights
+  0.70/0.30 → **0.30/0.70**, HIGH action `BLOCK_SESSION` → **`REQUIRE_STEPUP`** plus the
+  run-rule block (§5.7). `golden.json` regenerated; engine numbers changed throughout.
+  Held-out: FAR 36.2% → **5.4%**, EER 21.0% → **11.9%**; owner block rate 9.7% → **2.4%**.
+  Feature extraction (§8) unchanged. See `DRIFT.md`.
+- **v1.1.0** (2026-09-03) — adds §8, feature extraction. The v1.0 engine numbers are
+  **unchanged** (the golden `cases` are identical). The only numeric change:
+  `temporal_time_of_day_score` is now computed in UTC rather than local time — a
+  portability fix, not an accuracy adjustment. See §9 and `DRIFT.md` (F-1).
+- **v1.0.0** (2026-09-03) — the scoring engine (vector → verdict).
 
 ---
 
-## 8. Ekstraksi fitur (event mentah → vektor 28-float)
+## 8. Feature extraction (raw events → 28-float vector)
 
-Bagian ini **normatif**. Acuan kode: `sdk/core/features.js:extractF4` dan padanan
-persisnya `bg_core.py:extract_features`. Keduanya lulus `feature_cases` yang sama.
+This section is **normative**. Code reference: `sdk/core/features.js:extractF4` and its
+exact counterpart `bg_core.py:extract_features`. Both pass the same `feature_cases`.
 
-### 8.1 Struktur event
+### 8.1 Event structure
 
-Masukan = **daftar event terurut** (list of records). Tiap event punya:
+The input is an **ordered list of events**. Each event has:
 
-| Kolom | Tipe | Wajib | Dibaca oleh |
+| Field | Type | Required | Read by |
 |---|---|---|---|
-| `event_type` | string | ya | pemilahan tipe |
-| `timestamp` | epoch **milidetik** | ya | hampir semua fitur waktu |
-| `x`, `y` | angka piksel | untuk gerak | kecepatan/arah/kurvatur |
-| `key` | string | untuk ketik | entropi transisi |
-| `hold_time` | milidetik | untuk ketik | dwell mean/std |
-| `velocity` | angka | opsional | `cursor_idle_ratio` (lihat 8.4) |
-| `page_url` | string | untuk navigasi | hitung halaman/transisi |
-| `scroll_delta` | angka | untuk scroll | kedalaman scroll |
+| `event_type` | string | yes | type dispatch |
+| `timestamp` | epoch **milliseconds** | yes | nearly every temporal feature |
+| `x`, `y` | pixel numbers | for movement | velocity / direction / curvature |
+| `key` | string | for keystrokes | transition entropy |
+| `hold_time` | milliseconds | for keystrokes | dwell mean and std |
+| `velocity` | number | optional | `cursor_idle_ratio` (see 8.4) |
+| `page_url` | string | for navigation | page and transition counts |
+| `scroll_delta` | number | for scrolling | scroll depth |
 
-Nilai kolom yang hilang/None diperlakukan sebagai **0** (padanan `x || 0` di JS),
-kecuali `hold_time` yang di-*filter* (hanya yang non-None ikut rata-rata) dan `key`
-yang jadi string kosong.
+Missing or `None` field values are treated as **0** (equivalent to `x || 0` in JS), except
+`hold_time`, which is *filtered* (only non-`None` values enter the average), and `key`,
+which becomes an empty string.
 
-Tipe `event_type` yang dikenal: `MOUSE_MOVE`, `MOUSE_CLICK`, `MOUSE_SCROLL`,
-`KEYSTROKE`, `FORM_FOCUS`, `FORM_BLUR`, `NAVIGATION`, `PAGE_STEP`, `CART_ACTION`.
+Recognized `event_type` values: `MOUSE_MOVE`, `MOUSE_CLICK`, `MOUSE_SCROLL`, `KEYSTROKE`,
+`FORM_FOCUS`, `FORM_BLUR`, `NAVIGATION`, `PAGE_STEP`, `CART_ACTION`.
 
-### 8.2 Aturan umum
+### 8.2 General rules
 
-- **`mean`** = rata-rata aritmetika; array kosong → `0`.
-- **`std`** = simpangan baku **populasi** (pembagi *n*); array kosong → `0`.
-- **`safe(v)`** = `v` bila angka finit, selain itu `0`. Keluaran **selalu** 28 finit.
-- **Urutan mouse gabungan** `mouse_ev` = `[…MOUSE_MOVE, …MOUSE_CLICK, …MOUSE_SCROLL]`
-  (digabung menurut tipe, **bukan** diurut waktu). Loop kinematik jalan atas urutan ini.
-- Event tetap dalam urutan masukannya untuk `flight_time`, entropi, dan burst.
+- **`mean`** = arithmetic mean; an empty array gives `0`.
+- **`std`** = **population** standard deviation (divisor *n*); an empty array gives `0`.
+- **`safe(v)`** = `v` if it is a finite number, otherwise `0`. The output is **always** 28
+  finite values.
+- **The combined mouse ordering** `mouse_ev` = `[…MOUSE_MOVE, …MOUSE_CLICK, …MOUSE_SCROLL]`
+  (concatenated by type, **not** sorted by time). The kinematics loop runs over this order.
+- Events stay in their input order for `flight_time`, entropy and burst computations.
 
-### 8.3 Kinematik mouse (loop atas `mouse_ev`, i=1..)
+### 8.3 Mouse kinematics (loop over `mouse_ev`, i=1..)
 
-Untuk tiap pasang `(p=mouse_ev[i-1], c=mouse_ev[i])`, `dt = c.ts − p.ts`:
+For each pair `(p=mouse_ev[i-1], c=mouse_ev[i])` with `dt = c.ts − p.ts`:
 
-- `dt ≤ 0` → **lewati** pasangan itu.
-- `dist = hypot(c.x−p.x, c.y−p.y)`, `v = dist/dt` → masuk `velocities`.
-- **arah**: bila `dist > 0`, `dir = atan2(dy,dx)`; bila ada `last_dir` dan
-  `|dir − last_dir| > π/4` → `direction_changes += 1`; set `last_dir = dir`.
-- **akselerasi**: bila `|velocities| > 1`, `a = (v − velocities[−2])/dt` → `accelerations`.
-- **kurvatur** (butuh 3 titik, `i ≥ 2`, `p2 = mouse_ev[i-2]`):
-  `area = x0(y1−y2) + x1(y2−y0) + x2(y0−y1)`; `sa,sb,sc` = panjang sisi;
-  bila `sa·sb·sc > 0` → tambah `|4·area/(sa·sb·sc)|` ke `curvatures`.
-- **pause**: bila `dt > 100` → `pauses += 1`.
+- `dt ≤ 0` → **skip** that pair.
+- `dist = hypot(c.x−p.x, c.y−p.y)`, `v = dist/dt` → append to `velocities`.
+- **direction**: if `dist > 0`, `dir = atan2(dy,dx)`; if `last_dir` exists and
+  `|dir − last_dir| > π/4` then `direction_changes += 1`; set `last_dir = dir`.
+- **acceleration**: if `|velocities| > 1`, `a = (v − velocities[−2])/dt` → `accelerations`.
+- **curvature** (needs 3 points, `i ≥ 2`, `p2 = mouse_ev[i-2]`):
+  `area = x0(y1−y2) + x1(y2−y0) + x2(y0−y1)`; `sa,sb,sc` are the side lengths;
+  if `sa·sb·sc > 0` then append `|4·area/(sa·sb·sc)|` to `curvatures`.
+- **pause**: if `dt > 100` then `pauses += 1`.
 
-`click_intervals` = selisih timestamp antar `MOUSE_CLICK` berurutan.
+`click_intervals` = timestamp differences between consecutive `MOUSE_CLICK` events.
 
 ### 8.4 `cursor_idle_ratio`
 
-Hanya bila ada `MOUSE_MOVE`:
+Only if `MOUSE_MOVE` events exist:
 `idle = |{e ∈ MOUSE_MOVE : (e.velocity || 0) < 0.5}|`, `ratio = idle / |MOUSE_MOVE|`.
-Bila hasilnya **tepat 0** dan ada `velocities`, pakai cadangan:
+If the result is **exactly 0** and `velocities` is non-empty, use the fallback:
 `ratio = |{v ∈ velocities : v < 0.05}| / |velocities|`.
-Tanpa MOUSE_MOVE → `0`.
+With no `MOUSE_MOVE` events → `0`.
 
-### 8.5 Koordinasi mouse–keyboard
+### 8.5 Mouse–keyboard coordination
 
-Gabung `mouse_ev + key_ev`, **urutkan stabil menurut timestamp**. Hitung
-`alternations` = berapa kali tipe (`mouse`/`keyboard`) berganti antar-event bersebelahan.
-`cross_mouse_keyboard_coordination = alternations / |gabungan|` (0 bila kosong).
-Tipe ditentukan oleh apakah `event_type` mengandung substring `"MOUSE"`.
+Concatenate `mouse_ev + key_ev` and **sort stably by timestamp**. Count `alternations` =
+how many times the type (`mouse`/`keyboard`) changes between adjacent events.
+`cross_mouse_keyboard_coordination = alternations / |combined|` (0 if empty).
+The type is decided by whether `event_type` contains the substring `"MOUSE"`.
 
-### 8.6 Keystroke
+### 8.6 Keystrokes
 
-- `hold_times` = `hold_time` yang non-None → dwell mean & std.
-- `flight_times` = selisih timestamp antar KEYSTROKE berurutan (urutan masukan).
-- **entropi transisi**: bila `<2` keystroke → `0`. Selain itu, hitung frekuensi
-  bigram `key[i-1]->key[i]` (`n−1` transisi); `H = −Σ p·ln(p + 1e-9)` dengan
+- `hold_times` = the non-`None` `hold_time` values → dwell mean and std.
+- `flight_times` = timestamp differences between consecutive KEYSTROKE events (input order).
+- **transition entropy**: with fewer than 2 keystrokes → `0`. Otherwise count the bigram
+  frequencies `key[i-1]->key[i]` (`n−1` transitions); `H = −Σ p·ln(p + 1e-9)` where
   `p = count/(n−1)`.
-- **burst**: telusuri KEYSTROKE berurutan; `dt < 333` memulai burst baru (naikkan
-  `burst_count` saat *masuk* burst), `dt ≥ 333` mengakhirinya.
-- `typing_speed = |key_ev| / duration` bila `duration > 0`, selain itu `0`.
-- **cross-field cadence**: untuk tiap `FORM_FOCUS` (timestamp terurut), ambil KEYSTROKE
-  terakhir *sebelum* dan pertama *pada/atau sesudah* fokus itu; selisihnya masuk
-  `cross_gaps`. Fiturnya = `mean(cross_gaps)`.
+- **burst**: walk consecutive KEYSTROKE events; `dt < 333` starts a new burst (increment
+  `burst_count` on *entering* a burst), `dt ≥ 333` ends it.
+- `typing_speed = |key_ev| / duration` if `duration > 0`, otherwise `0`.
+- **cross-field cadence**: for each `FORM_FOCUS` (in timestamp order), take the last
+  KEYSTROKE *before* it and the first *at or after* it; their difference goes into
+  `cross_gaps`. The feature is `mean(cross_gaps)`.
 
 ### 8.7 Temporal
 
 - `first_ts = events[0].ts || session_start_ts || 0`; `last_ts = events[−1].ts || first_ts`.
-- `duration = (last_ts − first_ts)/1000` detik.
-- **`temporal_time_of_day_score` = `(UTChours + UTCminutes/60)/24`** dari `first_ts`.
-  **Wajib UTC** (bukan waktu lokal) — lihat §9.
-- **activity bursts**: kelompokkan event per detik (`floor(ts/1000)`), ambil array
-  cacah per-detik; `bursts = |{c : c > mean + 2·std}|`.
+- `duration = (last_ts − first_ts)/1000` seconds.
+- **`temporal_time_of_day_score` = `(UTChours + UTCminutes/60)/24`** from `first_ts`.
+  **UTC is mandatory** (not local time) — see §9.
+- **activity bursts**: group events per second (`floor(ts/1000)`), take the array of
+  per-second counts; `bursts = |{c : c > mean + 2·std}|`.
 
-### 8.8 Navigasi & form
+### 8.8 Navigation and forms
 
-- `nav_ev` = event `NAVIGATION` atau `PAGE_STEP`.
-- `nav_page_transition_pattern = |unik(page_url di nav_ev)| / |page_url di nav_ev|`
-  (0 bila tak ada).
-- `nav_scroll_depth_mean = mean(|scroll_delta|)` atas `MOUSE_SCROLL`.
-- `nav_page_count = |unik(page_url atas SEMUA event)|`.
+- `nav_ev` = events of type `NAVIGATION` or `PAGE_STEP`.
+- `nav_page_transition_pattern = |unique(page_url in nav_ev)| / |page_url in nav_ev|`
+  (0 if there are none).
+- `nav_scroll_depth_mean = mean(|scroll_delta|)` over `MOUSE_SCROLL`.
+- `nav_page_count = |unique(page_url over ALL events)|`.
 - `nav_step_transition_count = |nav_ev|`.
-- `form_focus_count`, `form_blur_count` = cacah event terkait.
-- `form_field_switch_rate = mean(selisih>0 antar FORM_FOCUS terurut waktu)`.
+- `form_focus_count`, `form_blur_count` = counts of the corresponding events.
+- `form_field_switch_rate = mean(positive differences between time-ordered FORM_FOCUS)`.
 - `cart_action_count = |CART_ACTION|`.
 
-### 8.9 Perakitan keluaran
+### 8.9 Output assembly
 
-Susun ke-28 nilai **menurut urutan F4** (§2). Tiap nilai dibungkus `safe(value || 0)`.
-Hasil: dict/array 28 elemen, semua finit — siap masuk §5 sebagai vektor fitur.
+Arrange all 28 values **in F4 order** (§2). Each value is wrapped as `safe(value || 0)`.
+The result is a dict/array of 28 elements, all finite — ready to enter §5 as the feature
+vector.
 
 ---
 
-## 9. Determinisme & portabilitas (F-1: waktu UTC)
+## 9. Determinism and portability (F-1: UTC time)
 
-Ekstraksi fitur harus memberi **vektor identik untuk event identik, di mesin & zona
-waktu mana pun**. Satu-satunya pelanggaran di kode asli adalah
-`temporal_time_of_day_score`, yang memakai `Date.getHours()` — **waktu lokal**. Dua
-komputer di zona waktu berbeda akan menghasilkan fitur ke-18 yang berbeda dari input
-yang sama, lalu berbeda pula standardisasi dan skornya.
+Feature extraction must produce an **identical vector for identical events, on any machine
+and in any time zone**. The only violation in the original code was
+`temporal_time_of_day_score`, which used `Date.getHours()` — **local time**. Two computers
+in different time zones would produce a different 18th feature from the same input, and
+therefore different standardization and different scores.
 
-**Keputusan v1.1:** fitur itu dihitung **UTC** (`getUTCHours` / `getUTCMinutes`), di
-`features.js` maupun `bg_core.py`. Ini perbaikan **portabilitas**, bukan penyetelan
-akurasi — nilainya masih "jam berapa sesi dimulai", cuma di garis waktu yang sama untuk
-semua orang. Dicatat sebagai **F-1** di `DRIFT.md`.
+**v1.1 decision:** that feature is computed in **UTC** (`getUTCHours` / `getUTCMinutes`),
+in both `features.js` and `bg_core.py`. This is a **portability** fix, not an accuracy
+adjustment — the value still means "what time of day the session started", just on a
+timeline that is the same for everyone. Recorded as **F-1** in `DRIFT.md`.
 
-Sumber non-determinisme lain sudah aman: tak ada `Date.now()` yang dipakai selama
-`timestamp` event terisi; semua pengurutan **stabil**; transkendental (`atan2`, `log`,
-`hypot`, `sqrt`) dipakai pada input yang dijauhkan dari ambang rapuh di `feature_cases`,
-sehingga selisih ULB antar-runtime tetap di bawah toleransi 1e-9.
+Other sources of non-determinism are already safe: no `Date.now()` is used as long as
+event `timestamp` values are populated; all sorts are **stable**; and the transcendental
+functions (`atan2`, `log`, `hypot`, `sqrt`) are applied to inputs kept away from fragile
+thresholds in `feature_cases`, so cross-runtime ULP differences stay below the 1e-9
+tolerance.
