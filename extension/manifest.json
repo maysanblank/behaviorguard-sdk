@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "BehaviorGuard — ATO On-Device",
+  "version": "2.0.0",
+  "description": "Deteksi ATO on-device (mouse+ketik) — plug-and-play tanpa backend. Skor di perangkat.",
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": { "default_title": "BehaviorGuard" },
+  "web_accessible_resources": [
+    { "resources": ["core/*"], "matches": ["<all_urls>"] }
+  ]
+}

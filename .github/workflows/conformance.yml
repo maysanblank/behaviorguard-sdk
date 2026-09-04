@@ -1,0 +1,103 @@
+name: conformance
+
+# Membuktikan "satu otak, banyak bahasa": tiap runtime wajib lulus core/golden.json
+# yang SAMA (227 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Golden tetap sinkron dengan bg_core.py
+        run: |
+          python core/gen_golden.py
+          git diff --exit-code core/golden.json \
+            || (echo '::error::golden.json basi — jalankan `python core/gen_golden.py` dan commit'; exit 1)
+      - name: Python conformance
+        run: python core/conformance.py
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: JS conformance (headless)
+        run: node core/conformance.node.mjs
+      - name: WASM conformance (artefak yang di-commit)
+        run: node ports/wasm/run.mjs
+
+  stepup:
+    # C-1: mengunci celah "tempel frasa = lolos MFA". verify() harus gagal-TERTUTUP
+    # untuk sampel yang tidak lengkap/tidak finit; kalau longgar lagi, build merah.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Uji regresi lapisan step-up
+        run: node core/challenge.test.mjs
+      - name: Uji regresi gerbang detektor (C-15)
+        run: node core/ensemble.test.mjs
+
+  sync:
+    # C-9: sdk/ adalah satu-satunya sumber; extension/ hanya salinan. Kalau keduanya
+    # menyimpang (orkestrator dulu tidak ikut disinkron), build merah.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: sdk/ dan extension/ wajib identik
+        run: |
+          fail=0
+          for f in sdk/core/*.js; do
+            b="extension/core/$(basename "$f")"
+            diff -q "$f" "$b" >/dev/null 2>&1 || { echo "::error::menyimpang: $f vs $b"; fail=1; }
+          done
+          for t in storage.js behaviorguard.js; do
+            diff -q "sdk/$t" "extension/$t" >/dev/null 2>&1 || { echo "::error::menyimpang: sdk/$t vs extension/$t"; fail=1; }
+          done
+          [ $fail -eq 0 ] && echo "sdk/ == extension/ : OK"
+          exit $fail
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust conformance
+        working-directory: ports/rust
+        run: cargo run --release
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: 'temurin', java-version: '21' }
+      - name: Java conformance
+        working-directory: ports/java
+        run: java BgConformance.java ../../core/golden.json
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Rebuild bg_core.wasm dari sumber Rust
+        run: |
+          cd ports/rust
+          cargo build --release --target wasm32-unknown-unknown --lib
+          cp target/wasm32-unknown-unknown/release/bg_core.wasm ../wasm/bg_core.wasm
+      - name: WASM conformance (hasil rebuild)
+        run: node ports/wasm/run.mjs

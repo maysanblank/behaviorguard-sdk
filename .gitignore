@@ -1,0 +1,32 @@
+# --- Data subjek manusia: JANGAN PERNAH di-commit ---------------------------
+# Repo ini menjual klaim privasi on-device. Mempublikasikan sampel perilaku
+# 16 subjek riset akan membantah klaim itu sekaligus jadi masalah etik.
+# Berkas-berkas ini tetap ada di disk lokal; hanya dikeluarkan dari git.
+*.db
+*.sqlite
+*.sqlite3
+server/bg_server.db
+scratch_*.json
+
+# --- Berkas kerja internal --------------------------------------------------
+HANDOFF.md
+.backup-*/
+dist/tes-*.html
+dist/tes-*.json
+
+# --- Artefak build & cache --------------------------------------------------
+__pycache__/
+*.py[cod]
+node_modules/
+ports/rust/target/
+*.wasm.tmp
+
+# --- OS / editor ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Materi kerja pengajuan (bukan bagian rilis publik)
+SUBMISSION-DRAFT.md

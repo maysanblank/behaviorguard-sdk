@@ -1,0 +1,6 @@
+# Normalisasi akhiran baris. CI membandingkan sdk/ dengan extension/ pakai `diff -q`,
+# jadi keduanya wajib punya akhiran baris identik di runner Linux.
+* text=auto eol=lf
+*.png binary
+*.wasm binary
+*.db binary

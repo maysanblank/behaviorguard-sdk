@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><title>BG cloud e2e</title></head>
+<body><h3>BehaviorGuard HYBRID cloud - uji lintas-device</h3><pre id="out">running...</pre>
+<script src="./behaviorguard.js"></script>
+<script>
+const PK="pk_a653b4bb38c86575f2180515", EP="http://127.0.0.1:5055";
+const out=document.getElementById('out'); const log=(...a)=>{out.textContent+="\n"+a.join(' ');};
+function humanEvents(seed, fast){
+  const ev=[]; let t=Date.now(); let r=seed; let px=400,py=300;
+  const rnd=()=>{ r=(r*1103515245+12345)&0x7fffffff; return r/0x7fffffff; };
+  for(let i=0;i<160;i++){
+    t+=Math.floor(fast?(8+rnd()*14):(25+rnd()*90));
+    const roll=rnd();
+    if(roll<0.6){ const step=fast?300:110; const nx=px+(rnd()-0.5)*step, ny=py+(rnd()-0.5)*step; const v=Math.hypot(nx-px,ny-py); px=nx;py=ny;
+      ev.push({event_type:'MOUSE_MOVE',timestamp:t,x:nx,y:ny,velocity:v,page_url:'/p'+(i%3)}); }
+    else if(roll<0.85){ ev.push({event_type:'KEYSTROKE',timestamp:t,key:'a',hold_time:(fast?18:65)+rnd()*(fast?12:90),flight_time:(fast?12:45)+rnd()*(fast?20:120),page_url:'/p'+(i%3)}); }
+    else { ev.push({event_type:'MOUSE_CLICK',timestamp:t,x:px,y:py,velocity:rnd()*(fast?8:2),page_url:'/p'+(i%3)}); }
+  }
+  return ev;
+}
+async function api(path){ const r=await fetch(EP+path,{headers:{'Authorization':'Bearer '+PK}}); return r.json(); }
+(async()=>{
+ try{
+  const bg=window.BehaviorGuard._instance;
+  // DEVICE A: Andi enroll -> baseline naik VPS
+  await bg.clear();
+  await bg.init({userId:'andi@tokonya.com', pk:PK, endpoint:EP, onRisk:e=>{}});
+  log('== DEVICE A (HP Andi): enrollment 10 sesi ==');
+  for(let s=0;s<11;s++){ await bg.scoreExternalEvents(humanEvents(2000+s*13,false)); }
+  await new Promise(r=>setTimeout(r,500));
+  const bl=await api('/baseline?u=andi@tokonya.com');
+  log(' baseline andi di VPS: '+bl.vectors.length+' vektor');
+
+  // budi aman enroll
+  await bg.clear();
+  await bg.init({userId:'budi@tokonya.com', pk:PK, endpoint:EP, onRisk:e=>{}});
+  for(let s=0;s<11;s++){ await bg.scoreExternalEvents(humanEvents(7000+s*13,false)); }
+  log('== budi@tokonya.com: enroll normal (aman) ==');
+
+  // DEVICE B: penyerang login andi dari laptop sendiri (storage kosong)
+  await bg.clear();
+  log('\n== DEVICE B (laptop penyerang): storage lokal KOSONG, login andi ==');
+  await bg.init({userId:'andi@tokonya.com', pk:PK, endpoint:EP, onRisk:e=>{}});
+  log(' setelah init -> hasModel='+bg.getState().hasModel+' (TRUE = baseline Andi ketarik dari VPS, bukan enroll ulang)');
+  const atk=await bg.scoreExternalEvents(humanEvents(999,true));
+  log(' SESI PENYERANG -> '+atk?.level+' score='+(atk?.score??0).toFixed(2)+' -> '+atk?.action);
+  await new Promise(r=>setTimeout(r,500));
+
+  log('\nRESULT: dashboard kini nunjukin andi=HIGH (takeover), budi=LOW (aman).');
+  log('Dashboard: '+EP+'/dashboard?pk='+PK);
+ }catch(e){ log('FAIL: '+e.message); console.error(e); }
+})();
+</script></body></html>

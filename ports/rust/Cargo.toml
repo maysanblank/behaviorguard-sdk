@@ -1,0 +1,20 @@
+[package]
+name = "bg_core"
+version = "1.1.0"
+edition = "2021"
+description = "BehaviorGuard core - port acuan Rust + target WASM, nol dependensi, lulus core/golden.json"
+
+[lib]
+name = "bg_core"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "conformance"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+
+[dependencies]

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BehaviorGuard — Konsol Pemantau</title>
+<style>body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#0b0b11;color:#e2e8f0}
+header{padding:14px 18px;background:#1e293b;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.card{background:#1a1a28;border:1px solid #2a2a3a;border-radius:12px;padding:14px;margin:12px}
+button{background:#0ea5a0;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.LOW{background:#dcfce7;color:#166534}.MEDIUM{background:#fef9c3;color:#854d0e}.HIGH{background:#fee2e2;color:#991b1b}
+table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:6px 8px;border-bottom:1px solid #2a2a3a;text-align:left}
+canvas{width:100%;height:220px;background:#0b1222;border-radius:8px}
+.small{font-size:12px;color:#94a3b8}
+</style></head><body>
+<header>
+  <b>BehaviorGuard Pemantau — singleton SDK</b>
+  <span class="small">Situs polos di kiri (iframe) + skor via BehaviorGuard singleton (kalibrasi + anti-poisoning sama dengan reproduce_db)</span>
+  <button id="end">End Session & Skor</button>
+  <button id="clear">Reset</button>
+  <span id="thrInfo" class="small"></span>
+</header>
+<div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;padding:12px">
+  <iframe id="toko" src="../situs-polos/index.html" style="width:100%;height:720px;border:1px solid #2a2a3a;border-radius:12px;background:#fff"></iframe>
+  <div>
+    <div class="card"><b>Konsol Risiko Hidup (singleton)</b><div id="last" style="margin:8px 0">Init SDK...</div><canvas id="chart"></canvas><div id="thrLine" class="small"></div></div>
+    <div class="card"><b>Kasus Pemilik (FRR)</b><div class="small">Rumus: 87/248 = 35.1% held-out (in-sample lama ditinggalkan). Di pemantau live, FRR tergantung perilaku kamu — lihat grafik skor.</div></div>
+    <div class="card"><b>Kasus Penyusup (FAR)</b><div class="small">12/1304 lolos LOW = 0.9% held-out (per-subjek disjoint). Threshold q=0.10 EERgap, bukan 15%/5% lama.</div></div>
+    <div class="card"><b>Log Sesi</b><table id="log"><thead><tr><th>#</th><th>Skor</th><th>Level</th><th>Top fitur</th><th>Thr</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</div>
+<script type="module">
+import bgSingleton from '../../sdk/behaviorguard.js';
+import { F4 } from '../../sdk/core/features.js';
+const bg = bgSingleton._instance || bgSingleton;
+await bg.init({ userId: 'pemantau-demo', onRisk: (evt)=> console.log('onRisk', evt)});
+document.getElementById('last').textContent = `SDK siap: baseline ${bg.cfg.baseline} · retrain/${bg.cfg.retrainEvery} · W ${bg.cfg.weights.isolation_forest}/${bg.cfg.weights.svm} · thr q=${bg.cfg.q_low}`;
+let buffer=[];
+const iframe=document.getElementById('toko');
+const logBody=document.querySelector('#log tbody');
+const lastEl=document.getElementById('last');
+const thrInfo=document.getElementById('thrInfo');
+const thrLine=document.getElementById('thrLine');
+const chart=document.getElementById('chart'), ctx=chart.getContext('2d');
+let scores=[];
+function attachBridge(){
+  try{
+    const doc=iframe.contentDocument;
+    const push=e=>{ e.timestamp=Date.now(); e.page_url=iframe.src; buffer.push(e); };
+    let lastY=iframe.contentWindow.scrollY;
+    const downAt=new Map();
+    doc.addEventListener('mousemove', e=>{ push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY}); }, {passive:true, capture:true});
+    doc.addEventListener('click', e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY}), {passive:true, capture:true});
+    doc.addEventListener('keydown', e=> downAt.set(e.code, Date.now()), {passive:true, capture:true});
+    doc.addEventListener('keyup', e=>{ const t0=downAt.get(e.code); const h=t0?Date.now()-t0:80; push({event_type:'KEYSTROKE', key:e.key, hold_time:h}); }, {passive:true, capture:true});
+    doc.addEventListener('focusin', e=>{ try{ if(e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS'});}catch{} }, true);
+    doc.addEventListener('focusout', e=>{ try{ if(e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR'});}catch{} }, true);
+    doc.addEventListener('scroll', ()=>{ const cur=iframe.contentWindow.scrollY; const d=Math.abs(cur-lastY); lastY=cur; if(d) push({event_type:'MOUSE_SCROLL', scroll_delta: d}); }, {passive:true, capture:true});
+  }catch{}
+}
+iframe.addEventListener('load', attachBridge);
+setTimeout(attachBridge, 800);
+function draw(){
+  ctx.clearRect(0,0,chart.width,chart.height);
+  if(!scores.length) return;
+  const w=chart.width, h=chart.height, pad=20;
+  const min=Math.min(...scores), max=Math.max(...scores);
+  const range=(max-min)||1;
+  ctx.fillStyle='#16653422'; ctx.fillRect(0,0,w, h/3);
+  ctx.fillStyle='#854d0e22'; ctx.fillRect(0,h/3,w,h/3);
+  ctx.fillStyle='#991b1b22'; ctx.fillRect(0,2*h/3,w,h/3);
+  ctx.strokeStyle='#0ea5a0'; ctx.beginPath();
+  scores.forEach((s,i)=>{
+    const x=pad + i*(w-2*pad)/Math.max(1,scores.length-1);
+    const y=h-pad - ((s-min)/range)*(h-2*pad);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }); ctx.stroke();
+  const thr=bg.cfg.thresholds || {low:-0.4, medium:-0.8};
+  ctx.strokeStyle='#64748b'; ctx.setLineDash([4,4]);
+  const yLow=h-pad - ((thr.low-min)/range)*(h-2*pad);
+  const yMed=h-pad - ((thr.medium-min)/range)*(h-2*pad);
+  ctx.beginPath(); ctx.moveTo(0,yLow); ctx.lineTo(w,yLow); ctx.moveTo(0,yMed); ctx.lineTo(w,yMed); ctx.stroke(); ctx.setLineDash([]);
+  thrInfo.textContent=`thr LOW ${thr.low.toFixed(2)} MED ${thr.medium.toFixed(2)} (q=${bg.cfg.q_low})`;
+  thrLine.textContent=`Garis putus = threshold kalibrasi singleton (q=${bg.cfg.q_low})`;
+}
+let sessIdx=0;
+document.getElementById('end').onclick=async()=>{
+  if(buffer.length<30){ lastEl.textContent='Sesi terlalu pendek — gerakkan mouse & ketik dulu di toko kiri.'; return; }
+  const evs=buffer.splice(0, buffer.length);
+  const evt=await bg.scoreExternalEvents(evs);
+  if(!evt){ lastEl.textContent='Gagal skor.'; return; }
+  sessIdx++; scores.push(evt.score);
+  const thrTxt=`${evt.thresholds.low.toFixed(2)}/${evt.thresholds.medium.toFixed(2)}`;
+  lastEl.innerHTML=`#${sessIdx} Skor <b>${evt.score.toFixed(3)}</b> <span class="tag ${evt.level}">${evt.level}</span> thr ${thrTxt} — ${evt.reasons.join(', ')}`;
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${sessIdx}</td><td>${evt.score.toFixed(3)}</td><td><span class="tag ${evt.level}">${evt.level}</span></td><td>${(evt.topFeatures||[]).map(t=>t.name).join(', ')}</td><td class="small">${thrTxt}</td>`;
+  logBody.prepend(tr);
+  draw();
+};
+document.getElementById('clear').onclick=async()=>{
+  await bg.clear(); scores=[]; buffer=[]; sessIdx=0; logBody.innerHTML=''; lastEl.textContent='Reset — singleton cleared.'; draw();
+};
+function resize(){ chart.width=chart.clientWidth*2; chart.height=220*2; draw(); }
+window.addEventListener('resize', resize); resize();
+window.__bg=bg;
+</script>
+</body></html>

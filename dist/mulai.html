@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BehaviorGuard — Panduan Pasang untuk Vendor</title>
+<style>
+  :root{--ink:#0f1729;--muted:#5b6676;--line:#e6e9ee;--brand:#059669;--brand-d:#047857;
+        --bg:#f6f8fa;--card:#fff;--code:#0b1020;--code-ink:#e6edf3;--accent:#f59e0b;--radius:14px}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+  .top{background:linear-gradient(120deg,#065f46,#059669);color:#fff;padding:36px 20px}
+  .in{max-width:820px;margin:0 auto;padding:0 20px}
+  .top h1{margin:0 0 6px;font-size:28px}
+  .top p{margin:0;opacity:.92}
+  .pov{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
+       border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;margin-bottom:14px}
+  main{max-width:820px;margin:26px auto;padding:0 20px}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:18px;box-shadow:0 6px 20px rgba(15,23,41,.05)}
+  .step h2{margin:0 0 4px;font-size:19px;display:flex;align-items:center;gap:10px}
+  .num{width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .muted{color:var(--muted)}
+  h3{font-size:14px;margin:18px 0 6px;color:var(--brand-d);text-transform:uppercase;letter-spacing:.03em}
+  pre{position:relative;background:var(--code);color:var(--code-ink);border-radius:10px;padding:14px 14px;overflow-x:auto;font:13px/1.6 ui-monospace,Consolas,monospace;margin:8px 0}
+  .copy{position:absolute;top:8px;right:8px;background:#1f2937;color:#cbd5e1;border:1px solid #374151;border-radius:7px;font-size:11px;font-weight:700;padding:4px 9px;cursor:pointer}
+  .copy:hover{background:#374151;color:#fff}
+  code.inl{background:#eef2f7;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px;font-family:ui-monospace,Consolas,monospace}
+  .tabs{display:flex;gap:8px;margin:6px 0}
+  .tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer}
+  .tab.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .lv{font-weight:800}.lv.low{color:#059669}.lv.med{color:#d97706}.lv.high{color:#dc2626}
+  .note{border-left:4px solid var(--accent);background:#fffbeb;border-radius:8px;padding:12px 14px;font-size:14px;margin-top:10px}
+  .ok{border-left:4px solid var(--brand);background:#ecfdf5;border-radius:8px;padding:12px 14px;font-size:14px;margin-top:10px}
+  .foot{max-width:820px;margin:10px auto 40px;padding:0 20px;color:var(--muted);font-size:13px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="in">
+    <span class="pov">POV: kamu vendor yang baru mengunduh library ini</span>
+    <h1>Pasang BehaviorGuard di situsmu</h1>
+    <p>Deteksi pengambilalihan akun (ATO) berbasis perilaku — on-device, satu berkas, tanpa mengubah alur aplikasimu. 3 langkah inti.</p>
+  </div>
+</div>
+
+<main>
+  <div class="step">
+    <p class="muted" style="margin:0"><b>Yang kamu punya setelah download:</b> satu berkas
+      <code class="inl">behaviorguard.js</code> (± 58 KB, classic script, nol dependensi).
+      Itu saja yang perlu dipasang. Tidak ada build step, tidak ada npm install.</p>
+  </div>
+
+  <!-- LANGKAH 1 -->
+  <div class="step">
+    <h2><span class="num">1</span> Taruh berkasnya di situsmu</h2>
+    <p class="muted">Salin <code class="inl">behaviorguard.js</code> ke folder aset situsmu.
+      Boleh di mana saja — server sendiri, CDN, GitHub Pages, jsDelivr.</p>
+<pre><button class="copy">salin</button>/situsmu/
+  index.html
+  js/
+    behaviorguard.js   ← taruh di sini</pre>
+  </div>
+
+  <!-- LANGKAH 2 -->
+  <div class="step">
+    <h2><span class="num">2</span> Tempel satu tag <code class="inl">&lt;script&gt;</code></h2>
+    <p class="muted">Letakkan sebelum <code class="inl">&lt;/body&gt;</code>. Pilih satu mode:</p>
+
+    <div class="tabs">
+      <button class="tab on" data-tab="akun">Per-akun (disarankan)</button>
+      <button class="tab" data-tab="cepat">Cepat / 1 pengguna</button>
+    </div>
+
+    <div id="tab-akun">
+      <h3>Model terpisah untuk tiap akun yang login</h3>
+      <p class="muted">Isi <code class="inl">userId</code> dengan email/ID pengguna yang sedang login.
+        Beda akun = model perilaku berbeda (disimpan di kunci <code class="inl">bg:&lt;userId&gt;</code>).</p>
+<pre><button class="copy">salin</button>&lt;!-- userId = akun yang sedang login di aplikasimu --&gt;
+&lt;script&gt;
+  window.BehaviorGuardConfig = {
+    userId: SESI.email,           // ← ganti dgn email/ID user login-mu
+    panel: true,                  // tampilkan panel status bawaan (kanan-bawah)
+    onRisk: function (r) {        // opsional: r = {level, score, action, reasons, topFeatures}
+      if (r.level === 'HIGH')   mintaVerifikasiTambahan();   // mis. MFA
+      if (r.level === 'MEDIUM') reAuthHalus();
+    }
+  };
+&lt;/script&gt;
+&lt;script src="js/behaviorguard.js" defer&gt;&lt;/script&gt;</pre>
+      <div class="note"><b>Penting:</b> objek config harus diisi <b>sebelum</b> tag
+        <code class="inl">&lt;script src&gt;</code> dijalankan. Kalau <code class="inl">userId</code>
+        kosong (belum login), library diam — memang seharusnya begitu.</div>
+    </div>
+
+    <div id="tab-cepat" class="hidden">
+      <h3>Paling ringkas (mis. demo / satu pengguna)</h3>
+      <p class="muted">Cukup atribut <code class="inl">data-user</code>. Vonis disiarkan sebagai
+        event DOM <code class="inl">behaviorguard:risk</code>.</p>
+<pre><button class="copy">salin</button>&lt;script src="js/behaviorguard.js" data-user="andi@toko.com" defer&gt;&lt;/script&gt;</pre>
+    </div>
+  </div>
+
+  <!-- LANGKAH 3 -->
+  <div class="step">
+    <h2><span class="num">3</span> Tanggapi vonisnya</h2>
+    <p class="muted">Kalau pakai <code class="inl">onRisk</code>, kamu sudah menerimanya di Langkah 2.
+      Kalau pakai mode <code class="inl">data-user</code>, dengarkan event DOM:</p>
+<pre><button class="copy">salin</button>addEventListener('behaviorguard:risk', function (e) {
+  var r = e.detail;                 // {level, score, action, reasons, topFeatures}
+  console.log('[risk]', r.level, r.score.toFixed(2));
+});</pre>
+    <table>
+      <tr><th>Level</th><th>Arti</th><th>Aksi yang disarankan</th></tr>
+      <tr><td><span class="lv low">LOW</span></td><td>Perilaku cocok pemilik akun</td><td>Biarkan jalan</td></tr>
+      <tr><td><span class="lv med">MEDIUM</span></td><td>Menyimpang sedang</td><td>Re-auth halus / tantangan ringan</td></tr>
+      <tr><td><span class="lv high">HIGH</span></td><td>Menyimpang kuat (indikasi ATO)</td><td>Minta MFA / blokir sesi</td></tr>
+    </table>
+    <div class="ok"><b>Selesai.</b> Library otomatis menangkap perilaku (mouse/ketik/scroll/navigasi),
+      menilai tiap ± 30 detik &amp; saat halaman ditutup, dan membangun model per akun sendiri.
+      Kamu tidak perlu memanggil apa pun secara manual.</div>
+  </div>
+
+  <!-- VERIFIKASI -->
+  <div class="step">
+    <h2>✅ Memastikan sudah hidup</h2>
+    <p class="muted">Buka situsmu (sudah login) → buka <b>DevTools → Console</b>. Setiap ± 30 detik
+      akan muncul <code class="inl">[risk] LOW …</code>. Untuk melihat penyimpanan per-akun:
+      <b>DevTools → Application → IndexedDB → <code class="inl">bg_store</code> → <code class="inl">kv</code></b>
+      → ada entri <code class="inl">bg:&lt;email&gt;</code> untuk tiap akun.</p>
+  </div>
+
+  <!-- OPSIONAL -->
+  <div class="step">
+    <h2>Opsi lanjutan (opsional)</h2>
+    <h3>Deteksi ATO lintas-perangkat (mode HYBRID)</h3>
+    <p class="muted">Mode default menyimpan model <b>di perangkat itu saja</b> — hanya menangkap
+      "perangkat sama, perilaku beda". Agar baseline akun ikut ke perangkat mana pun user login
+      (menangkap penyerang di laptopnya sendiri), sambungkan ke server-mu:</p>
+<pre><button class="copy">salin</button>&lt;script&gt;
+  window.BehaviorGuardConfig = {
+    userId: SESI.email,
+    pk: "pk_xxx",                       // kunci tenant
+    endpoint: "https://api.tokomu.com"  // server-mu (contoh backend ada di /server)
+  };
+&lt;/script&gt;
+&lt;script src="js/behaviorguard.js" defer&gt;&lt;/script&gt;</pre>
+    <h3>Setelan lain</h3>
+    <p class="muted">Lewat objek config: <code class="inl">weights</code>, <code class="inl">baseline</code>,
+      <code class="inl">retrainEvery</code>, <code class="inl">thresholds</code>. Default sudah dikalibrasi;
+      biasanya tak perlu disentuh.</p>
+  </div>
+
+  <!-- JUJUR -->
+  <div class="step">
+    <h2>Yang perlu kamu tahu (jujur)</h2>
+    <table>
+      <tr><td><b>Butuh enrollment</b></td><td>Vonis stabil muncul setelah ± 10 sesi pemakaian nyata
+        (≥ 30 kejadian &amp; ≥ 5 detik per sesi). Sesi pertama pasti <span class="lv low">LOW</span>.</td></tr>
+      <tr><td><b>Privasi</b></td><td>Event mentah (koordinat mouse &amp; timing ketik) <b>tidak pernah keluar
+        perangkat</b>. Mode HYBRID hanya mengirim 28 angka fitur teragregasi + vonis.</td></tr>
+      <tr><td><b>Ponsel</b></td><td>Sinyal lebih lemah — 10 dari 28 fitur adalah fitur mouse; penangkap
+        sentuh belum tersedia.</td></tr>
+      <tr><td><b>Situs pihak-ketiga</b></td><td>Kalau kamu tak bisa menyunting HTML situs, pakai versi
+        ekstensi (<code class="inl">extension/</code>), bukan tag ini.</td></tr>
+    </table>
+    <div class="note">Butuh mengubah SDK lalu membundel ulang berkas ini?
+      Jalankan <code class="inl">python tools/bundle.py</code> di repo SDK.</div>
+  </div>
+</main>
+
+<div class="foot">BehaviorGuard — panduan pasang untuk vendor. Referensi teknik &amp; kontrak lintas-bahasa:
+  lihat <code class="inl">core/SPEC.md</code> dan <code class="inl">ports/README.md</code>.</div>
+
+<script>
+  // salin-ke-clipboard
+  document.querySelectorAll('.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var code = b.parentElement.innerText.replace(/^salin\n?/, '');
+      navigator.clipboard.writeText(code).then(function () {
+        var t = b.textContent; b.textContent = 'tersalin ✓';
+        setTimeout(function () { b.textContent = t; }, 1200);
+      });
+    });
+  });
+  // tab per-akun / cepat
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+      var pick = t.getAttribute('data-tab');
+      document.getElementById('tab-akun').classList.toggle('hidden', pick !== 'akun');
+      document.getElementById('tab-cepat').classList.toggle('hidden', pick !== 'cepat');
+    });
+  });
+</script>
+</body>
+</html>

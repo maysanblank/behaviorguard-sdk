@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BehaviorGuard - uji kesesuaian lewat WASM</title>
+<style>
+  body{font:14px/1.6 ui-monospace,Consolas,monospace;margin:24px;max-width:820px}
+  h1{font-size:16px} pre{background:#f6f6f6;padding:12px;overflow-x:auto;white-space:pre-wrap}
+  .ok{color:#0a7a2f} .bad{color:#b00020} b{color:#0a3}
+</style>
+<h1>Satu artefak <code>bg_core.wasm</code> lawan <code>core/golden.json</code></h1>
+<p>Berkas <code>.wasm</code> yang sama (dikompilasi sekali dari port Rust) diberi teks
+<code>golden.json</code>, lalu ia menjalankan 227 pemeriksaan <b>di dalam WASM</b> dan
+mengembalikan hasilnya. Hasil juga ditaruh di <code>window.BG_WASM</code>.</p>
+<pre id="out">menjalankan…</pre>
+
+<script type="module">
+const out = document.getElementById('out');
+const log = [];
+const p = s => { log.push(s); out.textContent = log.join('\n'); };
+
+(async () => {
+  // 1) muat artefak WASM + kontrak golden
+  const [wasmBytes, goldenText] = await Promise.all([
+    fetch('./bg_core.wasm').then(r => r.arrayBuffer()),
+    fetch('../../core/golden.json').then(r => r.text()),
+  ]);
+  const { instance } = await WebAssembly.instantiate(wasmBytes, {});
+  const ex = instance.exports;
+  p(`bg_core.wasm dimuat (${wasmBytes.byteLength} byte). Ekspor: ${Object.keys(ex).join(', ')}`);
+
+  // 2) salin teks golden ke memori linear WASM
+  const enc = new TextEncoder();
+  const inBytes = enc.encode(goldenText);
+  const inPtr = ex.alloc(inBytes.length);
+  new Uint8Array(ex.memory.buffer, inPtr, inBytes.length).set(inBytes);
+
+  // 3) jalankan seluruh uji DI DALAM wasm
+  const packed = ex.run_golden(inPtr, inBytes.length);   // u64 -> BigInt
+  const outPtr = Number(packed >> 32n);
+  const outLen = Number(packed & 0xffffffffn);
+  const resultJson = new TextDecoder().decode(
+    new Uint8Array(ex.memory.buffer, outPtr, outLen).slice()
+  );
+
+  // 4) bebaskan memori
+  ex.dealloc(outPtr, outLen);
+  ex.dealloc(inPtr, inBytes.length);
+
+  const r = JSON.parse(resultJson);
+  p('');
+  p(`KESESUAIAN (di dalam WASM)  spec ${r.spec}`);
+  p(`  lulus ${r.passed} / ${r.total}`);
+  p(`  HASIL: ${r.verdict}`);
+  out.className = r.verdict === 'SESUAI' ? 'ok' : 'bad';
+  window.BG_WASM = r;
+})().catch(e => {
+  out.textContent = 'ERROR: ' + (e && e.stack || e);
+  out.className = 'bad';
+  window.BG_WASM = { error: String(e) };
+});
+</script>

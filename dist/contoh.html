@@ -1,0 +1,18 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Contoh pasang BehaviorGuard</title></head>
+<body>
+<h1>Toko Contoh</h1>
+<input placeholder="cari produk"><button>Checkout</button>
+
+<!-- ====== INI SATU-SATUNYA YANG DITEMPEL DI SITUS MANA PUN ====== -->
+<script src="behaviorguard.js" data-user="andi@example.com" defer></script>
+<script>
+  // Zero-callback: cukup dengar event DOM. Tanpa ubah kode aplikasi lain.
+  addEventListener('behaviorguard:risk', e => {
+    const r = e.detail;                 // {level, score, action, reasons, topFeatures}
+    console.log('[BG]', r.level, r.score.toFixed(2), r.reasons);
+    if (r.level === 'HIGH')   alert('Verifikasi tambahan (MFA) diperlukan');
+    // if (r.level === 'MEDIUM') tampilkanReAuthHalus();
+  });
+</script>
+<!-- ============================================================== -->
+</body></html>

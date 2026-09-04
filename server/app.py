@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""
+BehaviorGuard VPS - backend minimal multi-tenant (Flask + sqlite3, dependency-ringan).
+Model HYBRID: yang MASUK server cuma VEKTOR FITUR teragregasi (28 angka/sesi) + verdict.
+Event mentah (timing ketik/mouse) TIDAK pernah dikirim - tetap di device.
+
+Skema per tenant + per akun (userId), BUKAN per device:
+  tenants(pk, name)
+  baselines(pk, user_id, vectors_json, updated_at)   # baseline akun -> tarik saat login device mana pun
+  logs(id, pk, user_id, level, score, action, reasons, ts, ip)
+
+Endpoint:
+  POST /tenant     {name}                        -> {pk}        (daftar tenant)
+  GET  /baseline?u=..   (Bearer pk / ?pk=)       -> {vectors}   (tarik baseline akun)
+  POST /baseline   {userId, vectors} (pk)        -> {ok}        (sync baseline akun)
+  POST /log        {pk,userId,level,score,...}   -> {ok}        (kirim verdict)
+  GET  /dashboard?pk=..                          -> HTML per-akun (andi=HIGH, budi=LOW)
+
+CATATAN KEAMANAN (jujur, demo-grade): pk = publishable key (kelihatan di klien). Siapa pun
+yg punya pk bisa tulis log/baseline tenant itu -> risiko peracunan baseline. Produksi:
+gerbang tulis-baseline via secret key sisi server aplikasi vendor, bukan pk klien.
+"""
+import os, json, time, secrets, sqlite3
+from flask import Flask, request, jsonify, g, Response
+
+DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg_server.db")
+app = Flask(__name__)
+
+
+def db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DB)
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+
+@app.teardown_appcontext
+def _close(_):
+    d = g.pop("db", None)
+    if d:
+        d.close()
+
+
+def init_db():
+    c = sqlite3.connect(DB)
+    c.executescript(
+        """
+    CREATE TABLE IF NOT EXISTS tenants(pk TEXT PRIMARY KEY, name TEXT, created_at REAL);
+    CREATE TABLE IF NOT EXISTS baselines(pk TEXT, user_id TEXT, vectors_json TEXT, updated_at REAL,
+        PRIMARY KEY(pk, user_id));
+    CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT, pk TEXT, user_id TEXT,
+        level TEXT, score REAL, action TEXT, reasons TEXT, ts REAL, ip TEXT,
+        top_features TEXT, convergence TEXT, eligible INTEGER, sessions INTEGER, fp TEXT);
+    """
+    )
+    # migrasi lembut untuk DB lama (kolom baru)
+    for col, typ in [("top_features", "TEXT"), ("convergence", "TEXT"),
+                     ("eligible", "INTEGER"), ("sessions", "INTEGER"), ("fp", "TEXT")]:
+        try:
+            c.execute("ALTER TABLE logs ADD COLUMN %s %s" % (col, typ))
+        except sqlite3.OperationalError:
+            pass  # kolom sudah ada
+    c.commit()
+    c.close()
+
+
+# ---- CORS (SDK jalan di origin vendor, beda domain) ----
+@app.after_request
+def cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+
+@app.route("/<path:_any>", methods=["OPTIONS"])
+@app.route("/", methods=["OPTIONS"])
+def preflight(_any=None):
+    return ("", 204)
+
+
+def get_pk():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    if request.is_json:
+        return (request.get_json(silent=True) or {}).get("pk")
+    return request.args.get("pk")
+
+
+def valid_pk(pk):
+    if not pk:
+        return False
+    return db().execute("SELECT 1 FROM tenants WHERE pk=?", (pk,)).fetchone() is not None
+
+
+# ---- daftar tenant ----
+@app.post("/tenant")
+def tenant():
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "tenant").strip()[:80]
+    pk = "pk_" + secrets.token_hex(12)
+    db().execute("INSERT INTO tenants(pk,name,created_at) VALUES(?,?,?)", (pk, name, time.time()))
+    db().commit()
+    return jsonify(pk=pk, name=name)
+
+
+# ---- baseline akun (per pk+userId) ----
+@app.get("/baseline")
+def get_baseline():
+    pk = get_pk()
+    if not valid_pk(pk):
+        return jsonify(error="pk invalid"), 401
+    u = request.args.get("u") or request.args.get("userId")
+    if not u:
+        return jsonify(error="userId wajib"), 400
+    row = db().execute(
+        "SELECT vectors_json, updated_at FROM baselines WHERE pk=? AND user_id=?", (pk, u)
+    ).fetchone()
+    if not row:
+        return jsonify(vectors=[], updatedAt=None)
+    return jsonify(vectors=json.loads(row["vectors_json"]), updatedAt=row["updated_at"])
+
+
+@app.post("/baseline")
+def post_baseline():
+    pk = get_pk()
+    if not valid_pk(pk):
+        return jsonify(error="pk invalid"), 401
+    body = request.get_json(silent=True) or {}
+    u = body.get("userId")
+    vecs = body.get("vectors")
+    if not u or not isinstance(vecs, list):
+        return jsonify(error="userId+vectors wajib"), 400
+    # sanitasi: hanya list-of-list angka, cap 60 sesi x 40 fitur
+    clean = []
+    for v in vecs[:60]:
+        if isinstance(v, list) and all(isinstance(x, (int, float)) for x in v):
+            clean.append([float(x) for x in v[:40]])
+    db().execute(
+        "INSERT INTO baselines(pk,user_id,vectors_json,updated_at) VALUES(?,?,?,?) "
+        "ON CONFLICT(pk,user_id) DO UPDATE SET vectors_json=excluded.vectors_json, updated_at=excluded.updated_at",
+        (pk, u, json.dumps(clean), time.time()),
+    )
+    db().commit()
+    return jsonify(ok=True, stored=len(clean))
+
+
+# ---- log verdict ----
+@app.post("/log")
+def log():
+    pk = get_pk()
+    if not valid_pk(pk):
+        return jsonify(error="pk invalid"), 401
+    b = request.get_json(silent=True) or {}
+    ts = b.get("ts") or time.time()
+    if ts and ts > 1e11:  # klien kirim Date.now() (milidetik) -> normalkan ke detik
+        ts = ts / 1000.0
+    db().execute(
+        "INSERT INTO logs(pk,user_id,level,score,action,reasons,ts,ip,top_features,convergence,eligible,sessions,fp) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            pk,
+            b.get("userId"),
+            b.get("level"),
+            b.get("score"),
+            b.get("action"),
+            json.dumps(b.get("reasons") or []),
+            ts,
+            request.headers.get("X-Forwarded-For", request.remote_addr),
+            json.dumps(b.get("topFeatures") or []),
+            b.get("convergence"),
+            1 if b.get("eligible") else 0,
+            b.get("sessions"),
+            b.get("fp"),
+        ),
+    )
+    db().commit()
+    return jsonify(ok=True)
+
+
+def _norm_ts(t):
+    t = t or 0
+    return t / 1000.0 if t > 1e11 else t
+
+
+# ---- data JSON untuk dashboard SOC (dipoll tiap 3 dtk) ----
+@app.get("/api/dashboard")
+def api_dashboard():
+    pk = get_pk()
+    if not valid_pk(pk):
+        return jsonify(error="pk invalid"), 401
+    d = db()
+    name = d.execute("SELECT name FROM tenants WHERE pk=?", (pk,)).fetchone()["name"]
+    users = [r["user_id"] for r in d.execute("SELECT DISTINCT user_id FROM logs WHERE pk=?", (pk,)).fetchall()]
+    accounts = []
+    for u in users:
+        last = d.execute("SELECT * FROM logs WHERE pk=? AND user_id=? ORDER BY id DESC LIMIT 1", (pk, u)).fetchone()
+        cnt = {r["level"]: r["c"] for r in d.execute(
+            "SELECT level, COUNT(*) c FROM logs WHERE pk=? AND user_id=? GROUP BY level", (pk, u)).fetchall()}
+        series = [(r["score"] or 0) for r in d.execute(
+            "SELECT score FROM logs WHERE pk=? AND user_id=? ORDER BY id DESC LIMIT 24", (pk, u)).fetchall()][::-1]
+        accounts.append({
+            "userId": u, "level": last["level"], "score": last["score"] or 0,
+            "action": last["action"], "convergence": last["convergence"],
+            "sessions": last["sessions"], "ip": last["ip"], "fp": last["fp"],
+            "lastTs": _norm_ts(last["ts"]),
+            "high": cnt.get("HIGH", 0), "medium": cnt.get("MEDIUM", 0), "low": cnt.get("LOW", 0),
+            "total": sum(cnt.values()),
+            "reasons": json.loads(last["reasons"] or "[]"),
+            "topFeatures": json.loads(last["top_features"] or "[]"),
+            "series": series,
+        })
+    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    accounts.sort(key=lambda a: (order.get(a["level"], 3), -(a["lastTs"] or 0)))
+    events = []
+    for r in d.execute("SELECT * FROM logs WHERE pk=? ORDER BY id DESC LIMIT 40", (pk,)).fetchall():
+        events.append({
+            "userId": r["user_id"], "level": r["level"], "score": r["score"] or 0,
+            "ts": _norm_ts(r["ts"]), "ip": r["ip"], "convergence": r["convergence"],
+            "action": r["action"], "reasons": json.loads(r["reasons"] or "[]"),
+        })
+    lvc = {r["level"]: r["c"] for r in d.execute(
+        "SELECT level, COUNT(*) c FROM logs WHERE pk=? GROUP BY level", (pk,)).fetchall()}
+    kpi = {"accounts": len(users), "events": sum(lvc.values()),
+           "high": lvc.get("HIGH", 0), "medium": lvc.get("MEDIUM", 0), "low": lvc.get("LOW", 0),
+           "atRisk": sum(1 for a in accounts if a["level"] == "HIGH")}
+    return jsonify(name=name, pk=pk, generatedAt=time.time(), kpi=kpi, accounts=accounts, events=events)
+
+
+# ---- daftar tenant (untuk pemilih tenant di dashboard) ----
+# Catatan demo: tak ada auth admin; untuk produksi gerbang dgn login operator.
+@app.get("/tenants")
+def tenants():
+    d = db()
+    out = []
+    for t in d.execute("SELECT pk, name, created_at FROM tenants ORDER BY created_at").fetchall():
+        acc = d.execute("SELECT COUNT(DISTINCT user_id) c FROM logs WHERE pk=?", (t["pk"],)).fetchone()["c"]
+        hi = d.execute("SELECT COUNT(DISTINCT user_id) c FROM logs l WHERE pk=? AND level='HIGH' "
+                       "AND l.id IN (SELECT MAX(id) FROM logs WHERE pk=? GROUP BY user_id)",
+                       (t["pk"], t["pk"])).fetchone()["c"]
+        out.append({"pk": t["pk"], "name": t["name"], "accounts": acc, "atRisk": hi})
+    return jsonify(tenants=out)
+
+
+# ---- detail satu akun (untuk drawer drill-down) ----
+@app.get("/api/account")
+def api_account():
+    pk = get_pk()
+    if not valid_pk(pk):
+        return jsonify(error="pk invalid"), 401
+    u = request.args.get("u")
+    if not u:
+        return jsonify(error="userId wajib"), 400
+    d = db()
+    rows = d.execute("SELECT * FROM logs WHERE pk=? AND user_id=? ORDER BY id DESC LIMIT 60", (pk, u)).fetchall()
+    if not rows:
+        return jsonify(error="not found"), 404
+    last = rows[0]
+    cnt = {r["level"]: r["c"] for r in d.execute(
+        "SELECT level, COUNT(*) c FROM logs WHERE pk=? AND user_id=? GROUP BY level", (pk, u)).fetchall()}
+    ips = [r["ip"] for r in d.execute(
+        "SELECT DISTINCT ip FROM logs WHERE pk=? AND user_id=? AND ip IS NOT NULL", (pk, u)).fetchall()]
+    fps = [r["fp"] for r in d.execute(
+        "SELECT DISTINCT fp FROM logs WHERE pk=? AND user_id=? AND fp IS NOT NULL", (pk, u)).fetchall()]
+    span = d.execute("SELECT MIN(ts) a, MAX(ts) b FROM logs WHERE pk=? AND user_id=?", (pk, u)).fetchone()
+    sessions = [{
+        "level": r["level"], "score": r["score"] or 0, "ts": _norm_ts(r["ts"]),
+        "ip": r["ip"], "convergence": r["convergence"], "action": r["action"],
+        "eligible": r["eligible"], "reasons": json.loads(r["reasons"] or "[]"),
+        "topFeatures": json.loads(r["top_features"] or "[]"),
+    } for r in rows]
+    series = [s["score"] for s in sessions][::-1]
+    return jsonify(
+        userId=u, level=last["level"], score=last["score"] or 0, action=last["action"],
+        convergence=last["convergence"], sessions_count=last["sessions"],
+        high=cnt.get("HIGH", 0), medium=cnt.get("MEDIUM", 0), low=cnt.get("LOW", 0),
+        total=sum(cnt.values()), ips=ips, fps=fps,
+        firstTs=_norm_ts(span["a"]), lastTs=_norm_ts(span["b"]),
+        topFeatures=json.loads(last["top_features"] or "[]"),
+        series=series, sessions=sessions,
+    )
+
+
+# ---- dashboard SOC (dark, live) ----
+@app.get("/dashboard")
+def dashboard():
+    # pk opsional: SPA menampilkan pemilih tenant. Kalau diberi & valid, langsung terpilih.
+    pk = request.args.get("pk") or ""
+    if pk and not valid_pk(pk):
+        pk = ""
+    tpl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+    with open(tpl, encoding="utf-8") as f:
+        html = f.read().replace("__PK__", pk)
+    return Response(html, mimetype="text/html")
+
+
+@app.get("/")
+def home():
+    return jsonify(service="behaviorguard-vps", ok=True)
+
+
+if __name__ == "__main__":
+    init_db()
+    app.run(host="0.0.0.0", port=5055, debug=False)

@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BehaviorGuard - uji kesesuaian mesin JS</title>
+<style>
+  body{font:14px/1.5 ui-monospace,Consolas,monospace;margin:24px;max-width:900px}
+  h1{font-size:16px} pre{background:#f6f6f6;padding:12px;overflow-x:auto;white-space:pre-wrap}
+  .ok{color:#0a7a2f} .bad{color:#b00020}
+</style>
+<h1>Uji kesesuaian: <code>sdk/core/*.js</code> lawan <code>core/golden.json</code></h1>
+<p>Logika pemeriksaan identik dengan <code>core/conformance.py</code>. Hasil juga
+ditaruh di <code>window.BG_CONFORMANCE</code> supaya bisa dibaca otomatis.</p>
+<pre id="out">menjalankan…</pre>
+
+<script type="module">
+import { DEFAULTS } from '../sdk/core/config.js';
+import { computeStats, standardize, standardizeBatch } from '../sdk/core/standardize.js';
+import { IsolationForest } from '../sdk/core/isolation_forest.js';
+import { OCSVM } from '../sdk/core/ocsvm.js';
+import { Mahalanobis } from '../sdk/core/mahalanobis.js';
+import { Ensemble } from '../sdk/core/ensemble.js';
+import { toRisk, toAction, topFeatures, calibrateThresholds, calibrateThresholdsParametric } from '../sdk/core/risk.js';
+import { extractF4, featuresToVector } from '../sdk/core/features.js';
+
+const lines = [];
+const log = s => lines.push(s);
+
+function buildModel(vectors, cfg){
+  const stats = computeStats(vectors);
+  const Xstd = standardizeBatch(vectors, stats);
+  const iff = new IsolationForest(cfg.iforest);
+  iff.fit(Xstd);
+  const det2 = (cfg.model2 || 'mahalanobis') === 'mahalanobis'
+    ? new Mahalanobis({ shrink: cfg.mahalanobis.shrink, n_features: cfg.features.length })
+    : new OCSVM({ ...cfg.ocsvm, n_features: cfg.features.length });
+  det2.fit(Xstd);
+  const ens = new Ensemble(iff, det2, cfg.weights, vectors.length);
+  ens.calibrate(Xstd, vectors.length);
+  const baseScores = Xstd.map(x => ens.scoreOne(x));
+  const thresholds = (cfg.calibrationMode || 'parametric') === 'parametric'
+    ? calibrateThresholdsParametric(baseScores, cfg.k_low, cfg.k_med_extra)
+    : calibrateThresholds(baseScores, cfg.q_low, cfg.q_med);
+  return { stats, ens, thresholds };
+}
+
+function scoreVector(model, vec, cfg){
+  const xstd = standardize(vec, model.stats);
+  const score = model.ens.scoreOne(xstd);
+  const level = toRisk(score, model.thresholds);
+  return { score, level, action: toAction(level),
+           topFeature: topFeatures(xstd, cfg.features, 3)[0].name };
+}
+
+const close = (a, b, tol) =>
+  a === b || Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
+
+(async () => {
+  const g = await (await fetch('./golden.json')).json();
+  const tol = g.tolerance;
+  const cfg = { ...DEFAULTS, features: g.features };
+  let passed = 0, failed = 0;
+  const problems = [];
+
+  // --- SPEC v1.1: ekstraksi fitur (event mentah -> vektor 28-float) ---
+  for (const fc of (g.feature_cases || [])) {
+    const gotVec = featuresToVector(extractF4(fc.events, fc.session_start_ts));
+    fc.expect_vector.forEach((want, i) => {
+      if (close(gotVec[i], want, tol)) passed++;
+      else { failed++; problems.push(`${fc.id} / vector[${i}] (${g.features[i]}): dapat ${gotVec[i]}, harus ${want}`); }
+    });
+  }
+
+  for (const cs of g.cases) {
+    const model = buildModel(cs.baseline, cfg);
+    const exp = cs.expect;
+    const check = (label, got, want) => {
+      const ok = typeof want === 'number' ? close(got, want, tol) : got === want;
+      if (ok) passed++; else { failed++; problems.push(`${cs.id} / ${label}: dapat ${got}, harus ${want}`); }
+    };
+
+    check('thresholds.low', model.thresholds.low, exp.thresholds.low);
+    check('thresholds.medium', model.thresholds.medium, exp.thresholds.medium);
+    exp.stats_mean_head.forEach((w, i) => check(`stats.mean[${i}]`, model.stats.mean[i], w));
+    exp.stats_std_head.forEach((w, i) => check(`stats.std[${i}]`, model.stats.std[i], w));
+    for (const k of ['mean', 'std']) {
+      check('if_stats.' + k, model.ens.ifStats[k], exp.if_stats[k]);
+      check('svm_stats.' + k, model.ens.svmStats[k], exp.svm_stats[k]);
+    }
+    for (const k of Object.keys(exp.gated_weights))
+      check('gated_weights.' + k, model.ens.gatedWeights[k], exp.gated_weights[k]);
+
+    cs.probes.forEach((p, i) => {
+      const v = scoreVector(model, p, cfg);
+      const w = exp.verdicts[i];
+      check(`probe[${i}].score`, v.score, w.score);
+      check(`probe[${i}].level`, v.level, w.level);
+      check(`probe[${i}].action`, v.action, w.action);
+      check(`probe[${i}].topFeature`, v.topFeature, w.topFeature);
+      log(`  ${cs.id} probe[${i}] JS=${v.level} ${v.score.toFixed(9)} | golden=${w.level} ${w.score.toFixed(9)}`);
+    });
+  }
+
+  log('');
+  log(`KESESUAIAN  spec ${g.spec_version}  toleransi ${tol}`);
+  log(`  lulus ${passed} / ${passed + failed}`);
+  if (problems.length) {
+    log('  GAGAL:');
+    problems.slice(0, 25).forEach(p => log('    - ' + p));
+    if (problems.length > 25) log(`    ... ${problems.length - 25} lagi`);
+  }
+  const verdict = failed === 0 ? 'SESUAI' : 'TIDAK SESUAI';
+  log(`  HASIL: ${verdict}`);
+
+  document.getElementById('out').textContent = lines.join('\n');
+  document.getElementById('out').className = failed === 0 ? 'ok' : 'bad';
+  window.BG_CONFORMANCE = { passed, failed, verdict, problems };
+})().catch(e => {
+  document.getElementById('out').textContent = 'ERROR: ' + (e && e.stack || e);
+  window.BG_CONFORMANCE = { error: String(e) };
+});
+</script>
