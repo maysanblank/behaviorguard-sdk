@@ -99,18 +99,42 @@ function __bgMountPanel(){
         '<span id="bg-p-lvl" style="font-size:20px;font-weight:800;color:#64748b">MENGENALI…</span>'+
       '</div>'+
       '<div id="bg-p-score" style="color:#64748b;font-size:12px;margin-top:2px">menunggu aktivitas…</div>'+
+      '<div id="bg-p-bar" style="display:none;height:6px;border-radius:99px;background:#e6e9ee;margin-top:9px;overflow:hidden">'+
+        '<i id="bg-p-fill" style="display:block;height:100%;width:0%;background:#64748b;border-radius:99px;transition:width .3s"></i></div>'+
       '<div id="bg-p-reason" style="color:#94a3b8;font-size:11px;margin-top:8px;line-height:1.35"></div>'+
     '</div>';
   (document.body||document.documentElement).appendChild(wrap);
   var C={LOW:{c:'#059669',t:'AMAN'},MEDIUM:{c:'#d97706',t:'WASPADA'},HIGH:{c:'#dc2626',t:'BAHAYA'}};
   return function(e){
+    var lvl=document.getElementById('bg-p-lvl');
+    var skor=document.getElementById('bg-p-score');
+    var bar=document.getElementById('bg-p-bar');
+    var fill=document.getElementById('bg-p-fill');
+    var alasan=document.getElementById('bg-p-reason');
+
+    // Fase pendaftaran: tampilkan PROGRES, bukan cuma "MENGENALI...". Tanpa ini
+    // penonton tidak punya cara tahu sistemnya sedang berjalan atau menggantung.
+    var m=(e.reasons&&e.reasons[0]||'').match(/enrollment\s+(\d+)\s*\/\s*(\d+)/);
+    if(m){
+      var kini=+m[1], perlu=+m[2];
+      wrap.style.borderLeftColor='#6366f1';
+      document.getElementById('bg-p-dot').style.background='#6366f1';
+      lvl.textContent='MENGENALI '+kini+'/'+perlu; lvl.style.color='#4f46e5'; lvl.style.fontSize='18px';
+      skor.textContent='membangun profil pemilik…';
+      bar.style.display='block'; fill.style.width=Math.round(kini/perlu*100)+'%'; fill.style.background='#6366f1';
+      alasan.textContent = kini>=perlu ? 'profil siap — sesi berikutnya sudah dinilai'
+                                       : 'butuh '+(perlu-kini)+' sesi lagi sebelum bisa menilai';
+      return;
+    }
+
     var s=C[e.level]||C.LOW;
     wrap.style.borderLeftColor=s.c;
     document.getElementById('bg-p-dot').style.background=s.c;
-    var lvl=document.getElementById('bg-p-lvl'); lvl.textContent=e.level+' · '+s.t; lvl.style.color=s.c;
-    document.getElementById('bg-p-score').textContent='skor perilaku: '+(e.score!=null?e.score.toFixed(2):'-');
+    lvl.textContent=e.level+' · '+s.t; lvl.style.color=s.c; lvl.style.fontSize='20px';
+    bar.style.display='none';
+    skor.textContent='skor perilaku: '+(e.score!=null?e.score.toFixed(2):'-');
     var r=(e.reasons&&e.reasons.length)?('Sinyal: '+e.reasons.slice(0,2).join(', ')):'';
-    document.getElementById('bg-p-reason').textContent=r;
+    alasan.textContent=r;
   };
 }
 

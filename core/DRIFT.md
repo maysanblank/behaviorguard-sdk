@@ -176,7 +176,7 @@ dari perkiraan semula.
 
 ---
 
-# C-1..C-18 · Celah logika lapisan pertahanan (audit 2026-09-04)
+# C-1..C-19 · Celah logika lapisan pertahanan (audit 2026-09-04)
 
 Selisih D-* di atas soal **angka**. Bagian ini soal **logika kontrol keamanan** —
 ditemukan lewat penelusuran adversarial, semuanya sudah ditambal dan dikunci uji.
@@ -446,6 +446,29 @@ Dua jebakan harness yang sempat menghasilkan temuan palsu dan perlu diingat:
   hanya menghasilkan 18 event dan setiap sesi terlihat gagal gerbang kelayakan. Pakai
   busy-wait (`performance.now()`) untuk pacing saat mengukur.
 
+## C-19 · Pustaka DIAM TOTAL selama seluruh fase pendaftaran
+
+Ditemukan saat menyiapkan demo alur lengkap: daftar akun -> sistem belajar -> dikenali.
+
+Cabang pendaftaran di `_ingestVector` menyusun `enrollEvt` lalu langsung `return` —
+**tanpa pernah memanggil `this.onRisk(...)`**. Akibatnya, sepanjang 10 sesi pertama:
+tidak ada callback, tidak ada event `behaviorguard:risk`, dan panel bawaan mandek di
+"MENGENALI..." tanpa pernah bergerak. Hanya `endSession()` yang mengembalikan nilainya,
+sehingga integrasi berbasis event — cara yang justru didokumentasikan di README dan
+QUICKSTART — tidak melihat apa pun.
+
+Ini fase yang paling perlu terlihat: pengguna baru mendaftar dan perlu tahu sistemnya
+sedang belajar, bukan menggantung. Integrator yang membangun indikator progres tidak
+punya sumber data sama sekali.
+
+**Tambalan:** cabang pendaftaran kini memanggil `onRisk` dan menyertakan
+`enrollment: { selesai, perlu, siap }` supaya progresnya bisa ditampilkan tanpa
+mengurai teks alasan. Panel bawaan diperbarui: menampilkan "MENGENALI 3/10" dengan bar
+progres, bukan lagi teks statis.
+
+Terverifikasi di browser: tiga sesi berturut menghasilkan panel 1/10 -> 2/10 -> 3/10
+(bar 10% -> 20% -> 30%) dan integrator menerima tiga event.
+
 ---
 
 ## Status verifikasi setelah tambalan
@@ -462,6 +485,6 @@ Dua jebakan harness yang sempat menghasilkan temuan palsu dan perlu diingat:
 | Jalur live penuh C-16..C-18 | halaman nyata + event DOM | enrollment 10/10, vonis LOW/MEDIUM benar, persisten setelah reload |
 | Sinkron sdk↔extension | `tools/sync_core.ps1` | identik, exit 0 |
 
-Perubahan C-1..C-18 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
+Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
 conformance dijalankan ulang di kedua sisi dan tetap 227/227.

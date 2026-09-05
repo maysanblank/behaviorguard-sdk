@@ -43,7 +43,7 @@
   .btn:hover{filter:brightness(1.07)}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
   .btn.wide{width:100%}
-  .btn.kecil{padding:6px 11px;font-size:13px}
+  .btn.kecil{padding:7px 13px;font-size:13px}
   .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
   .baris{display:flex;align-items:center;gap:14px;background:var(--surface);
     border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
@@ -76,6 +76,16 @@
     height:250px;display:flex;align-items:center;justify-content:center;font-size:92px}
   .chip{display:inline-block;background:var(--surface-2);color:var(--accent);border-radius:999px;
     padding:3px 12px;font-size:12px;font-weight:700;margin-bottom:8px}
+  #bilah-akun{display:flex;align-items:center;gap:9px;white-space:nowrap}
+  .halo{font-size:14px;color:var(--ink-2)}
+  .halo b{color:var(--ink)}
+  .kotak-akun{max-width:420px;margin:30px auto 0;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:22px 24px 26px}
+  .tab-akun{display:flex;gap:6px;margin-bottom:4px}
+  .tab-akun button{flex:1;border:1px solid var(--line);background:transparent;color:var(--ink-2);
+    padding:9px 10px;border-radius:10px;font:inherit;font-size:13.5px;cursor:pointer}
+  .tab-akun button.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:700}
+  .pesan{color:var(--danger);font-size:13px;min-height:18px;margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -89,6 +99,7 @@
       <a href="/tentang" data-ke="/tentang">Tentang</a>
     </nav>
     <button class="keranjang-btn" data-ke="/keranjang">🧺 <span id="jml">0</span></button>
+    <div id="bilah-akun"></div>
   </div>
 </header>
 
@@ -113,6 +124,29 @@
     { id:'tempe',   nama:'Tempe Kedelai',    satuan:'papan 400g',harga:9000,  ikon:'🟫', ket:'Fermentasi 36 jam, dibungkus daun pisang.' },
     { id:'jeruk',   nama:'Jeruk Baby',       satuan:'1 kg',      harga:28000, ikon:'🍊', ket:'Manis segar, kulit tipis, dari Pacitan.' }
   ];
+
+  /* ---------- akun ----------
+     Aplikasi nyata tahu siapa yang sedang masuk. Yang aktif diumumkan lewat
+     `window.penggunaAktif` supaya skrip pihak ketiga tidak perlu menebak. */
+  var AKUN_KEY='pasar-loka-akun', SESI_KEY='pasar-loka-sesi';
+  function semuaAkun(){ try{ return JSON.parse(localStorage.getItem(AKUN_KEY)||'{}'); }catch(e){ return {}; } }
+  function simpanAkun(a){ try{ localStorage.setItem(AKUN_KEY, JSON.stringify(a)); }catch(e){} }
+  function segarkanPengguna(){
+    var e=null; try{ e=localStorage.getItem(SESI_KEY); }catch(x){}
+    var a=e? semuaAkun()[e] : null;
+    window.penggunaAktif = a ? {email:e, nama:a.nama} : null;
+    return window.penggunaAktif;
+  }
+  segarkanPengguna();
+  function bilahAkun(){
+    var el=document.getElementById('bilah-akun'); if(!el) return;
+    var u=window.penggunaAktif;
+    el.innerHTML = u
+      ? '<span class="halo">Halo, <b>'+u.nama+'</b></span><button class="btn kecil ghost" id="btn-keluar">Keluar</button>'
+      : '<button class="btn kecil" data-ke="/masuk">Masuk / Daftar</button>';
+    var k=document.getElementById('btn-keluar');
+    if(k) k.onclick=function(){ try{ localStorage.removeItem(SESI_KEY); }catch(e){} segarkanPengguna(); ke('/masuk'); };
+  }
 
   var KEY = 'pasar-loka-keranjang';
   var layar = document.getElementById('layar');
@@ -152,6 +186,9 @@
       a.classList.toggle('aktif', a.getAttribute('data-ke') === p);
     });
 
+    bilahAkun();
+    if (!window.penggunaAktif) return layarMasuk();   // belum masuk: kunci seluruh aplikasi
+    if (p === '/masuk')       { ke('/', true); return; }
     if (p === '/')            return layarBelanja(p);
     if (p === '/keranjang')   return layarKeranjang(p);
     if (p === '/checkout')    return layarCheckout(p);
@@ -243,6 +280,45 @@
         'Nomor pesanan <code>PL-'+Date.now().toString().slice(-6)+'</code>.</div>' +
         '<button class="btn" data-ke="/">Belanja lagi</button>';
     });
+  }
+
+  function layarMasuk() {
+    var mode='daftar';
+    function gambar(){
+      layar.innerHTML = '<h1 style="text-align:center;margin-top:36px">Masuk ke Pasar Loka</h1>' +
+        '<p class="sub" style="text-align:center">Buat akun baru, atau masuk kalau sudah pernah daftar.</p>' +
+        '<div class="kotak-akun">' +
+          '<div class="tab-akun">' +
+            '<button type="button" data-m="daftar" class="'+(mode==='daftar'?'on':'')+'">Daftar akun baru</button>' +
+            '<button type="button" data-m="masuk" class="'+(mode==='masuk'?'on':'')+'">Sudah punya akun</button></div>' +
+          '<form id="form-akun">' +
+            (mode==='daftar'?'<label for="nama">Nama lengkap</label><input id="nama" required autocomplete="off">':'') +
+            '<label for="email">Alamat surel</label><input id="email" type="email" required autocomplete="off">' +
+            '<label for="sandi">Kata sandi</label><input id="sandi" type="password" required autocomplete="off">' +
+            '<p class="pesan" id="pesan-akun"></p>' +
+            '<button class="btn wide" type="submit" style="margin-top:6px;padding:11px">' +
+              (mode==='daftar'?'Buat akun':'Masuk')+'</button>' +
+          '</form></div>';
+      [].forEach.call(layar.querySelectorAll('[data-m]'), function(b){
+        b.onclick=function(){ mode=b.getAttribute('data-m'); gambar(); }; });
+      document.getElementById('form-akun').onsubmit=function(ev){
+        ev.preventDefault();
+        var email=document.getElementById('email').value.trim().toLowerCase();
+        var sandi=document.getElementById('sandi').value;
+        var pesan=document.getElementById('pesan-akun'); var daftar=semuaAkun();
+        if(mode==='daftar'){
+          if(daftar[email]){ pesan.textContent='Surel itu sudah terdaftar.'; return; }
+          daftar[email]={nama:document.getElementById('nama').value.trim()||'Pelanggan', sandi:sandi};
+          simpanAkun(daftar);
+        } else {
+          if(!daftar[email]){ pesan.textContent='Akun tidak ditemukan. Daftar dulu.'; return; }
+          if(daftar[email].sandi!==sandi){ pesan.textContent='Kata sandi salah.'; return; }
+        }
+        try{ localStorage.setItem(SESI_KEY,email); }catch(e){}
+        segarkanPengguna(); ke('/');
+      };
+    }
+    gambar();
   }
 
   function layarTentang(p) {

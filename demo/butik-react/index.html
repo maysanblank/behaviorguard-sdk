@@ -82,6 +82,17 @@
     padding:7px 15px;border-radius:10px;font:inherit;font-size:14px;cursor:pointer}
   .ukuran button.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
   footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0;color:var(--ink-2);font-size:14px}
+  .bilah-akun{display:flex;align-items:center;gap:10px;white-space:nowrap}
+  .halo{font-size:14px;color:var(--ink-2)}
+  .halo b{color:var(--ink)}
+  .btn.kecil{padding:7px 13px;font-size:13px}
+  .kotak-akun{max-width:420px;margin:30px auto 0;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:22px 24px 26px;box-shadow:var(--shadow)}
+  .tab-akun{display:flex;gap:6px;margin-bottom:4px}
+  .tab-akun button{flex:1;border:1px solid var(--line);background:transparent;color:var(--ink-2);
+    padding:9px 10px;border-radius:10px;font:inherit;font-size:13.5px;cursor:pointer}
+  .tab-akun button.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:700}
+  .pesan{color:var(--danger);font-size:13px;min-height:18px;margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -125,12 +136,71 @@
   function rp(n) { return 'Rp' + n.toLocaleString('id-ID'); }
   function cari(id) { for (var i = 0; i < BARANG.length; i++) if (BARANG[i].id === id) return BARANG[i]; return null; }
 
+  /* ---------- akun ----------
+     Aplikasi nyata tahu siapa yang sedang masuk. Yang aktif diumumkan lewat
+     `window.penggunaAktif` supaya skrip pihak ketiga tidak perlu menebak. */
+  var AKUN_KEY = 'butik-rasa-akun', SESI_KEY = 'butik-rasa-sesi';
+  function semuaAkun(){ try{ return JSON.parse(localStorage.getItem(AKUN_KEY)||'{}'); }catch(e){ return {}; } }
+  function simpanAkun(a){ try{ localStorage.setItem(AKUN_KEY, JSON.stringify(a)); }catch(e){} }
+  function bacaPengguna(){
+    var e=null; try{ e=localStorage.getItem(SESI_KEY); }catch(x){}
+    var a=e? semuaAkun()[e] : null;
+    return a ? {email:e, nama:a.nama} : null;
+  }
+  window.penggunaAktif = bacaPengguna();
+
+  function LayarAkun(props) {
+    var m = useState('daftar');   var mode=m[0], setMode=m[1];
+    var n = useState('');         var nama=n[0], setNama=n[1];
+    var e = useState('');         var email=e[0], setEmail=e[1];
+    var p = useState('');         var sandi=p[0], setSandi=p[1];
+    var g = useState('');         var pesan=g[0], setPesan=g[1];
+    function kirim(ev){
+      ev.preventDefault();
+      var kunci=email.trim().toLowerCase(), daftar=semuaAkun();
+      if(mode==='daftar'){
+        if(daftar[kunci]){ setPesan('Surel itu sudah terdaftar.'); return; }
+        daftar[kunci]={nama:nama.trim()||'Pelanggan', sandi:sandi}; simpanAkun(daftar);
+      } else {
+        if(!daftar[kunci]){ setPesan('Akun tidak ditemukan. Daftar dulu.'); return; }
+        if(daftar[kunci].sandi!==sandi){ setPesan('Kata sandi salah.'); return; }
+      }
+      try{ localStorage.setItem(SESI_KEY, kunci); }catch(x){}
+      var u={email:kunci, nama:daftar[kunci].nama};
+      window.penggunaAktif=u; props.onMasuk(u);
+    }
+    return h(React.Fragment, null,
+      h('h1', {style:{textAlign:'center',marginTop:'36px'}}, 'Masuk ke Butik Rasa'),
+      h('p', {className:'sub', style:{textAlign:'center'}}, 'Buat akun baru, atau masuk kalau sudah pernah daftar.'),
+      h('div', {className:'kotak-akun'},
+        h('div', {className:'tab-akun'},
+          h('button', {type:'button', className: mode==='daftar'?'on':'',
+            onClick:function(){setMode('daftar');setPesan('');}}, 'Daftar akun baru'),
+          h('button', {type:'button', className: mode==='masuk'?'on':'',
+            onClick:function(){setMode('masuk');setPesan('');}}, 'Sudah punya akun')),
+        h('form', {onSubmit:kirim},
+          mode==='daftar' ? h(React.Fragment,null,
+            h('label',{htmlFor:'nama'},'Nama lengkap'),
+            h('input',{id:'nama', value:nama, onChange:function(x){setNama(x.target.value);},
+              required:true, autoComplete:'off'})) : null,
+          h('label',{htmlFor:'email'},'Alamat surel'),
+          h('input',{id:'email', type:'email', value:email, onChange:function(x){setEmail(x.target.value);},
+            required:true, autoComplete:'off'}),
+          h('label',{htmlFor:'sandi'},'Kata sandi'),
+          h('input',{id:'sandi', type:'password', value:sandi, onChange:function(x){setSandi(x.target.value);},
+            required:true, autoComplete:'off'}),
+          h('p',{className:'pesan'}, pesan),
+          h('button',{className:'btn wide', type:'submit', style:{marginTop:'6px',padding:'11px'}},
+            mode==='daftar'?'Buat akun':'Masuk'))));
+  }
+
   function App() {
     var s = useState('katalog'); var layar = s[0], setLayar = s[1];
     var d = useState(null);      var pilih = d[0], setPilih = d[1];
     var c = useState(bacaK());   var keranjang = c[0], setKeranjang = c[1];
     var f = useState('semua');   var filter = f[0], setFilter = f[1];
     var o = useState(null);      var pesanan = o[0], setPesanan = o[1];
+    var g = useState(window.penggunaAktif); var pengguna = g[0], setPengguna = g[1];
 
     useEffect(function () {
       try { localStorage.setItem(KEY, JSON.stringify(keranjang)); } catch (e) {}
@@ -157,12 +227,27 @@
       return h('button', { className: layar === id ? 'aktif' : '', onClick: function () { setLayar(id); } }, teks);
     }
 
+    function keluar() {
+      try { localStorage.removeItem(SESI_KEY); } catch (x) {}
+      window.penggunaAktif = null; setPengguna(null); setLayar('katalog');
+    }
+
     var kepala = h('header', null,
       h('div', { className: 'bar' },
         h('div', { className: 'logo', onClick: function () { setLayar('katalog'); } }, 'Butik', h('span', null, 'Rasa')),
-        h('nav', null, navBtn('katalog', 'Katalog'), navBtn('keranjang', 'Keranjang'),
-          navBtn('checkout', 'Pembayaran'), navBtn('tentang', 'Tentang')),
-        h('button', { className: 'keranjang', onClick: function () { setLayar('keranjang'); } }, '🛍️ ' + jml)));
+        pengguna ? h('nav', null, navBtn('katalog', 'Katalog'), navBtn('keranjang', 'Keranjang'),
+          navBtn('checkout', 'Pembayaran'), navBtn('tentang', 'Tentang')) : h('nav', null),
+        pengguna ? h(React.Fragment, null,
+          h('button', { className: 'keranjang', onClick: function () { setLayar('keranjang'); } }, '🛍️ ' + jml),
+          h('div', { className: 'bilah-akun' },
+            h('span', { className: 'halo' }, 'Halo, ', h('b', null, pengguna.nama)),
+            h('button', { className: 'btn ghost kecil', onClick: keluar }, 'Keluar'))) : null));
+
+    // belum masuk: seluruh aplikasi dikunci di layar akun
+    if (!pengguna) {
+      return h(React.Fragment, null, kepala,
+        h('main', { className: 'app' }, h(LayarAkun, { onMasuk: function (u) { setPengguna(u); } })));
+    }
 
     var isi;
     if (layar === 'katalog') isi = Katalog();

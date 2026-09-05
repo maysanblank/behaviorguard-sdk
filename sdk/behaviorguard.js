@@ -237,6 +237,17 @@ class BehaviorGuard {
       const enrollEvt={level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'sesi tidak layak - tidak masuk kolam'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
       this._cloudLog(enrollEvt);
       if(doneEnroll) this._cloudPush(); // enrollment selesai -> unggah baseline akun ke VPS
+      // C-19: jalur pendaftaran DULU tidak pernah memanggil onRisk, jadi selama 10
+      // sesi pertama pustaka ini DIAM TOTAL ke integrator — tak ada callback, tak ada
+      // event `behaviorguard:risk`, dan panel bawaan mandek di "MENGENALI..." tanpa
+      // pernah bergerak. Justru fase inilah yang paling perlu diperlihatkan: pengguna
+      // baru mendaftar dan ingin tahu sistemnya sedang belajar, bukan menggantung.
+      // Hanya `endSession()` yang mengembalikan nilainya, sehingga integrasi berbasis
+      // event (cara yang didokumentasikan) tidak melihat apa pun.
+      enrollEvt.enrollment = { selesai: this.sessions.filter(s=>s.eligible!==false).length,
+                               perlu: this.cfg.baseline, siap: doneEnroll };
+      enrollEvt.action = 'ALLOW_SESSION';
+      try{ this.onRisk(enrollEvt); }catch{}
       return enrollEvt;
     }
     if(!this.model) this._rebuildModel();

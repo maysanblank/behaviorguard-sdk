@@ -18,6 +18,92 @@
       catatan: 'Ditanam di 1.600 mdpl tanpa pupuk kimia. Manis bersih, asam lembut.' }
   ];
 
+
+  /* ---------- akun pengguna ----------
+     Situs nyata selalu tahu siapa yang sedang masuk. Di sini akun disimpan di
+     localStorage, dan yang sedang aktif diumumkan lewat `window.penggunaAktif`
+     supaya skrip pihak ketiga bisa memakainya tanpa menebak-nebak. */
+  var AKUN_KEY = 'toko-kopi-akun';       // daftar akun terdaftar
+  var SESI_KEY = 'toko-kopi-sesi';       // email yang sedang masuk
+
+  function semuaAkun() {
+    try { return JSON.parse(localStorage.getItem(AKUN_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function simpanAkun(a) { try { localStorage.setItem(AKUN_KEY, JSON.stringify(a)); } catch (e) {} }
+  function emailAktif() { try { return localStorage.getItem(SESI_KEY) || null; } catch (e) { return null; } }
+  function masuk(email) { try { localStorage.setItem(SESI_KEY, email); } catch (e) {} }
+  function keluar() { try { localStorage.removeItem(SESI_KEY); } catch (e) {} }
+
+  function penggunaAktif() {
+    var e = emailAktif(); if (!e) return null;
+    var a = semuaAkun()[e]; if (!a) return null;
+    return { email: e, nama: a.nama };
+  }
+  // diumumkan sebelum apa pun yang lain berjalan
+  window.penggunaAktif = penggunaAktif();
+
+  function renderBilahAkun() {
+    var el = document.getElementById('bilah-akun');
+    if (!el) return;
+    var u = window.penggunaAktif;
+    if (u) {
+      el.innerHTML = '<span class="halo">Halo, <strong>' + u.nama + '</strong></span>' +
+        '<button class="btn ghost kecil" id="btn-keluar">Keluar</button>';
+      document.getElementById('btn-keluar').onclick = function () {
+        keluar(); location.href = 'masuk.html';
+      };
+    } else {
+      el.innerHTML = '<a class="btn kecil" href="masuk.html" style="text-decoration:none">Masuk / Daftar</a>';
+    }
+  }
+
+  function wajibMasuk() {
+    if (!window.penggunaAktif) { location.href = 'masuk.html'; return false; }
+    return true;
+  }
+
+  function renderMasuk() {
+    var mode = 'daftar';
+    var kotak = document.getElementById('kotak-akun');
+    if (!kotak) return;
+    function gambar() {
+      kotak.innerHTML =
+        '<div class="tab-akun">' +
+          '<button type="button" data-mode="daftar" class="' + (mode==='daftar'?'on':'') + '">Daftar akun baru</button>' +
+          '<button type="button" data-mode="masuk" class="' + (mode==='masuk'?'on':'') + '">Sudah punya akun</button>' +
+        '</div>' +
+        '<form id="form-akun">' +
+          (mode==='daftar' ? '<label for="nama">Nama lengkap</label><input id="nama" required autocomplete="off">' : '') +
+          '<label for="email">Alamat surel</label><input id="email" type="email" required autocomplete="off">' +
+          '<label for="sandi">Kata sandi</label><input id="sandi" type="password" required autocomplete="off">' +
+          '<p id="pesan-akun" class="pesan"></p>' +
+          '<button class="btn wide" type="submit" style="margin-top:6px;padding:11px">' +
+            (mode==='daftar' ? 'Buat akun' : 'Masuk') + '</button>' +
+        '</form>';
+      [].forEach.call(kotak.querySelectorAll('[data-mode]'), function (b) {
+        b.onclick = function () { mode = b.getAttribute('data-mode'); gambar(); };
+      });
+      document.getElementById('form-akun').onsubmit = function (ev) {
+        ev.preventDefault();
+        var email = document.getElementById('email').value.trim().toLowerCase();
+        var sandi = document.getElementById('sandi').value;
+        var pesan = document.getElementById('pesan-akun');
+        var daftar = semuaAkun();
+        if (mode === 'daftar') {
+          if (daftar[email]) { pesan.textContent = 'Surel itu sudah terdaftar. Pilih "Sudah punya akun".'; return; }
+          daftar[email] = { nama: document.getElementById('nama').value.trim() || 'Pelanggan', sandi: sandi };
+          simpanAkun(daftar);
+        } else {
+          if (!daftar[email]) { pesan.textContent = 'Akun tidak ditemukan. Daftar dulu.'; return; }
+          if (daftar[email].sandi !== sandi) { pesan.textContent = 'Kata sandi salah.'; return; }
+        }
+        masuk(email);
+        location.href = 'index.html';
+      };
+    }
+    gambar();
+  }
+
   var KEY = 'toko-kopi-keranjang';
 
   function baca() {
@@ -168,8 +254,11 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
+    renderBilahAkun();
     hitungBadge();
     var el;
+    if ((el = document.getElementById('kotak-akun'))) { renderMasuk(); return; }
+    if (!wajibMasuk()) return;
     if ((el = document.getElementById('katalog'))) renderKatalog(el);
     if ((el = document.getElementById('detail'))) renderDetail(el);
     if ((el = document.getElementById('isi-keranjang'))) renderKeranjang(el);
