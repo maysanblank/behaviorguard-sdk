@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pembayaran — Toko Kopi Nusantara</title>
+<link rel="stylesheet" href="toko.css">
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="index.html">Kopi<span>Nusantara</span></a>
+    <nav>
+      <a href="index.html">Katalog</a>
+      <a href="keranjang.html">Keranjang</a>
+      <a href="checkout.html" aria-current="page">Pembayaran</a>
+    </nav>
+    <a class="cartbtn" href="keranjang.html">Keranjang (<span id="jml-keranjang">0</span>)</a>
+  </div>
+</header>
+<div class="wrap">
+  <h1>Pembayaran</h1>
+  <p class="sub">Isi alamat pengiriman. Semua kolom wajib kecuali catatan.</p>
+  <div id="isi-checkout">
+  <p style="color:var(--ink-2);font-size:14px">Ringkasan: <strong id="ringkasan">memuat...</strong></p>
+  <form>
+    <div class="two">
+      <div><label for="nama">Nama lengkap</label><input id="nama" name="nama" required autocomplete="off"></div>
+      <div><label for="telepon">Nomor telepon</label><input id="telepon" name="telepon" required autocomplete="off"></div>
+    </div>
+    <label for="surel">Surel</label>
+    <input id="surel" name="surel" type="email" required autocomplete="off">
+    <label for="alamat">Alamat lengkap</label>
+    <textarea id="alamat" name="alamat" rows="3" required></textarea>
+    <div class="two">
+      <div><label for="kota">Kota</label><input id="kota" name="kota" required autocomplete="off"></div>
+      <div><label for="pos">Kode pos</label><input id="pos" name="pos" required autocomplete="off"></div>
+    </div>
+    <label for="kurir">Kurir</label>
+    <select id="kurir" name="kurir">
+      <option>Reguler (2-4 hari)</option>
+      <option>Kilat (1-2 hari)</option>
+      <option>Ambil di gerai</option>
+    </select>
+    <label for="catatan">Catatan untuk penjual (opsional)</label>
+    <textarea id="catatan" name="catatan" rows="2"></textarea>
+    <p style="margin-top:20px"><button class="btn" type="submit" style="padding:12px 24px">Buat pesanan</button></p>
+  </form>
+  </div>
+</div>
+<footer><div class="wrap" style="padding-bottom:0">
+  Toko Kopi Nusantara — situs contoh multi-halaman, tanpa framework.
+  Navigasi antar-halaman memakai muat-ulang sungguhan.
+</div></footer>
+<script src="toko.js"></script>
+</body>
+</html>

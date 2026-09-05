@@ -1,0 +1,75 @@
+/* Toko Kopi Nusantara — situs multi-halaman klasik, tanpa framework apa pun. */
+:root{
+  --bg:#FBF7F0; --surface:#FFFFFF; --line:#E5DCCD; --ink:#241C12; --ink-2:#5E5243;
+  --brand:#7A3E12; --brand-ink:#FFF8F0; --accent:#0F6B4F; --danger:#A32B22;
+  --radius:14px; --shadow:0 1px 2px rgba(60,40,20,.06), 0 12px 26px -16px rgba(60,40,20,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+a{color:var(--brand)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 20px 70px}
+
+header{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+.bar{max-width:1060px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px}
+.logo{font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--brand);text-decoration:none;white-space:nowrap}
+.logo span{color:var(--ink)}
+nav{display:flex;gap:16px;flex:1;flex-wrap:wrap}
+nav a{color:var(--ink-2);text-decoration:none;font-size:15px;padding:5px 2px;border-bottom:2px solid transparent}
+nav a:hover,nav a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--brand)}
+.cartbtn{background:var(--brand);color:var(--brand-ink);text-decoration:none;padding:8px 15px;
+  border-radius:999px;font-weight:600;font-size:14px;white-space:nowrap}
+
+h1{font-size:30px;margin:34px 0 6px;letter-spacing:-.02em}
+h2{font-size:20px;margin:30px 0 12px}
+.sub{color:var(--ink-2);margin:0 0 22px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.thumb{height:132px;display:flex;align-items:center;justify-content:center;font-size:46px}
+.card .body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card h3{margin:0;font-size:16px}
+.card h3 a{color:inherit;text-decoration:none}
+.card .asal{font-size:13px;color:var(--ink-2)}
+.card .harga{font-weight:700;font-size:17px;margin-top:auto}
+.btn{border:0;border-radius:9px;padding:9px 14px;font:inherit;font-size:14px;font-weight:600;
+  cursor:pointer;background:var(--brand);color:var(--brand-ink)}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.wide{width:100%}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line);padding:6px 10px}
+
+table{width:100%;border-collapse:collapse;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2);
+  padding:12px 14px;border-bottom:1px solid var(--line)}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.qty{display:inline-flex;align-items:center;gap:8px}
+.qty button{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);
+  background:var(--surface);cursor:pointer;font-size:15px;line-height:1}
+.qty span{min-width:22px;text-align:center;font-variant-numeric:tabular-nums}
+.total{display:flex;justify-content:space-between;align-items:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 18px;margin-top:18px;font-size:18px;font-weight:700}
+
+form{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px 22px 24px;box-shadow:var(--shadow)}
+label{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin:14px 0 5px}
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+  font:inherit;background:#FFFDF9;color:var(--ink)}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media(max-width:560px){.two{grid-template-columns:1fr}}
+.ok{background:#E6F3EC;border:1px solid #BFDFCE;color:var(--accent);
+  padding:14px 16px;border-radius:11px;margin:18px 0}
+.kosong{background:var(--surface);border:1px dashed var(--line);border-radius:var(--radius);
+  padding:40px 20px;text-align:center;color:var(--ink-2)}
+footer{border-top:1px solid var(--line);margin-top:50px;padding:22px 0;color:var(--ink-2);font-size:14px}
+.detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:28px;align-items:start;margin-top:26px}
+@media(max-width:720px){.detail{grid-template-columns:1fr}}
+.detail .foto{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  height:280px;display:flex;align-items:center;justify-content:center;font-size:96px}
+.badge{display:inline-block;background:#F3EADC;color:var(--brand);border-radius:999px;
+  padding:3px 11px;font-size:12px;font-weight:700;margin-bottom:8px}

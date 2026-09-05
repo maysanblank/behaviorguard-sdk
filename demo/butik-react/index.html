@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Butik Rasa — pakaian tenun & batik</title>
+<style>
+  :root{
+    --bg:#FDFBFF; --surface:#FFFFFF; --line:#E8E2F0; --ink:#1E1A26; --ink-2:#5D5470;
+    --brand:#6D3BC4; --brand-ink:#FFFFFF; --soft:#F1EBFB; --emas:#B7791F; --danger:#B3261E;
+    --radius:18px; --shadow:0 1px 2px rgba(40,20,70,.05), 0 14px 30px -18px rgba(40,20,70,.30);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+  .app{max-width:1080px;margin:0 auto;padding:0 20px 70px}
+  header{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .bar{max-width:1080px;margin:0 auto;padding:15px 20px;display:flex;align-items:center;gap:22px}
+  .logo{font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--brand);cursor:pointer;white-space:nowrap}
+  .logo span{color:var(--ink)}
+  nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+  nav button{background:none;border:0;font:inherit;font-size:15px;color:var(--ink-2);
+    padding:6px 13px;border-radius:999px;cursor:pointer}
+  nav button:hover{background:var(--soft);color:var(--ink)}
+  nav button.aktif{background:var(--brand);color:var(--brand-ink);font-weight:700}
+  .keranjang{background:var(--soft);border:1px solid var(--line);color:var(--brand);
+    padding:8px 15px;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap}
+  h1{font-size:29px;margin:32px 0 6px;letter-spacing:-.02em}
+  h2{font-size:19px;margin:26px 0 12px}
+  .sub{color:var(--ink-2);margin:0 0 22px}
+  .filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+  .filter button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+    padding:7px 15px;border-radius:999px;font:inherit;font-size:14px;cursor:pointer}
+  .filter button.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));gap:18px}
+  .kartu{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+  .kartu .gambar{height:150px;display:flex;align-items:center;justify-content:center;font-size:52px;background:var(--soft)}
+  .kartu .isi{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .kartu h3{margin:0;font-size:16px;cursor:pointer}
+  .kartu h3:hover{color:var(--brand)}
+  .kartu .kain{font-size:13px;color:var(--ink-2)}
+  .kartu .harga{font-weight:700;font-size:17px;margin-top:auto}
+  .btn{border:0;border-radius:11px;padding:9px 15px;font:inherit;font-size:14px;font-weight:600;
+    cursor:pointer;background:var(--brand);color:var(--brand-ink)}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.55;cursor:default}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn.wide{width:100%}
+  .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line);padding:6px 11px;font-size:13px}
+  .baris{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
+  .baris .gb{font-size:32px}
+  .baris .ket{flex:1;min-width:0}
+  .baris .ket b{display:block}
+  .baris .ket span{font-size:13px;color:var(--ink-2)}
+  .qty{display:inline-flex;align-items:center;gap:9px}
+  .qty button{width:29px;height:29px;border-radius:8px;border:1px solid var(--line);
+    background:var(--surface);cursor:pointer;font-size:15px;line-height:1;color:var(--ink)}
+  .qty span{min-width:22px;text-align:center;font-variant-numeric:tabular-nums}
+  .total{display:flex;justify-content:space-between;background:var(--soft);border:1px solid var(--line);
+    border-radius:var(--radius);padding:16px 18px;margin-top:16px;font-size:18px;font-weight:700}
+  form{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px 24px;box-shadow:var(--shadow)}
+  label{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin:14px 0 5px}
+  input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+    font:inherit;background:#FEFDFF;color:var(--ink)}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+  .dua{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  @media(max-width:560px){.dua{grid-template-columns:1fr}}
+  .ok{background:#EDF7F0;border:1px solid #BFE0CC;color:#186A3B;padding:15px 17px;border-radius:12px;margin:18px 0}
+  .kosong{background:var(--surface);border:1px dashed var(--line);border-radius:var(--radius);
+    padding:44px 20px;text-align:center;color:var(--ink-2)}
+  .detail{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:26px;margin-top:24px}
+  @media(max-width:720px){.detail{grid-template-columns:1fr}}
+  .foto{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);
+    height:270px;display:flex;align-items:center;justify-content:center;font-size:100px}
+  .chip{display:inline-block;background:var(--soft);color:var(--emas);border-radius:999px;
+    padding:3px 12px;font-size:12px;font-weight:700;margin-bottom:8px}
+  .ukuran{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+  .ukuran button{border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    padding:7px 15px;border-radius:10px;font:inherit;font-size:14px;cursor:pointer}
+  .ukuran button.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+  footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0;color:var(--ink-2);font-size:14px}
+</style>
+</head>
+<body>
+<div id="akar"></div>
+<footer><div class="app" style="padding-bottom:0">
+  Butik Rasa — dibangun dengan React 18. Antarmuka dirender ulang oleh komponen,
+  dan React memakai sistem event sintetisnya sendiri.
+</div></footer>
+
+<script src="vendor/react.js"></script>
+<script src="vendor/react-dom.js"></script>
+<script>
+(function () {
+  'use strict';
+  var h = React.createElement;
+  var useState = React.useState, useEffect = React.useEffect;
+
+  var BARANG = [
+    { id:'kebaya',  nama:'Kebaya Encim Putih', kain:'katun bordir', kategori:'atasan', harga:485000, gb:'👘',
+      ket:'Bordir tangan Cirebon, kerah shanghai, lengan tiga perempat.' },
+    { id:'lurik',   nama:'Kemeja Lurik Klasik', kain:'tenun lurik',  kategori:'atasan', harga:315000, gb:'🧵',
+      ket:'Tenun gedog Klaten, benang katun pilin, makin nyaman tiap dicuci.' },
+    { id:'parang',  nama:'Kain Batik Parang',   kain:'batik tulis',  kategori:'kain',   harga:750000, gb:'🟤',
+      ket:'Batik tulis Solo, 2,5 meter, pewarna alam soga.' },
+    { id:'megamendung', nama:'Batik Mega Mendung', kain:'batik cap', kategori:'kain',   harga:395000, gb:'☁️',
+      ket:'Motif khas Cirebon tujuh gradasi biru, kain primisima.' },
+    { id:'selendang', nama:'Selendang Tenun Ikat', kain:'tenun ikat', kategori:'aksesori', harga:265000, gb:'🧣',
+      ket:'Tenun ikat Sumba, pewarna alam akar mengkudu.' },
+    { id:'blangkon', nama:'Blangkon Yogyakarta', kain:'batik',       kategori:'aksesori', harga:145000, gb:'👑',
+      ket:'Jahit tangan, model mataraman, ukuran dapat disesuaikan.' },
+    { id:'rok',     nama:'Rok Lilit Batik',     kain:'batik cap',    kategori:'bawahan', harga:275000, gb:'🌺',
+      ket:'Rok lilit serbaguna, satu ukuran, tali pinggang menyatu.' },
+    { id:'celana',  nama:'Celana Kulot Lurik',  kain:'tenun lurik',  kategori:'bawahan', harga:298000, gb:'👖',
+      ket:'Potongan longgar, pinggang karet, dua saku dalam.' }
+  ];
+  var KATEGORI = ['semua', 'atasan', 'bawahan', 'kain', 'aksesori'];
+  var UKURAN = ['S', 'M', 'L', 'XL'];
+  var KEY = 'butik-rasa-keranjang';
+
+  function bacaK() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+  function rp(n) { return 'Rp' + n.toLocaleString('id-ID'); }
+  function cari(id) { for (var i = 0; i < BARANG.length; i++) if (BARANG[i].id === id) return BARANG[i]; return null; }
+
+  function App() {
+    var s = useState('katalog'); var layar = s[0], setLayar = s[1];
+    var d = useState(null);      var pilih = d[0], setPilih = d[1];
+    var c = useState(bacaK());   var keranjang = c[0], setKeranjang = c[1];
+    var f = useState('semua');   var filter = f[0], setFilter = f[1];
+    var o = useState(null);      var pesanan = o[0], setPesanan = o[1];
+
+    useEffect(function () {
+      try { localStorage.setItem(KEY, JSON.stringify(keranjang)); } catch (e) {}
+    }, [keranjang]);
+
+    function tambah(id, n, uk) {
+      setKeranjang(function (k) {
+        var baru = Object.assign({}, k);
+        var kunci = uk ? id + '|' + uk : id;
+        baru[kunci] = (baru[kunci] || 0) + (n || 1);
+        return baru;
+      });
+    }
+    function setJml(kunci, n) {
+      setKeranjang(function (k) {
+        var baru = Object.assign({}, k);
+        if (n < 1) delete baru[kunci]; else baru[kunci] = n;
+        return baru;
+      });
+    }
+    var jml = Object.keys(keranjang).reduce(function (a, k) { return a + keranjang[k]; }, 0);
+
+    function navBtn(id, teks) {
+      return h('button', { className: layar === id ? 'aktif' : '', onClick: function () { setLayar(id); } }, teks);
+    }
+
+    var kepala = h('header', null,
+      h('div', { className: 'bar' },
+        h('div', { className: 'logo', onClick: function () { setLayar('katalog'); } }, 'Butik', h('span', null, 'Rasa')),
+        h('nav', null, navBtn('katalog', 'Katalog'), navBtn('keranjang', 'Keranjang'),
+          navBtn('checkout', 'Pembayaran'), navBtn('tentang', 'Tentang')),
+        h('button', { className: 'keranjang', onClick: function () { setLayar('keranjang'); } }, '🛍️ ' + jml)));
+
+    var isi;
+    if (layar === 'katalog') isi = Katalog();
+    else if (layar === 'detail') isi = Detail();
+    else if (layar === 'keranjang') isi = Keranjang();
+    else if (layar === 'checkout') isi = pesanan ? Selesai() : Checkout();
+    else isi = Tentang();
+
+    return h(React.Fragment, null, kepala, h('main', { className: 'app' }, isi));
+
+    function Katalog() {
+      var tampil = filter === 'semua' ? BARANG : BARANG.filter(function (b) { return b.kategori === filter; });
+      return h(React.Fragment, null,
+        h('h1', null, 'Tenun & batik, dijahit tangan'),
+        h('p', { className: 'sub' }, 'Dikerjakan pengrajin di Solo, Cirebon, Klaten, dan Sumba.'),
+        h('div', { className: 'filter' }, KATEGORI.map(function (k) {
+          return h('button', { key: k, className: filter === k ? 'on' : '',
+            onClick: function () { setFilter(k); } }, k);
+        })),
+        h('div', { className: 'grid' }, tampil.map(function (b) {
+          return h('article', { key: b.id, className: 'kartu' },
+            h('div', { className: 'gambar' }, b.gb),
+            h('div', { className: 'isi' },
+              h('h3', { onClick: function () { setPilih(b.id); setLayar('detail'); } }, b.nama),
+              h('div', { className: 'kain' }, b.kain),
+              h('div', { className: 'harga' }, rp(b.harga)),
+              h('button', { className: 'btn wide', onClick: function () { tambah(b.id, 1, null); } },
+                'Masukkan keranjang')));
+        })));
+    }
+
+    function Detail() {
+      var b = cari(pilih) || BARANG[0];
+      return h(DetailIsi, { b: b, onTambah: tambah, onKembali: function () { setLayar('katalog'); },
+                            onKeKeranjang: function () { setLayar('keranjang'); } });
+    }
+
+    function Keranjang() {
+      var kunci = Object.keys(keranjang);
+      if (!kunci.length) {
+        return h(React.Fragment, null, h('h1', null, 'Keranjang'),
+          h('div', { className: 'kosong' }, h('p', null, 'Belum ada barang.'),
+            h('button', { className: 'btn', onClick: function () { setLayar('katalog'); } }, 'Lihat katalog')));
+      }
+      var total = 0;
+      var baris = kunci.map(function (kk) {
+        var bagian = kk.split('|'), b = cari(bagian[0]);
+        if (!b) return null;
+        var sub = b.harga * keranjang[kk]; total += sub;
+        return h('div', { key: kk, className: 'baris' },
+          h('div', { className: 'gb' }, b.gb),
+          h('div', { className: 'ket' }, h('b', null, b.nama),
+            h('span', null, b.kain + (bagian[1] ? ' · ukuran ' + bagian[1] : '') + ' · ' + rp(b.harga))),
+          h('div', { className: 'qty' },
+            h('button', { onClick: function () { setJml(kk, keranjang[kk] - 1); } }, '−'),
+            h('span', null, keranjang[kk]),
+            h('button', { onClick: function () { setJml(kk, keranjang[kk] + 1); } }, '+')),
+          h('div', { style: { fontWeight: 700, minWidth: '104px', textAlign: 'right' } }, rp(sub)),
+          h('button', { className: 'btn danger', onClick: function () { setJml(kk, 0); } }, 'hapus'));
+      });
+      return h(React.Fragment, null, h('h1', null, 'Keranjang'), baris,
+        h('div', { className: 'total' }, h('span', null, 'Total'), h('span', null, rp(total))),
+        h('p', { style: { marginTop: '18px', display: 'flex', gap: '10px', flexWrap: 'wrap' } },
+          h('button', { className: 'btn ghost', onClick: function () { setLayar('katalog'); } }, 'Lanjut belanja'),
+          h('button', { className: 'btn', onClick: function () { setLayar('checkout'); } }, 'Lanjut bayar')));
+    }
+
+    function Checkout() {
+      var total = Object.keys(keranjang).reduce(function (a, kk) {
+        var b = cari(kk.split('|')[0]); return a + (b ? b.harga * keranjang[kk] : 0);
+      }, 0);
+      return h(FormCheckout, { total: total, rp: rp, onSelesai: function (nama) {
+        setPesanan(nama); setKeranjang({});
+      } });
+    }
+
+    function Selesai() {
+      return h(React.Fragment, null, h('h1', null, 'Pesanan diterima'),
+        h('div', { className: 'ok' }, h('strong', null, 'Terima kasih, ' + pesanan + '.'), h('br'),
+          'Nomor pesanan BR-' + Date.now().toString().slice(-6) + '. Kami kabari lewat surel saat paket dikirim.'),
+        h('button', { className: 'btn', onClick: function () { setPesanan(null); setLayar('katalog'); } }, 'Belanja lagi'));
+    }
+
+    function Tentang() {
+      return h(React.Fragment, null, h('h1', null, 'Tentang Butik Rasa'),
+        h('p', { className: 'sub', style: { maxWidth: '62ch' } },
+          'Kami bekerja dengan 23 pengrajin di empat daerah. Setiap helai dibayar di muka, ' +
+          'dan nama pengrajinnya dicantumkan di label.'),
+        h('h2', null, 'Kenapa React?'),
+        h('p', { className: 'sub', style: { maxWidth: '62ch' } },
+          'Antarmuka ini dirender ulang oleh komponen setiap kali keranjang berubah, dan React ' +
+          'memakai sistem event sintetisnya sendiri di atas DOM. Situs seperti ini yang biasanya ' +
+          'bikin skrip pihak ketiga salah membaca interaksi pengguna.'));
+    }
+  }
+
+  function DetailIsi(props) {
+    var b = props.b;
+    var s = useState(1);   var n = s[0], setN = s[1];
+    var u = useState('M'); var uk = u[0], setUk = u[1];
+    return h('div', { className: 'detail' },
+      h('div', { className: 'foto' }, b.gb),
+      h('div', null,
+        h('span', { className: 'chip' }, b.kain),
+        h('h1', { style: { margin: '4px 0 8px' } }, b.nama),
+        h('p', { className: 'sub' }, b.ket),
+        h('p', { style: { fontSize: '26px', fontWeight: 800, margin: '6px 0 4px' } }, rp(b.harga)),
+        h('label', null, 'Ukuran'),
+        h('div', { className: 'ukuran' }, UKURAN.map(function (x) {
+          return h('button', { key: x, className: uk === x ? 'on' : '', onClick: function () { setUk(x); } }, x);
+        })),
+        h('label', { htmlFor: 'n' }, 'Jumlah'),
+        h('div', { className: 'qty', style: { marginBottom: '18px' } },
+          h('button', { onClick: function () { setN(Math.max(1, n - 1)); } }, '−'),
+          h('span', null, n),
+          h('button', { onClick: function () { setN(n + 1); } }, '+')),
+        h('button', { className: 'btn', style: { padding: '12px 22px' },
+          onClick: function () { props.onTambah(b.id, n, uk); props.onKeKeranjang(); } }, 'Masukkan keranjang'),
+        h('p', { style: { marginTop: '20px' } },
+          h('a', { href: '#', style: { color: 'var(--brand)' },
+            onClick: function (e) { e.preventDefault(); props.onKembali(); } }, '← kembali ke katalog'))));
+  }
+
+  function FormCheckout(props) {
+    var f = useState({ nama: '', surel: '', hp: '', alamat: '', kota: '', pos: '', catatan: '', kurir: 'Reguler (2-4 hari)' });
+    var isi = f[0], setIsi = f[1];
+    function ubah(k) { return function (e) { var v = e.target.value; setIsi(function (p) { var b = Object.assign({}, p); b[k] = v; return b; }); }; }
+    function kirim(e) { e.preventDefault(); props.onSelesai(isi.nama || 'Pelanggan'); }
+    return h(React.Fragment, null,
+      h('h1', null, 'Pembayaran'),
+      h('p', { className: 'sub' }, 'Pengiriman dari Yogyakarta. Semua kolom wajib kecuali catatan.'),
+      h('p', { style: { color: 'var(--ink-2)', fontSize: '14px' } },
+        'Total belanja: ', h('strong', null, props.rp(props.total))),
+      h('form', { onSubmit: kirim },
+        h('div', { className: 'dua' },
+          h('div', null, h('label', { htmlFor: 'nama' }, 'Nama lengkap'),
+            h('input', { id: 'nama', value: isi.nama, onChange: ubah('nama'), required: true, autoComplete: 'off' })),
+          h('div', null, h('label', { htmlFor: 'hp' }, 'Nomor telepon'),
+            h('input', { id: 'hp', value: isi.hp, onChange: ubah('hp'), required: true, autoComplete: 'off' }))),
+        h('label', { htmlFor: 'surel' }, 'Surel'),
+        h('input', { id: 'surel', type: 'email', value: isi.surel, onChange: ubah('surel'), required: true, autoComplete: 'off' }),
+        h('label', { htmlFor: 'alamat' }, 'Alamat lengkap'),
+        h('textarea', { id: 'alamat', rows: 3, value: isi.alamat, onChange: ubah('alamat'), required: true }),
+        h('div', { className: 'dua' },
+          h('div', null, h('label', { htmlFor: 'kota' }, 'Kota'),
+            h('input', { id: 'kota', value: isi.kota, onChange: ubah('kota'), required: true, autoComplete: 'off' })),
+          h('div', null, h('label', { htmlFor: 'pos' }, 'Kode pos'),
+            h('input', { id: 'pos', value: isi.pos, onChange: ubah('pos'), required: true, autoComplete: 'off' }))),
+        h('label', { htmlFor: 'kurir' }, 'Kurir'),
+        h('select', { id: 'kurir', value: isi.kurir, onChange: ubah('kurir') },
+          h('option', null, 'Reguler (2-4 hari)'), h('option', null, 'Kilat (1-2 hari)'),
+          h('option', null, 'Kargo (5-7 hari)')),
+        h('label', { htmlFor: 'catatan' }, 'Catatan (opsional)'),
+        h('textarea', { id: 'catatan', rows: 2, value: isi.catatan, onChange: ubah('catatan') }),
+        h('p', { style: { marginTop: '20px' } },
+          h('button', { className: 'btn', type: 'submit', style: { padding: '12px 24px' } }, 'Buat pesanan'))));
+  }
+
+  ReactDOM.createRoot(document.getElementById('akar')).render(h(App));
+})();
+</script>
+</body>
+</html>
