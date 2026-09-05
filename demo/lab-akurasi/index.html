@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lab Akurasi BehaviorGuard</title>
+<style>
+  :root{
+    --bg:#0F1216; --surface:#171C22; --surface-2:#1E252D; --line:#2B343E;
+    --ink:#E8EDF2; --ink-2:#A0AEBC; --ink-3:#78889A;
+    --brand:#5B8DEF; --brand-ink:#0A1020;
+    --low:#3FBF7F; --med:#E0A93F; --high:#EF6E62; --ungu:#9B8CFF;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+  .mono{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-variant-numeric:tabular-nums}
+  header{background:var(--surface);border-bottom:1px solid var(--line);padding:14px 22px;
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;position:sticky;top:0;z-index:30}
+  header h1{margin:0;font-size:17px;letter-spacing:-.01em;white-space:nowrap}
+  header h1 span{color:var(--brand)}
+  .akun{font-size:13px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);
+    border-radius:999px;padding:5px 13px}
+  .spacer{flex:1}
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,440px);gap:20px;
+    max-width:1280px;margin:0 auto;padding:20px 22px 70px}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr}}
+  .kartu{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+  .kartu h2{margin:0 0 4px;font-size:15px}
+  .kartu .ket{color:var(--ink-3);font-size:13px;margin:0 0 14px}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin:12px 0 5px}
+  input,textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink)}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+  .dua{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  .btn{border:0;border-radius:10px;padding:10px 16px;font:inherit;font-size:14px;font-weight:600;
+    cursor:pointer;background:var(--brand);color:var(--brand-ink)}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn.lebar{width:100%}
+  .produk{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:9px;margin-top:6px}
+  .produk button{background:var(--surface-2);border:1px solid var(--line);color:var(--ink);
+    border-radius:11px;padding:13px 8px;font:inherit;font-size:13px;cursor:pointer;text-align:center}
+  .produk button:hover{border-color:var(--brand)}
+  .produk button b{display:block;font-size:20px;margin-bottom:3px}
+
+  /* --- panel status --- */
+  .status{border-left:4px solid var(--ungu)}
+  .lvl{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .skor{color:var(--ink-2);font-size:13px;margin-top:2px}
+  .bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:11px}
+  .bar i{display:block;height:100%;border-radius:99px;background:var(--ungu);width:0;transition:width .35s}
+  .alasan{color:var(--ink-3);font-size:12px;margin-top:9px;line-height:1.4;min-height:16px}
+
+  /* --- label peran --- */
+  .peran{display:flex;gap:8px;margin-top:4px}
+  .peran button{flex:1;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);
+    padding:10px;border-radius:10px;font:inherit;font-size:13.5px;cursor:pointer}
+  .peran button.on[data-p="pemilik"]{background:var(--low);border-color:var(--low);color:#08210F;font-weight:700}
+  .peran button.on[data-p="penyusup"]{background:var(--high);border-color:var(--high);color:#2A0C09;font-weight:700}
+
+  /* --- angka --- */
+  .angka{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+  .a{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+  .a .k{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:700}
+  .a .v{font-size:21px;font-weight:800;margin-top:2px}
+  .a .d{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);
+    font-weight:700;padding:7px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+  td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:0}
+  .tag{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:700}
+  .tag.LOW{background:rgba(63,191,127,.16);color:var(--low)}
+  .tag.MEDIUM{background:rgba(224,169,63,.16);color:var(--med)}
+  .tag.HIGH{background:rgba(239,110,98,.16);color:var(--high)}
+  .tag.DAFTAR{background:rgba(155,140,255,.16);color:var(--ungu)}
+  .tag.pemilik{background:rgba(63,191,127,.13);color:var(--low)}
+  .tag.penyusup{background:rgba(239,110,98,.13);color:var(--high)}
+  .gulir{max-height:290px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin-top:8px}
+  .catatan{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--med);
+    border-radius:0 11px 11px 0;padding:12px 14px;font-size:12.5px;color:var(--ink-2);margin-top:14px}
+  .catatan b{color:var(--ink)}
+  .baris-tombol{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .hitung{font-size:12px;color:var(--ink-3);margin-top:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Lab Akurasi <span>BehaviorGuard</span></h1>
+  <span class="akun mono" id="akun">memuat…</span>
+  <div class="spacer"></div>
+  <span class="akun mono" id="ringkas">0 sesi</span>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ KIRI: tugas ============ -->
+  <div>
+    <div class="kartu">
+      <h2>Tugas sesi ini</h2>
+      <p class="ket">Kerjakan hal yang <b>sama</b> tiap sesi supaya perbandingannya adil:
+        klik 3–4 produk, isi formulir sampai penuh, lalu tekan <b>Akhiri sesi &amp; nilai</b>.
+        Perlu <b>±100 kejadian</b> dan <b>minimal 5 detik</b> — jadi jangan diam.</p>
+
+      <div class="produk" id="produk"></div>
+
+      <div class="dua" style="margin-top:16px">
+        <div><label for="nama">Nama penerima</label><input id="nama" autocomplete="off"></div>
+        <div><label for="telp">Nomor telepon</label><input id="telp" autocomplete="off"></div>
+      </div>
+      <label for="surel">Surel</label>
+      <input id="surel" type="email" autocomplete="off">
+      <label for="alamat">Alamat lengkap</label>
+      <textarea id="alamat" rows="3"></textarea>
+      <div class="dua">
+        <div><label for="kota">Kota</label><input id="kota" autocomplete="off"></div>
+        <div><label for="pos">Kode pos</label><input id="pos" autocomplete="off"></div>
+      </div>
+      <label for="catatan">Catatan untuk kurir</label>
+      <textarea id="catatan" rows="2"></textarea>
+
+      <div class="baris-tombol">
+        <button class="btn" id="akhiri">Akhiri sesi &amp; nilai</button>
+        <button class="btn ghost" id="isi-contoh">Isi contoh</button>
+        <button class="btn ghost" id="kosongkan">Kosongkan formulir</button>
+      </div>
+      <div class="hitung mono" id="hitung">kejadian tertangkap: 0</div>
+    </div>
+
+    <div class="kartu" style="margin-top:16px">
+      <h2>Riwayat sesi</h2>
+      <p class="ket">Sesi 1–10 dipakai mendaftar dan tidak dinilai. Penilaian mulai sesi ke-11.</p>
+      <div class="gulir">
+        <table>
+          <thead><tr><th>#</th><th>Peran</th><th>Vonis</th><th>Skor</th><th>Aksi</th><th>Layak</th></tr></thead>
+          <tbody id="tabel"></tbody>
+        </table>
+      </div>
+      <div class="baris-tombol">
+        <button class="btn ghost" id="unduh">Unduh hasil (CSV)</button>
+        <button class="btn ghost" id="reset">Reset profil &amp; riwayat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ KANAN: panel ============ -->
+  <div>
+    <div class="kartu status" id="kartu-status">
+      <h2>Status</h2>
+      <p class="ket">Diperbarui tiap sesi berakhir.</p>
+      <div class="lvl" id="lvl">MENGENALI 0/10</div>
+      <div class="skor" id="skor">belum ada sesi</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="alasan" id="alasan"></div>
+    </div>
+
+    <div class="kartu" style="margin-top:16px">
+      <h2>Peran sesi berikutnya</h2>
+      <p class="ket">Tandai siapa yang <b>sedang memakai</b> komputer. Ini cuma label untuk
+        menghitung; BehaviorGuard tidak diberi tahu.</p>
+      <div class="peran">
+        <button data-p="pemilik" class="on">Aku (pemilik)</button>
+        <button data-p="penyusup">Orang lain</button>
+      </div>
+    </div>
+
+    <div class="kartu" style="margin-top:16px">
+      <h2>Hasil pengukuran</h2>
+      <p class="ket">Hanya menghitung sesi setelah pendaftaran selesai.</p>
+      <div class="angka">
+        <div class="a"><div class="k">FRR</div><div class="v" id="v-frr">—</div>
+          <div class="d" id="d-frr">pemilik ditolak</div></div>
+        <div class="a"><div class="k">FAR</div><div class="v" id="v-far">—</div>
+          <div class="d" id="d-far">penyusup lolos</div></div>
+      </div>
+      <div class="catatan" id="harapan"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== BehaviorGuard: SUDAH TERPASANG di halaman ini ====== -->
+<script>
+  window.BehaviorGuardConfig = {
+    userId: 'lab@akurasi.test',
+    onRisk: function (e) { window.__labTerima && window.__labTerima(e); }
+  };
+</script>
+<script src="../../dist/behaviorguard.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var KUNCI = 'lab-akurasi-riwayat';
+  var peran = 'pemilik';
+  var riwayat = [];
+  try { riwayat = JSON.parse(localStorage.getItem(KUNCI) || '[]'); } catch (e) { riwayat = []; }
+
+  var el = function (id) { return document.getElementById(id); };
+  var BARANG = [
+    ['☕','Kopi Gayo'], ['🫘','Toraja'], ['🌋','Kintamani'], ['🏔️','Flores'],
+    ['🌱','Robusta'], ['❄️','Wamena'], ['🍫','Cokelat'], ['🍪','Biskuit']
+  ];
+  el('produk').innerHTML = BARANG.map(function (b) {
+    return '<button type="button"><b>' + b[0] + '</b>' + b[1] + '</button>';
+  }).join('');
+
+  /* ---------- pencacah kejadian ---------- */
+  setInterval(function () {
+    var i = window.BehaviorGuard && window.BehaviorGuard._instance;
+    if (!i || !i.capture) return;
+    var n = i.capture.peek().length;
+    el('hitung').textContent = 'kejadian tertangkap: ' + n +
+      (n < 100 ? '  (perlu ±100 sebelum sesi dihitung layak)' : '  ✓ cukup');
+    el('akhiri').disabled = n < 30;
+  }, 400);
+
+  /* ---------- label peran ---------- */
+  [].forEach.call(document.querySelectorAll('.peran button'), function (b) {
+    b.onclick = function () {
+      peran = b.getAttribute('data-p');
+      [].forEach.call(document.querySelectorAll('.peran button'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+    };
+  });
+
+  /* ---------- terima vonis ---------- */
+  window.__labTerima = function (e) {
+    var daftar = e.convergence === 'enrollment' || (e.enrollment && !e.enrollment.siap && e.level === 'LOW' && e.score === 0);
+    riwayat.push({
+      no: riwayat.length + 1,
+      peran: peran,
+      daftar: !!e.enrollment,
+      level: e.level,
+      skor: e.score == null ? null : Math.round(e.score * 100) / 100,
+      aksi: e.action || '-',
+      layak: e.eligible !== false,
+      enrol: e.enrollment || null
+    });
+    try { localStorage.setItem(KUNCI, JSON.stringify(riwayat)); } catch (x) {}
+    gambar(e);
+  };
+
+  /* ---------- gambar ulang ---------- */
+  function gambar(e) {
+    // status
+    if (e && e.enrollment) {
+      var p = e.enrollment;
+      el('lvl').textContent = 'MENGENALI ' + p.selesai + '/' + p.perlu;
+      el('lvl').style.color = 'var(--ungu)';
+      el('kartu-status').style.borderLeftColor = 'var(--ungu)';
+      el('skor').textContent = 'membangun profil pemilik…';
+      el('bar').style.width = Math.round(p.selesai / p.perlu * 100) + '%';
+      el('bar').style.background = 'var(--ungu)';
+      el('alasan').textContent = p.siap ? 'profil siap — sesi berikutnya sudah dinilai'
+                                        : 'butuh ' + (p.perlu - p.selesai) + ' sesi lagi';
+    } else if (e) {
+      var warna = { LOW: 'var(--low)', MEDIUM: 'var(--med)', HIGH: 'var(--high)' }[e.level] || 'var(--ink-2)';
+      var kata = { LOW: 'AMAN', MEDIUM: 'WASPADA', HIGH: 'BAHAYA' }[e.level] || '';
+      el('lvl').textContent = e.level + ' · ' + kata;
+      el('lvl').style.color = warna;
+      el('kartu-status').style.borderLeftColor = warna;
+      el('skor').textContent = 'skor ' + (e.score == null ? '-' : e.score.toFixed(2)) +
+        '   ambang ' + (e.thresholds ? e.thresholds.low.toFixed(2) + ' / ' + e.thresholds.medium.toFixed(2) : '-');
+      el('bar').style.width = '100%';
+      el('bar').style.background = warna;
+      el('alasan').textContent = (e.reasons || []).slice(0, 2).join('  ·  ');
+    }
+
+    // tabel
+    el('tabel').innerHTML = riwayat.slice().reverse().map(function (r) {
+      var vonis = r.daftar ? '<span class="tag DAFTAR">DAFTAR</span>'
+                           : '<span class="tag ' + r.level + '">' + r.level + '</span>';
+      return '<tr><td class="mono">' + r.no + '</td>' +
+        '<td><span class="tag ' + r.peran + '">' + (r.peran === 'pemilik' ? 'pemilik' : 'orang lain') + '</span></td>' +
+        '<td>' + vonis + '</td>' +
+        '<td class="mono">' + (r.skor == null ? '—' : r.skor.toFixed(2)) + '</td>' +
+        '<td class="mono" style="font-size:11px">' + r.aksi + '</td>' +
+        '<td>' + (r.layak ? '✓' : '—') + '</td></tr>';
+    }).join('');
+
+    // angka
+    var dinilai = riwayat.filter(function (r) { return !r.daftar; });
+    var ownr = dinilai.filter(function (r) { return r.peran === 'pemilik'; });
+    var imps = dinilai.filter(function (r) { return r.peran === 'penyusup'; });
+    var frrN = ownr.filter(function (r) { return r.level !== 'LOW'; }).length;
+    var farN = imps.filter(function (r) { return r.level === 'LOW'; }).length;
+
+    el('v-frr').textContent = ownr.length ? (frrN / ownr.length * 100).toFixed(1) + '%' : '—';
+    el('d-frr').textContent = ownr.length ? frrN + ' dari ' + ownr.length + ' sesi pemilik' : 'pemilik ditolak';
+    el('v-far').textContent = imps.length ? (farN / imps.length * 100).toFixed(1) + '%' : '—';
+    el('d-far').textContent = imps.length ? farN + ' dari ' + imps.length + ' sesi orang lain' : 'penyusup lolos';
+    el('ringkas').textContent = riwayat.length + ' sesi · ' + dinilai.length + ' dinilai';
+
+    // harapan
+    var h;
+    if (riwayat.length < 10) {
+      h = '<b>Tahap pendaftaran.</b> Lakukan ' + (10 - riwayat.length) + ' sesi lagi sebagai <b>pemilik</b> ' +
+          'sebelum sistem bisa menilai. Sesi-sesi ini sengaja tidak dihitung.';
+    } else if (!ownr.length) {
+      h = '<b>Profil siap.</b> Sekarang lakukan ±20 sesi lagi sebagai <b>pemilik</b>. ' +
+          'Harapan wajar: sekitar <b>1 dari 6</b> ditandai bukan-LOW.';
+    } else if (!imps.length) {
+      h = '<b>Sudah ada ' + ownr.length + ' sesi pemilik.</b> Sekarang minta orang lain memakai ' +
+          'komputermu, ganti label ke <b>Orang lain</b>, lalu jalankan ±15 sesi. ' +
+          'Harapan wajar: sebagian besar ditandai MEDIUM/HIGH.';
+    } else {
+      h = '<b>Pembanding riset (held-out, 653 sesi, 16 subjek):</b> FRR 16,1% · FAR 5,4%. ' +
+          'Angkamu sendiri akan berbeda — satu orang, satu penyusup, jumlah sesi kecil. ' +
+          'Yang penting <b>arahnya</b>: FRR rendah dan FAR jauh lebih rendah daripada 50%.';
+    }
+    el('harapan').innerHTML = h;
+  }
+
+  /* ---------- tombol ---------- */
+  el('akhiri').onclick = function () {
+    el('akhiri').disabled = true;
+    window.BehaviorGuard.endSession().then(function (r) {
+      if (!r) { el('alasan').textContent = 'sesi dibuang: kurang dari 30 kejadian'; }
+    });
+  };
+  el('isi-contoh').onclick = function () {
+    el('nama').value = 'May San'; el('telp').value = '081234567890';
+    el('surel').value = 'may@contoh.id'; el('alamat').value = 'Jl. Merdeka No. 12, RT 03 RW 05';
+    el('kota').value = 'Jakarta Selatan'; el('pos').value = '12140';
+    el('catatan').value = 'Titip di satpam kalau tidak ada orang.';
+  };
+  el('kosongkan').onclick = function () {
+    ['nama','telp','surel','alamat','kota','pos','catatan'].forEach(function (id) { el(id).value = ''; });
+    el('nama').focus();
+  };
+  el('reset').onclick = function () {
+    if (!confirm('Hapus profil perilaku DAN seluruh riwayat? Pendaftaran mulai dari nol.')) return;
+    riwayat = [];
+    try { localStorage.removeItem(KUNCI); } catch (x) {}
+    window.BehaviorGuard._instance.clear().then(function () { location.reload(); });
+  };
+  el('unduh').onclick = function () {
+    var baris = [['sesi','peran','tahap','vonis','skor','aksi','layak']];
+    riwayat.forEach(function (r) {
+      baris.push([r.no, r.peran, r.daftar ? 'pendaftaran' : 'penilaian',
+                  r.daftar ? '' : r.level, r.skor == null ? '' : r.skor, r.aksi, r.layak ? 'ya' : 'tidak']);
+    });
+    var csv = baris.map(function (b) { return b.join(','); }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'lab-akurasi-behaviorguard.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  /* ---------- siapkan ---------- */
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      var i = window.BehaviorGuard && window.BehaviorGuard._instance;
+      if (!i) { el('akun').textContent = 'BehaviorGuard GAGAL DIMUAT'; return; }
+      // Sesi dikendalikan MANUAL supaya tiap sesi = satu tugas yang sama.
+      // Timer 30 detik bawaan dimatikan khusus di lab ini.
+      try { clearInterval(i._autoTimer); } catch (x) {}
+      el('akun').textContent = 'akun: ' + i.userId;
+      gambar(null);
+    }, 400);
+  });
+
+  gambar(null);
+})();
+</script>
+</body>
+</html>
