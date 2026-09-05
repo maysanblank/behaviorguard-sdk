@@ -91,6 +91,12 @@ export function runMfaChallenge(opts) {
   const {
     phrase, template = null, rounds = 3, buildTemplate, verify,
     title = 'Verifikasi keamanan',
+    // C-18: TANPA batas waktu, popup yang diabaikan membuat Promise ini tidak
+    // pernah selesai -> `endSession()` menggantung selamanya, dan `_mfaBusy`
+    // tidak pernah direset sehingga SELURUH lapisan step-up mati untuk sisa
+    // hidup halaman. Terlihat di uji live: satu popup terlantar di sesi 11
+    // mematikan MFA untuk semua sesi sesudahnya.
+    timeoutMs = 120000,
   } = opts;
   if (typeof document === 'undefined') {
     return Promise.resolve({ passed: false, cancelled: true, reason: 'no-dom' });
@@ -134,9 +140,17 @@ export function runMfaChallenge(opts) {
     };
     setSub();
 
+    let killTimer = null;
     function finish(result) {
+      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
       wrap.remove();
       resolve(result);
+    }
+    if (timeoutMs > 0) {
+      killTimer = setTimeout(function () {
+        finish({ passed: false, enrolled: false, verified: false,
+                 cancelled: true, timedOut: true });
+      }, timeoutMs);
     }
     let failedAttempts = 0;
     const MAX_ATTEMPTS = 3;

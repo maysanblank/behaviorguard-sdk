@@ -176,7 +176,7 @@ dari perkiraan semula.
 
 ---
 
-# C-1..C-15 · Celah logika lapisan pertahanan (audit 2026-09-04)
+# C-1..C-18 · Celah logika lapisan pertahanan (audit 2026-09-04)
 
 Selisih D-* di atas soal **angka**. Bagian ini soal **logika kontrol keamanan** —
 ditemukan lewat penelusuran adversarial, semuanya sudah ditambal dan dikunci uji.
@@ -366,6 +366,86 @@ membangun ulang model lewat jalurnya sendiri dan tidak melewati `_ingestVector`,
 FRR 16.1% / FAR 5.4% **tidak terpengaruh** bug ini. Yang terpengaruh adalah pustaka yang
 benar-benar berjalan di perangkat — persis jenis selisih yang menjadi alasan `DRIFT.md` ada.
 
+## C-16 · KRITIS — sesi manusia diblokir sebagai bot ("velocity konstan")
+
+Ditemukan hanya lewat **uji live sungguhan**. Semua audit sebelumnya memakai
+`scoreExternalEvents` dengan event sintetis, yang **melewati `capture.js` sepenuhnya** —
+jadi seluruh jalur yang benar-benar dipakai di situs orang belum pernah diuji sama sekali.
+
+`capture.js` tidak pernah mengisi field `velocity` pada `MOUSE_MOVE`, tetapi
+`integrity.js` membacanya:
+
+```js
+const vels = evs.filter(e=>e.x!=null).map(e=>e.velocity||0);   // selalu 0
+if(vs < 0.01) reasons.push('velocity konstan');                // selalu terpicu
+```
+
+Setiap nilai runtuh ke 0 → simpangan baku 0 → sesi ditandai bot → `BLOCK_SESSION`.
+Terpicu pada sesi yang keystroke+klik-nya kurang dari 10, yaitu sesi yang isinya
+kebanyakan **gerak mouse** — persis perilaku pengunjung yang menelusuri halaman tanpa
+banyak mengetik. Pada uji live, **2 dari 4 sesi manusia pertama diblokir**.
+
+## C-17 · Satu dari 28 fitur mati di produksi
+
+Akar yang sama. `features.js` §8.4 menghitung
+`idle = |{e ∈ MOUSE_MOVE : (e.velocity || 0) < 0.5}|`. Tanpa field itu, **semua** gerakan
+terhitung diam, sehingga `cursor_idle_ratio` terkunci di **1,0** selamanya. Terukur di
+browser: 40 gerakan → `cursor_idle_ratio = 1`, `yangPunyaFieldVelocity = 0`.
+
+Yang membuatnya serius: di basis data riset fitur ini **bervariasi** (server menghitung
+velocity), jadi model dilatih dengan fitur hidup lalu dipakai dengan fitur mati —
+ketidakcocokan latih-vs-pakai yang permanen dan tak terlihat dari angka held-out mana pun.
+
+**Tambalan C-16+C-17:** `capture.js` menghitung `velocity` (piksel/milidetik) dari pasangan
+gerakan berurutan; `integrity.js` hanya menilai event yang benar-benar membawa velocity.
+Sesudah: velocity terisi 40/40, `cursor_idle_ratio` 1,0 → **0,875**, dan "velocity konstan"
+tidak muncul lagi. Dikunci: `core/integrity.test.mjs` (10 uji), masuk CI.
+
+## C-18 · KRITIS — popup step-up yang diabaikan mematikan seluruh lapisan MFA
+
+`runMfaChallenge` mengembalikan Promise yang **hanya** selesai kalau pengguna menekan
+tombol. Tanpa batas waktu:
+
+1. `_ingestVector` menunggunya → **`endSession()` tidak pernah selesai**. Integrator yang
+   menulis `await bg.endSession()` menggantung tanpa batas.
+2. `finally { this._mfaBusy = false }` tidak pernah dijalankan → `_mfaBusy` tetap `true`
+   → **setiap step-up berikutnya di halaman itu dilewati diam-diam**. Satu popup terlantar
+   mematikan MFA untuk sisa hidup halaman.
+
+Terlihat di uji live: popup pendaftaran muncul di sesi 11, panggilan uji timeout di 45 detik,
+dan sesudahnya `mfaBusy:true` dengan popup masih menggantung di DOM.
+
+**Tambalan:**
+- `runMfaChallenge` menerima `timeoutMs` (default 120 dtk verifikasi / 60 dtk pendaftaran);
+  saat habis, overlay dibuang dan Promise selesai `{cancelled:true, timedOut:true}`.
+- **Pendaftaran template tidak lagi ditunggu** oleh jalur vonis. Itu prompt penyiapan di
+  sesi LOW yang tenang, bukan bagian dari vonis. Verifikasi tetap ditunggu, karena vonisnya
+  memang bergantung pada hasilnya.
+
+Sesudah: sesi 11 memberi vonis nyata dan `endSession()` selesai dalam **3 ms** meskipun
+popup pendaftaran sedang terbuka; popup uji dengan `timeoutMs:1500` menutup sendiri di
+1.935 ms dengan `{timedOut:true}`.
+
+---
+
+## Catatan metodologi: kenapa C-16..C-18 lolos dari 15 audit sebelumnya
+
+Semuanya karena satu kebiasaan uji yang salah. C-1..C-15 diverifikasi lewat
+`scoreExternalEvents(events)` — yang menerima event **buatan** dan **melewati `capture.js`**.
+Artinya seluruh jalur produksi (DOM → capture → fitur → vonis → popup) tidak pernah
+dijalankan sekali pun, dan tiga bug yang hanya hidup di jalur itu tetap tak terlihat
+meskipun conformance 227/227, uji step-up 20/20, dan uji gerbang 11/11 semuanya hijau.
+
+**Aturan baru:** setiap perubahan pada `capture.js`, `mfa.js`, atau orkestrator wajib
+diuji lewat halaman nyata dengan event DOM, bukan lewat `scoreExternalEvents`.
+
+Dua jebakan harness yang sempat menghasilkan temuan palsu dan perlu diingat:
+- **Aksi `type` otomatis memakai `insertText`**, tidak memancarkan `keydown`/`keyup` —
+  sempat terbaca sebagai "0 event KEYSTROKE" padahal penangkapannya baik-baik saja.
+- **Tab tersembunyi men-throttle `setTimeout` ke ~1/detik**, sehingga 12 detik interaksi
+  hanya menghasilkan 18 event dan setiap sesi terlihat gagal gerbang kelayakan. Pakai
+  busy-wait (`performance.now()`) untuk pacing saat mengukur.
+
 ---
 
 ## Status verifikasi setelah tambalan
@@ -378,8 +458,10 @@ benar-benar berjalan di perangkat — persis jenis selisih yang menjadi alasan `
 | Storage C-10 (browser) | `storage.del` pada store kosong | tidak melempar, 0 error |
 | Gerbang detektor C-15/C-8 | `core/ensemble.test.html` / `.mjs` | 11/11 SESUAI |
 | Simulator serangan C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
+| Heuristik integrity C-16 | `core/integrity.test.html` / `.mjs` | 10/10 SESUAI |
+| Jalur live penuh C-16..C-18 | halaman nyata + event DOM | enrollment 10/10, vonis LOW/MEDIUM benar, persisten setelah reload |
 | Sinkron sdk↔extension | `tools/sync_core.ps1` | identik, exit 0 |
 
-Perubahan C-1..C-15 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
+Perubahan C-1..C-18 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
 conformance dijalankan ulang di kedua sisi dan tetap 227/227.

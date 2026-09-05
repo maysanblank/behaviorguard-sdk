@@ -19,8 +19,31 @@ export function createCapture(onEvent){
     const opts={capture:true, passive:true};
     const downAt=new Map();
     let lastScrollY=window.scrollY;
+    // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
+    // membacanya. Akibatnya di pemakaian nyata (bukan data riset):
+    //   1. integrity.js membaca `e.velocity||0` -> selalu 0 -> std 0 -> sesi manusia
+    //      biasa ditandai "velocity konstan" dan diblokir sebagai bot. Terpicu pada
+    //      sesi yang keystroke+klik-nya < 10, yaitu sesi yang isinya kebanyakan
+    //      gerak mouse — persis perilaku pengunjung yang cuma menelusuri halaman.
+    //   2. features.js SPEC 8.4 menghitung idle = jumlah gerakan dgn velocity < 0.5;
+    //      tanpa field itu SEMUA gerakan terhitung diam -> `cursor_idle_ratio` terkunci
+    //      di 1.0. Satu dari 28 fitur jadi mati di produksi, padahal saat model
+    //      dilatih dari basis data riset fitur itu bervariasi — ketidakcocokan
+    //      latih-vs-pakai yang permanen.
+    // Satuan piksel per milidetik, sama seperti `velocities` di features.js.
+    let lastMovePt=null;
+    const withVelocity=e=>{
+      const now=Date.now();
+      let v=0;
+      if(lastMovePt){
+        const dt=now-lastMovePt.t;
+        if(dt>0){ const dx=e.clientX-lastMovePt.x, dy=e.clientY-lastMovePt.y; v=Math.hypot(dx,dy)/dt; }
+      }
+      lastMovePt={x:e.clientX, y:e.clientY, t:now};
+      return Number.isFinite(v)? v : 0;
+    };
     handlers={
-      move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, page_url: location.href}),
+      move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, velocity: withVelocity(e), page_url: location.href}),
       click: e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}),
       scroll: e=> { const cur=window.scrollY; const delta=Math.abs(cur-lastScrollY); lastScrollY=cur; if(delta===0) return; push({event_type:'MOUSE_SCROLL', scroll_delta: delta, scroll_velocity: 0, page_url: location.href}); },
       kd: e=> downAt.set(e.code, Date.now()),

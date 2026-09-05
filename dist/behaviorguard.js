@@ -59,6 +59,8 @@ const DEFAULTS = {
     rounds: 3,                       // berapa kali ketik saat pendaftaran template ritme
     triggerOn: ['MEDIUM', 'HIGH'],   // vonis yang memunculkan popup
     cooldownMs: 15000,               // jangan popup lagi dalam N ms setelah lolos
+    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
+    enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
@@ -632,8 +634,31 @@ function createCapture(onEvent){
     const opts={capture:true, passive:true};
     const downAt=new Map();
     let lastScrollY=window.scrollY;
+    // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
+    // membacanya. Akibatnya di pemakaian nyata (bukan data riset):
+    //   1. integrity.js membaca `e.velocity||0` -> selalu 0 -> std 0 -> sesi manusia
+    //      biasa ditandai "velocity konstan" dan diblokir sebagai bot. Terpicu pada
+    //      sesi yang keystroke+klik-nya < 10, yaitu sesi yang isinya kebanyakan
+    //      gerak mouse — persis perilaku pengunjung yang cuma menelusuri halaman.
+    //   2. features.js SPEC 8.4 menghitung idle = jumlah gerakan dgn velocity < 0.5;
+    //      tanpa field itu SEMUA gerakan terhitung diam -> `cursor_idle_ratio` terkunci
+    //      di 1.0. Satu dari 28 fitur jadi mati di produksi, padahal saat model
+    //      dilatih dari basis data riset fitur itu bervariasi — ketidakcocokan
+    //      latih-vs-pakai yang permanen.
+    // Satuan piksel per milidetik, sama seperti `velocities` di features.js.
+    let lastMovePt=null;
+    const withVelocity=e=>{
+      const now=Date.now();
+      let v=0;
+      if(lastMovePt){
+        const dt=now-lastMovePt.t;
+        if(dt>0){ const dx=e.clientX-lastMovePt.x, dy=e.clientY-lastMovePt.y; v=Math.hypot(dx,dy)/dt; }
+      }
+      lastMovePt={x:e.clientX, y:e.clientY, t:now};
+      return Number.isFinite(v)? v : 0;
+    };
     handlers={
-      move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, page_url: location.href}),
+      move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, velocity: withVelocity(e), page_url: location.href}),
       click: e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}),
       scroll: e=> { const cur=window.scrollY; const delta=Math.abs(cur-lastScrollY); lastScrollY=cur; if(delta===0) return; push({event_type:'MOUSE_SCROLL', scroll_delta: delta, scroll_velocity: 0, page_url: location.href}); },
       kd: e=> downAt.set(e.code, Date.now()),
@@ -914,6 +939,12 @@ function runMfaChallenge(opts) {
   const {
     phrase, template = null, rounds = 3, buildTemplate, verify,
     title = 'Verifikasi keamanan',
+    // C-18: TANPA batas waktu, popup yang diabaikan membuat Promise ini tidak
+    // pernah selesai -> `endSession()` menggantung selamanya, dan `_mfaBusy`
+    // tidak pernah direset sehingga SELURUH lapisan step-up mati untuk sisa
+    // hidup halaman. Terlihat di uji live: satu popup terlantar di sesi 11
+    // mematikan MFA untuk semua sesi sesudahnya.
+    timeoutMs = 120000,
   } = opts;
   if (typeof document === 'undefined') {
     return Promise.resolve({ passed: false, cancelled: true, reason: 'no-dom' });
@@ -957,9 +988,17 @@ function runMfaChallenge(opts) {
     };
     setSub();
 
+    let killTimer = null;
     function finish(result) {
+      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
       wrap.remove();
       resolve(result);
+    }
+    if (timeoutMs > 0) {
+      killTimer = setTimeout(function () {
+        finish({ passed: false, enrolled: false, verified: false,
+                 cancelled: true, timedOut: true });
+      }, timeoutMs);
     }
     let failedAttempts = 0;
     const MAX_ATTEMPTS = 3;
@@ -1043,7 +1082,10 @@ function checkIntegrity(events, opts={}){
     const hs = Math.sqrt(holds.reduce((a,b)=>a+(b-hm)**2,0)/holds.length);
     if(hs < 1.5) reasons.push(`hold identik std=${hs.toFixed(2)}ms`);
   }
-  const vels = evs.filter(e=>e.x!=null).map(e=>e.velocity||0);
+  // C-16: hanya nilai event yang BENAR-BENAR membawa velocity. Memakai
+  // `e.velocity||0` pada event tanpa field itu menghasilkan deret nol -> std 0 ->
+  // "velocity konstan" untuk sesi manusia yang sah.
+  const vels = evs.filter(e=>e.x!=null && Number.isFinite(e.velocity)).map(e=>e.velocity);
   if(vels.length>=10){
     const vs = Math.sqrt(vels.reduce((a,b)=>a+(b-vels.reduce((x,y)=>x+y,0)/vels.length)**2,0)/vels.length);
     if(vs < 0.01) reasons.push('velocity konstan');
@@ -1652,8 +1694,12 @@ class BehaviorGuard {
     this._cloudLog(evt);                    // verdict -> VPS (dashboard per akun)
     if(shouldRetrain && level==='LOW') this._cloudPush(); // baseline tumbuh (hanya LOW) -> sinkron ke VPS
     // MFA behavioral BAWAAN: popup step-up sebelum kabari integrator (evt diperbarui hasil MFA)
-    await this._maybeMfa(evt);
-    await this._maybeEnrollMfa(evt);
+    await this._maybeMfa(evt);          // verifikasi: vonis bergantung hasilnya, jadi ditunggu
+    // C-18: pendaftaran template TIDAK ditunggu. Ini prompt penyiapan di sesi
+    // LOW yang tenang, bukan bagian dari vonis; menunggunya berarti `endSession()`
+    // baru selesai setelah pengguna mengetik frasa 3x — dan tidak pernah selesai
+    // kalau popupnya diabaikan.
+    this._maybeEnrollMfa(evt).catch(()=>{});
     try{ this.onRisk(evt); }catch{}
     return evt;
   }
@@ -1683,6 +1729,7 @@ class BehaviorGuard {
         template: this.challengeTemplate,
         buildTemplate, verify: verifyChallenge,
         title: evt.level==='HIGH' ? 'Verifikasi keamanan — sesi berisiko' : 'Verifikasi cepat',
+        timeoutMs: m.timeoutMs,
       });
       evt.mfa={ shown:true, passed:!!res.passed, verified:!!res.verified, cancelled:!!res.cancelled,
                 attemptsExhausted:!!res.attemptsExhausted, reasons:res.reasons||[] };
@@ -1719,6 +1766,7 @@ class BehaviorGuard {
         template: null,                          // mode DAFTAR, di saat yang aman
         buildTemplate, verify: verifyChallenge,
         title: 'Atur verifikasi keamanan',
+        timeoutMs: m.enrollTimeoutMs,
       });
       if(res.enrolled && res.template){
         this.challengeTemplate=res.template;

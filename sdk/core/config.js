@@ -51,6 +51,8 @@ export const DEFAULTS = {
     rounds: 3,                       // berapa kali ketik saat pendaftaran template ritme
     triggerOn: ['MEDIUM', 'HIGH'],   // vonis yang memunculkan popup
     cooldownMs: 15000,               // jangan popup lagi dalam N ms setelah lolos
+    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
+    enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },

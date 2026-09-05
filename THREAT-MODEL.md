@@ -196,7 +196,38 @@ session cookie or bearer token tied to the real account — and must never treat
 publishable key as authorization. The bundled `server/` is a reference implementation for
 the demo, not a hardened service.
 
-### 4.8 Denial of service against the owner — LOW severity, real
+### 4.8 An ignored step-up prompt disabled the whole step-up layer — FIXED
+
+The challenge prompt returned a promise that settled only on a button press. If a user
+ignored it, two things followed: `endSession()` never resolved for that session, and the
+`_mfaBusy` guard was never cleared — so **every later step-up on that page was silently
+skipped**. One abandoned prompt turned the step-up layer off for the rest of the page's
+life, and nothing surfaced it.
+
+Prompts now carry a timeout (120 s for verification, 60 s for enrollment) and resolve as
+cancelled when it expires. Enrollment no longer blocks the verdict path at all — it is a
+setup prompt during a quiet `LOW` session, not part of a verdict. See `core/DRIFT.md` §C-18.
+
+### 4.9 Legitimate users blocked as bots — FIXED
+
+The capture layer never populated `velocity`, but the bot heuristic read it. Every value was
+`0`, its standard deviation was `0`, and the "constant velocity" rule fired on any session
+that was mostly mouse movement — a visitor browsing without typing much. Two of the first
+four real human sessions in live testing were blocked.
+
+The same gap pinned `cursor_idle_ratio` at a constant `1.0` in production while the research
+data had it varying, so the model was trained on a live feature and deployed against a dead
+one — a train/serve mismatch invisible to every held-out number.
+
+Capture now computes velocity, and the heuristic only judges events that actually carry it.
+See `core/DRIFT.md` §C-16, §C-17.
+
+**Why this matters beyond the two bugs:** they were reachable only through the real capture
+path, and every prior audit had fed synthetic events directly to the scorer, bypassing
+capture entirely. Conformance was 227/227 and every regression suite was green the whole
+time. Green tests bounded the numeric engine, not the product.
+
+### 4.10 Denial of service against the owner — LOW severity, real
 
 An attacker who can produce two consecutive `HIGH` verdicts triggers `BLOCK_SESSION`. Since
 anyone with brief physical access to an unlocked session can behave unlike the owner on

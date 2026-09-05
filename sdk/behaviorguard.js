@@ -334,8 +334,12 @@ class BehaviorGuard {
     this._cloudLog(evt);                    // verdict -> VPS (dashboard per akun)
     if(shouldRetrain && level==='LOW') this._cloudPush(); // baseline tumbuh (hanya LOW) -> sinkron ke VPS
     // MFA behavioral BAWAAN: popup step-up sebelum kabari integrator (evt diperbarui hasil MFA)
-    await this._maybeMfa(evt);
-    await this._maybeEnrollMfa(evt);
+    await this._maybeMfa(evt);          // verifikasi: vonis bergantung hasilnya, jadi ditunggu
+    // C-18: pendaftaran template TIDAK ditunggu. Ini prompt penyiapan di sesi
+    // LOW yang tenang, bukan bagian dari vonis; menunggunya berarti `endSession()`
+    // baru selesai setelah pengguna mengetik frasa 3x — dan tidak pernah selesai
+    // kalau popupnya diabaikan.
+    this._maybeEnrollMfa(evt).catch(()=>{});
     try{ this.onRisk(evt); }catch{}
     return evt;
   }
@@ -365,6 +369,7 @@ class BehaviorGuard {
         template: this.challengeTemplate,
         buildTemplate, verify: verifyChallenge,
         title: evt.level==='HIGH' ? 'Verifikasi keamanan — sesi berisiko' : 'Verifikasi cepat',
+        timeoutMs: m.timeoutMs,
       });
       evt.mfa={ shown:true, passed:!!res.passed, verified:!!res.verified, cancelled:!!res.cancelled,
                 attemptsExhausted:!!res.attemptsExhausted, reasons:res.reasons||[] };
@@ -401,6 +406,7 @@ class BehaviorGuard {
         template: null,                          // mode DAFTAR, di saat yang aman
         buildTemplate, verify: verifyChallenge,
         title: 'Atur verifikasi keamanan',
+        timeoutMs: m.enrollTimeoutMs,
       });
       if(res.enrolled && res.template){
         this.challengeTemplate=res.template;

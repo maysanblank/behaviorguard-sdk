@@ -47,6 +47,8 @@ jobs:
         run: node core/challenge.test.mjs
       - name: Uji regresi gerbang detektor (C-15)
         run: node core/ensemble.test.mjs
+      - name: Uji regresi heuristik integrity (C-16)
+        run: node core/integrity.test.mjs
 
   sync:
     # C-9: sdk/ adalah satu-satunya sumber; extension/ hanya salinan. Kalau keduanya

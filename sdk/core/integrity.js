@@ -23,7 +23,10 @@ export function checkIntegrity(events, opts={}){
     const hs = Math.sqrt(holds.reduce((a,b)=>a+(b-hm)**2,0)/holds.length);
     if(hs < 1.5) reasons.push(`hold identik std=${hs.toFixed(2)}ms`);
   }
-  const vels = evs.filter(e=>e.x!=null).map(e=>e.velocity||0);
+  // C-16: hanya nilai event yang BENAR-BENAR membawa velocity. Memakai
+  // `e.velocity||0` pada event tanpa field itu menghasilkan deret nol -> std 0 ->
+  // "velocity konstan" untuk sesi manusia yang sah.
+  const vels = evs.filter(e=>e.x!=null && Number.isFinite(e.velocity)).map(e=>e.velocity);
   if(vels.length>=10){
     const vs = Math.sqrt(vels.reduce((a,b)=>a+(b-vels.reduce((x,y)=>x+y,0)/vels.length)**2,0)/vels.length);
     if(vs < 0.01) reasons.push('velocity konstan');

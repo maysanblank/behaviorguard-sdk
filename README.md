@@ -259,7 +259,7 @@ cryptographic second factor. An attacker who fully controls the browser can bypa
 client-only check. For a real security boundary, verify the rhythm server-side as well, or
 combine it with an out-of-band factor.
 
-We audited our own defenses adversarially and found and fixed **fifteen** logic flaws.
+We audited our own defenses adversarially and found and fixed **eighteen** logic flaws.
 Two are worth naming, because both defeated the product entirely and neither was visible
 from reading the code:
 
@@ -271,9 +271,15 @@ from reading the code:
   consistent, the Mahalanobis detector — 70% of the ensemble weight — stayed switched off
   permanently, and an impostor session scoring -1811 on that detector was still returned
   as `LOW`.
+- **Ordinary humans were blocked as bots.** The capture layer never populated `velocity`,
+  while the bot heuristic read it — so every value was 0, its standard deviation was 0, and
+  any session that was mostly mouse movement was reported as "constant velocity". The same
+  gap pinned one of the 28 features at a constant, so the model was trained on a live
+  feature and deployed against a dead one. Found only by driving a real page; every earlier
+  audit had fed synthetic events straight past the capture layer.
 
 Each fix is documented with its failure mode, its empirical evidence, and a regression
-test, in [`core/DRIFT.md`](core/DRIFT.md) sections C-1 to C-15.
+test, in [`core/DRIFT.md`](core/DRIFT.md) sections C-1 to C-18.
 
 Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-MODEL.md).
 
@@ -315,7 +321,7 @@ server/       optional hybrid-mode backend and dashboard
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | Measured engine gaps and the C-1..C-15 security audit |
+| [core/DRIFT.md](core/DRIFT.md) | Measured engine gaps and the C-1..C-18 security audit |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 
 ---
