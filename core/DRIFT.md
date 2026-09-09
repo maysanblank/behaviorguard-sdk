@@ -471,19 +471,234 @@ Terverifikasi di browser: tiga sesi berturut menghasilkan panel 1/10 -> 2/10 -> 
 
 ---
 
+## C-20 · KRITIS — pemilik asli terkunci dari MFA-nya sendiri (FRR ~64%)
+
+Dilaporkan dari pemakaian nyata: "awal sekali MFA works, lama-lama ritme gue sendiri
+ga pernah lolos, dan sekarang SEMUA sesi kena MFA." Dipicu setelah orang lain (tempo
+lambat) memancing MFA lalu gagal beberapa kali.
+
+Dua cacat yang saling menguatkan:
+
+1. **Template ritme kelewat ketat.** `challenge.js` membandingkan dwell/flight ABSOLUT
+   per posisi dengan toleransi `k·MAD`, MAD dilantai `MAD_FLOOR_REL = 0.08` (8% median).
+   Pendaftaran 3-ronde yang konsisten menghasilkan MAD kecil → toleransi ~2.5·8%·median.
+   Tapi tempo ketik manusia **bergeser serentak antar-sesi** (capek, mood, keyboard lain):
+   variasi 12–20% itu wajar dan langsung menembus anggaran meleset. Terukur (simulasi
+   jitter Gauss realistis, frasa 18 karakter): FRR pemilik **63.6%** — pemilik ditolak
+   pada mayoritas percobaan. FAR tetap 0% (orang lain memang ditolak — itu benar).
+
+2. **Efek domino ke lantai lengket (`lastRisk`).** Lantai hanya bersih ke LOW saat MFA
+   `verified`. Karena verify pemilik nyaris tak pernah lolos, lantai tak pernah turun →
+   tiap sesi berikutnya dipaksa MEDIUM/HIGH → MFA muncul terus. Satu episode buruk jadi
+   MFA permanen. Makin sering gagal → pemilik makin kesal → ritme makin menyimpang →
+   spiral. Inilah "semua sesinya MFA".
+
+**Tambalan** (`core/challenge.js`, disalin ke `extension/`, dibundel ke `dist/`):
+
+- **Normalisasi tempo global sebelum banding per-posisi.** Yang membedakan ORANG adalah
+  pola RELATIF antar-posisi, bukan kecepatan absolut. Sampel diskalakan dengan rasio
+  `median(template)/median(sampel)`, dijepit `[0.5, 2.0]`. Drift pemilik (±20%) terkoreksi
+  penuh; sampel bertempo ekstrem (robot / tempel-datar 300 ms) tak bisa diskalakan agar
+  cocok sehingga tetap ditolak — pola relatif penyusup tetap kelihatan beda.
+- **`MAD_FLOOR_REL` 0.08 → 0.12** — 12% = jitter antar-sesi manusia yang wajar.
+
+Terukur setelah tambalan (harness sama): FRR pemilik **63.6% → ~2%**, FAR (termasuk
+penyusup bertempo lambat 1.6×) tetap **~0.2%**. Vektor uji terkunci lama tetap hijau
+(pemilik sah lolos, penyusup flat 300/600 ditolak, tempel/NaN/Infinity ditolak).
+
+Dikunci: `core/challenge.test.mjs` +3 uji regresi (pemilik ±18–20% drift → lolos;
+penyusup pola relatif beda → ditolak).
+
+Catatan: verify `challenge.js` murni & tanpa state — template TIDAK ternoda oleh
+kegagalan orang lain. Ini murni ambang, bukan peracunan; pemulihan otomatis begitu
+kode ini terpasang (tak perlu reset). Bila pengguna ingin bersih total setelah pola
+kesal menjejak: `BehaviorGuard._instance.clear()` lalu daftar ulang.
+
+---
+
+## C-21 · Event hilang saat pindah halaman + pending sub-ambang dibuang tiap init
+
+Dilaporkan dari pemakaian nyata: "pindah halaman terus-terusan, sesi tak keambil-ambil"
+dan "2 sesi pertama tak pernah naik ke MENGENALI 1/10". Dua kebocoran lifecycle di
+`behaviorguard.js` (bukan MFA / bukan logika plug-and-play):
+
+1. **`visibilitychange:hidden` men-drain-dan-membuang sebelum `beforeunload` sempat
+   menyimpan.** Handler `hidden` memanggil `endSession()` yang `capture.drain()`;
+   sesi < `minEventsAssess` (30) di-`return null` → seluruh event dibuang. Saat NAVIGASI
+   halaman penuh, `hidden` jalan LEBIH DULU dari `beforeunload`, jadi `beforeunload`
+   yang bertugas menyimpan ekor ke `bg:pending` menemukan buffer **kosong**. Terukur di
+   browser: 25 event → setelah `hidden`, buffer 0 dan `bg:pending` kosong = HILANG.
+2. **Init membuang pending yang belum cukup.** Blok pemulihan `bg:pending` memanggil
+   `storage.set('bg:pending', null)` **tanpa syarat** — bahkan saat `chunk` < 30 dan
+   belum di-skor. Jadi ekor dari halaman-halaman pendek tak pernah berakumulasi jadi
+   sesi utuh; tiap init membuangnya. (Bonus: `storage.set` menulis ke IndexedDB, store
+   yang BEDA dari `bg:pending` di localStorage — jadi baris itu memang tak nyambung.)
+
+Akibat gabungan: di situs multi-halaman (mis. `demo/toko-klasik`), menelusuri
+halaman-ke-halaman membuang ekor tiap transisi → sesi tak pernah cukup panjang untuk
+`minEventsTrain` (100) → pendaftaran mandek di 0/10.
+
+**Tambalan** (`behaviorguard.js`, disalin ke `extension/`, dibundel ke `dist/`):
+
+- `bg:pending` kini AKUMULATOR ekor lintas-halaman via raw localStorage. Handler
+  `visibilitychange:hidden` **tidak lagi membuang**: kalau ≥30 → `endSession()`
+  (skor); kalau < 30 → `_bankTail()` menyimpan ekor lalu drain.
+- `_bankTail()` baru: simpan ≤200 event terakhir ke `bg:pending` (cap 800), lalu drain
+  → **idempoten**, jadi `pagehide` + `beforeunload` boleh memanggilnya berkali-kali
+  tanpa dobel. `beforeunload`/`pagehide` sekarang bank SINKRON (skor async tak sempat
+  flush saat halaman mati).
+- Init: kalau pending < 30 → **kembalikan** ke `bg:pending` (tunggu halaman berikut
+  menambah); kalau ≥30 → skor satu `chunk` (≤200) lalu simpan SISANYA. Baris
+  `storage.set('bg:pending', null)` tanpa syarat dihapus.
+
+Terverifikasi di browser (import ESM segar): `_bankTail` menyimpan 25 event (bukan buang),
+idempoten, akumulasi 22→44 lintas "halaman"; init menahan pending 20 (dulu dibuang) dan
+mengonsumsi pending 150. Siklus 6-halaman: `bg:pending` berputar 22→44→flush→22 persis
+benar (nol event hilang). Catatan: vonis akhir dgn event SINTETIS ketrigger heuristik
+bot C-16 (timing terlalu teratur) — pendaftaran dgn event ASLI wajib diuji via DOM nyata
+(aturan di bawah). Lihat [[feedback_test_real_path_not_synthetic]].
+
+Terkait, **misconfig demo `lab-akurasi`**: tombol "Akhiri sesi" kebuka di 30 event
+(`minEventsAssess`) padahal LAYAK butuh 100 (`minEventsTrain`) → 2 sesi pertama yang
+pendek diakhiri, dinilai "tidak layak", panel diam di 0/10. Diperbaiki: tombol dikunci
+sampai `minEventsTrain`, teks pencacah ikut ambang itu.
+
+---
+
+## C-22 · KRITIS — pemilik divonis MEDIUM SELAMANYA mulai sesi ~20 (FRR 98%)
+
+Dilaporkan penguji (Kepler) dari pemakaian nyata: "1–10 baseline, 10–20 LOW, 20-seterusnya
+MEDIUM" — pemilik sendiri, terus divonis MEDIUM → MFA tiap sesi → (C-20) MFA gagal → macet.
+"Sudah gw variasiin biar toleransi idle lebih besar, tetap MFA." Angka **20** kuncinya:
+`ensembleMinSamples.svm = 20` = gerbang detektor Mahalanobis (bobot 0.70, dominan).
+
+**Akar (statistik, bukan idle-time):** Mahalanobis nge-fit kovarians **d×d dengan d=28
+fitur**, tapi gerbangnya buka di **n=20 sampel**. **n < d** → kovarians *under-determined*
+/ overfit: jarak Mahalanobis titik in-sample (data latih) kecil palsu, `svm_stats` (mean/std
+skor) dan ambang dikalibrasi dari skor in-sample yang optimistik. Sesi PEMILIK baru
+(out-of-sample) jaraknya jauh lebih besar → `zSVM` sangat negatif → skor ensembel nyemplung
+di bawah ambang → MEDIUM. Karena `progressiveMaxPool=30` (kolam maks base10+30 = 40 ≈ 1.4d),
+kondisi ini **tak pernah pulih** — FRR mentok ~45% bahkan di kolam penuh.
+
+Terukur (kode model asli, `_rebuildModel`+`scoreVector`, distribusi pemilik Gauss 28-dim,
+simulasi — bukan data riset): FRR pemilik out-of-sample per ukuran kolam:
+
+| kolam | 15/19 (gerbang tutup) | 20 | 25 | 30 | 40 | 60 | 90/100 |
+|---|---|---|---|---|---|---|---|
+| **sebelum** | 0% | **98.6%** | 92% | 85% | 45% | 14% | 6% |
+| **sesudah** | 0% | **9.0%** | 4.8% | 6.5% | 5.0% | 5.5% | 2.3% |
+
+FAR (penyusup jelas-beda ≥1.5σ) tetap ~0% di kedua kasus.
+
+Kenapa "10–20 LOW" lalu "20+ MEDIUM": di bawah 20, gerbang Maha TUTUP → Isolation Forest
+sendirian (lunak, menggeneralisasi) → LOW. Di 20, gerbang BUKA → Maha overfit dominan → MEDIUM.
+Ini kebalikan C-15 (dulu gerbang beku TERTUTUP selamanya); memperbaiki C-15 justru memunculkan
+C-22 karena gerbang akhirnya benar-benar terbuka — di jumlah sampel yang masih < dimensi.
+
+**Tambalan** (hanya jalur LIVE `behaviorguard.js._rebuildModel` + `config.js`; **golden/
+conformance TIDAK tersentuh** karena keduanya nge-fit Maha via `cfg.mahalanobis.shrink` tetap
+langsung, bukan lewat orchestrator — dikonfirmasi Python 227/227 & JS 227/227 tetap SESUAI):
+
+- **Shrinkage ADAPTIF** terhadap rasio sampel/dimensi: `shrink = clamp(0.3, 0.9, d/n)`.
+  Saat n<d, shrink berat menarik kovarians ke Euclidean-terstandardisasi (aman, tak overfit);
+  meluruh ke dasar 0.3 saat n≥~3d → korelasi penuh kelas riset kembali.
+- **`progressiveMaxPool` 30→90** supaya kolam bisa tumbuh, shrink meluruh, dan deteksi
+  penyusup-mirip membaik seiring pemakaian.
+
+**Batas yang WAJIB dijujurkan (threat model):** dengan sampel < ~2d, korelasi antar-fitur
+tak bisa diestimasi, jadi penyusup yang SANGAT mirip pemilik (< ~1σ) belum tertangkap andal
+sampai kolam pemilik cukup besar. Ini inheren pada belajar on-device few-shot; baseline lama
+*pura-pura* bisa (full covariance) dan justru itu yang mengunci pemilik. Deteksi menguat saat
+data pemilik bertambah.
+
+**Kopling tiga bug:** C-22 (pemilik tak lagi keliru MEDIUM) + C-20 (MFA pemilik akhirnya lolos)
++ sifat lantai-lengket (`lastRisk` hanya bersih saat MFA `verified`) — ketiganya harus benar
+bareng; kalau salah satu bocor, satu episode buruk jadi MFA permanen (spiral yang dilaporkan
+Kepler). C-21 memastikan sesinya kekumpul dari awal supaya kolam tumbuh sehat.
+
+Diverifikasi 2026-09-07 di browser: end-to-end `_rebuildModel`+`scoreVector` (tabel di atas),
+plus 4 suite hijau (JS conformance 227/227, step-up 23/23, gerbang 11/11, integrity 10/10).
+
+---
+
+## C-23 · Waktu idle ikut terukur sebagai perilaku (+ jendela ambil-alih sesi)
+
+**Dilaporkan oleh dosen pembimbing, 2026-09-09.** "Kalau idle-nya kan bisa aja dia buka
+terus ditinggal melakukan sesuatu." Benar, dan akibatnya ada **dua**, bukan satu.
+
+**Akibat 1 — pengukuran (FRR).** Fitur F4 dihitung dari selisih antar-event dan dari
+`duration = ts_akhir − ts_awal`. Jeda mati ikut masuk seolah-olah ia perilaku. Terukur
+(`core/idle.test.mjs`, satu rentetan 40 event, ditinggal 12 menit di tengah):
+
+| Fitur | Melintasi jeda (lama) | Per segmen (baru) | Faktor |
+|---|---|---|---|
+| `temporal_session_duration` | 731,2 dtk | 5,5 dtk | 133× |
+| `mouse_click_interval_mean` | 48.708 ms | 710 ms | 69× |
+| `keystroke_flight_time_mean` | 34.797 ms | 509 ms | 68× |
+| `keystroke_typing_speed` | 0,030 | 1,998 | 67× |
+
+Empat dari 28 fitur meleset satu-dua orde besaran — dan bukan derau acak, melainkan bias
+searah. Basis data riset berisi sesi berbasis-tugas yang PADAT, jadi ini ketidakcocokan
+**latih-vs-pakai** yang sistematis: kelas cacat yang sama dengan C-16/C-17, hanya sumbernya
+waktu, bukan field yang kosong. Pemilik yang sekadar meninggalkan tab dinilai menyimpang.
+
+**Akibat 2 — keamanan (FAR).** Sisi sebaliknya, dan justru yang lebih berbahaya: selama
+kursi kosong, sesi itu **sudah terautentikasi**. Siapa pun yang duduk sesudahnya mewarisi
+sesi yang sah ("serangan jam makan siang"). Karena penyusupnya tidak melewati login,
+satu-satunya sinyal yang tersedia adalah adanya absen panjang di tengah sesi — persis
+sinyal yang dulu dibuang. Menghapus idle demi FRR saja justru **memperlebar** lubang ini.
+
+**Akibat 3 — diam dibaca aman.** `endSession()` dulu mengembalikan `null` tanpa jejak untuk
+buffer < 30 event. Integrator yang menunggu callback tidak bisa membedakan "sudah diperiksa,
+aman" dari "tak ada bukti sama sekali", dan default diam selalu jatuh ke sisi mempercayai.
+
+**Tambalan (tiga lapis, `sdk/core/idle.js` + orkestrator):**
+
+1. **Segmentasi.** Aliran event dipecah pada tiap jeda ≥ `session.idleGapSec` (30 dtk =
+   satu jendela penilaian). Tiap segmen kontigu dinilai SENDIRI. Rumus fitur di
+   `core/SPEC.md` **tidak disentuh** — yang berubah hanya apa yang disuapkan ke
+   `extractF4`. Karena itu golden dan keempat port tetap 227/227 tanpa diubah.
+2. **Dua ambang, dua akibat.** `idle.awaySec` (5 mnt) = batas "kursi mungkin kosong":
+   streak LOW direset, kepercayaan dari sebelum absen tidak menyeberang.
+   `idle.reverifyAfterSec` (15 mnt, sejajar batas idle-timeout PCI DSS 8.2.8) = LOW
+   dinaikkan jadi MEDIUM supaya step-up jalan sekali. Sengaja dipisah: 5 menit cukup untuk
+   berhenti mengukur melintas, tapi belum cukup untuk mengganggu pengguna.
+3. **ABSTAIN.** Jendela tanpa bukti menerbitkan vonis `UNKNOWN` / aksi `ABSTAIN` **sekali**
+   per rentetan idle (bukan tiap jendela, supaya tab yang ditinggal semalaman tidak
+   membanjiri log). Sistem boleh bilang "saya tidak tahu" alih-alih menebak.
+
+**Bonus dari lapis 1:** ekor buffer yang masih hidup kini DIKEMBALIKAN ke buffer, bukan
+dibuang tiap 30 detik. Pengguna yang menelusuri pelan-pelan akhirnya terkumpul jadi sesi.
+
+**Batas yang wajib dijujurkan.** Segmentasi menghapus jeda dari pengukuran, tapi ia tidak
+bisa membedakan *ditinggal* dari *membaca tanpa menyentuh apa pun* — keduanya sama-sama
+sunyi di lapisan DOM. Itulah kenapa jawabannya bukan menebak, melainkan ABSTAIN + verifikasi
+ulang pada absen panjang. Ambang 30/300/900 dtk adalah pilihan rekayasa, belum dituning
+terhadap data lapangan; ketiganya dibuka sebagai knob `init({session, idle})`.
+
+**Uji:** `core/idle.test.mjs` 33/33 (modul + bukti angka di tabel atas),
+`core/idle.live.test.mjs` 20/20 (jalur penuh orkestrator: dua vonis dari satu batch bergap,
+`resumedAfterAway`, LOW→MEDIUM, ABSTAIN). Usulan lengkap + kasus sejenis:
+`docs/USULAN-KONTEKS-DAN-IDLE.md`.
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
 |---|---|---|
 | Mesin Python vs golden | `python core/conformance.py` | 227/227 SESUAI |
 | Mesin JS vs golden | `core/conformance.html` | 227/227 SESUAI |
-| Regresi step-up C-1 | `core/challenge.test.html` / `.mjs` | 20/20 SESUAI |
+| Regresi step-up C-1 + drift tempo C-20 | `core/challenge.test.html` / `.mjs` | 23/23 SESUAI |
+| FRR/FAR MFA sebelum vs sesudah C-20 | simulasi jitter Gauss (frasa 18 char) | FRR 63.6%→~2%, FAR ~0% |
 | Storage C-10 (browser) | `storage.del` pada store kosong | tidak melempar, 0 error |
 | Gerbang detektor C-15/C-8 | `core/ensemble.test.html` / `.mjs` | 11/11 SESUAI |
 | Simulator serangan C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
 | Heuristik integrity C-16 | `core/integrity.test.html` / `.mjs` | 10/10 SESUAI |
 | Jalur live penuh C-16..C-18 | halaman nyata + event DOM | enrollment 10/10, vonis LOW/MEDIUM benar, persisten setelah reload |
 | Sinkron sdk↔extension | `tools/sync_core.ps1` | identik, exit 0 |
+| Segmentasi idle C-23 | `core/idle.test.mjs` / `.html` | 33/33 SESUAI |
+| Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu

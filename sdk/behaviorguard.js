@@ -14,6 +14,7 @@ import { Mahalanobis } from './core/mahalanobis.js';
 import { Ensemble } from './core/ensemble.js';
 import { toRisk, toAction, topFeatures, reasonsFrom, calibrateThresholds, calibrateThresholdsParametric } from './core/risk.js';
 import { createCapture } from './core/capture.js';
+import { segmentByIdle, idleAccounting, splitForAssessment, classifyGap } from './core/idle.js';
 import { storage } from './storage.js';
 import { isConverged, cohortLowRate } from './core/lifecycle.js';
 import { getOrCreateSecret, generateToken } from './core/token.js';
@@ -27,7 +28,7 @@ const ns = id => `bg:${id}`;
 
 class BehaviorGuard {
   constructor(){ this.cfg=structuredClone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
-  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa}={}){
+  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa, session, idle}={}){
     if(!userId) throw new Error('BehaviorGuard.init: userId wajib');
     this.userId=userId; this.onRisk=onRisk||(()=>{});
     // HYBRID cloud mode: baseline per tenant+userId hidup di VPS (lintas-device),
@@ -43,6 +44,10 @@ class BehaviorGuard {
     // knob yang didokumentasikan tapi tidak pernah ada. Digabung, bukan ditimpa,
     // supaya konfigurasi parsial ({enabled:false}) tetap mewarisi default lainnya.
     if(mfa && typeof mfa==='object') this.cfg.mfa={...this.cfg.mfa, ...mfa};
+    // C-23: sama pola dengan `mfa` — digabung, bukan ditimpa, supaya konfigurasi
+    // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
+    if(session && typeof session==='object') this.cfg.session={...this.cfg.session, ...session};
+    if(idle && typeof idle==='object') this.cfg.idle={...this.cfg.idle, ...idle};
     // fingerprint + secret + token (HMAC)
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
     try{ this.secret=await getOrCreateSecret(userId); this.token=await generateToken({secret:this.secret, userId}); }catch{}
@@ -64,21 +69,31 @@ class BehaviorGuard {
         this._pendingEvents=pending;
       }
     }catch{}
-    // capture auto
-    this.capture=createCapture(()=>{});
+    // capture auto — C-23: callback dipakai melacak kehadiran (kapan input terakhir
+    // masuk), bukan lagi no-op. Dari situ absen terdeteksi tanpa timer tambahan.
+    this._lastEventAt=Date.now();
+    this.capture=createCapture(e=> this._onCaptureEvent(e));
     try{ this.capture.attach(); }catch{}
     // S6: pending skor sebagai sesi terpisah, jangan gabung (bikin durasi ngembung)
+    // C-21: pending adalah AKUMULATOR ekor lintas-halaman. Versi lama meng-null-kan
+    // pending TANPA SYARAT walau belum sempat di-skor (chunk < minEventsAssess), jadi
+    // ekor halaman-halaman pendek terbuang tiap init dan tak pernah berakumulasi jadi
+    // sesi utuh -> "pindah halaman terus, sesi tak keambil". Kini: kalau belum cukup,
+    // KEMBALIKAN ke pending; kalau cukup, skor satu chunk lalu simpan SISANYA.
     try{
       if(this._pendingEvents && this._pendingEvents.length){
         const pending=this._pendingEvents; delete this._pendingEvents;
-        // skor pending sebagai sesi terpisah via _ingestVector, pakai seal storage
-        const chunk=pending.slice(0,100);
-        if(chunk.length>=this.cfg.session.minEventsAssess){
+        if(pending.length >= this.cfg.session.minEventsAssess){
+          const chunk=pending.slice(0,200);
+          const sisa=pending.slice(200);
           // B1 fix: jangan require di ESM, pakai scoreExternalEvents langsung (extractF4 sudah diimpor)
-          // async scoring deferred to next tick
           setTimeout(()=> this.scoreExternalEvents(chunk).catch(()=>{}), 100);
+          try{ if(sisa.length) localStorage.setItem('bg:pending', JSON.stringify(sisa));
+               else localStorage.removeItem('bg:pending'); }catch{}
+        } else {
+          // belum cukup jadi sesi -> tunggu ekor halaman berikut menambah (JANGAN buang)
+          try{ localStorage.setItem('bg:pending', JSON.stringify(pending)); }catch{}
         }
-        try{ await storage.set('bg:pending', null); }catch{}
       }
     }catch{}
     // HYBRID: tarik baseline akun dari VPS (source of truth lintas-device) SEBELUM rebuild.
@@ -92,34 +107,75 @@ class BehaviorGuard {
     this.inited=true;
     return this;
   }
+  // C-23: satu-satunya sumber kebenaran "kapan pengguna terakhir memberi input".
+  // Jeda antar-input yang melewati `idle.awaySec` dicatat sebagai ABSEN; input
+  // berikutnya sesudah itu adalah KEMBALI dari absen — dan orang yang kembali
+  // belum tentu orang yang pergi.
+  _onCaptureEvent(e){
+    const ts=e&&e.timestamp || Date.now();
+    const prev=this._lastEventAt;
+    this._lastEventAt=ts;
+    if(!prev) return;
+    const gap=ts-prev;
+    if(gap >= this.cfg.idle.awaySec*1000) this._markAwayReturn(gap, 'tanpa-input', ts);
+  }
+  // Ambil absen TERPANJANG yang belum ditindaklanjuti: tab tersembunyi 20 menit lalu
+  // kembali tidak boleh tertimpa oleh jeda-tanpa-input 6 menit yang menyusul.
+  _markAwayReturn(awayMs, reason, atTs){
+    const cur=this._awayReturn;
+    if(cur && cur.awayMs >= awayMs) return;
+    this._awayReturn={ awayMs, reason, at: atTs||Date.now() };
+  }
   _wireAuto(){
     if(this._wired) return; this._wired=true;
     this._autoTimer=setInterval(()=>{ this.endSession().catch(()=>{}); }, this.cfg.session.windowSec*1000);
     try{
+      const self=this;
       document.addEventListener('visibilitychange', ()=>{
-        if(document.visibilityState==='hidden') this.endSession().catch(()=>{});
+        if(document.visibilityState!=='hidden'){
+          // C-23: kembali terlihat. Tab tersembunyi lama = kursi mungkin kosong,
+          // dan ini sinyal yang TIDAK terlihat dari jeda antar-event (tab latar
+          // memang tidak mengirim event apa pun, jadi keduanya perlu dicek).
+          if(self._hiddenAt){
+            const hid=Date.now()-self._hiddenAt;
+            self._hiddenAt=null;
+            if(hid >= self.cfg.idle.awaySec*1000) self._markAwayReturn(hid, 'tab-tersembunyi');
+          }
+          return;
+        }
+        self._hiddenAt=Date.now();
+        // C-21: JANGAN drain-buang. `endSession()` membuang buffer <30 event, dan saat
+        // pindah halaman ia jalan SEBELUM `beforeunload` -> ekor halaman hilang sebelum
+        // sempat disimpan. Kalau cukup jadi sesi -> skor; kalau belum -> BANK ke pending.
+        const evs=self.capture ? self.capture.peek() : [];
+        if(evs.length >= self.cfg.session.minEventsAssess) self.endSession().catch(()=>{});
+        else self._bankTail();
       });
       const origPush=history.pushState.bind(history);
       const origReplace=history.replaceState.bind(history);
-      const self=this;
       history.pushState=function(...a){ const r=origPush(...a); self.capture && self.capture.buffer.push({event_type:'NAVIGATION', page_url: location.href, timestamp: Date.now()}); return r; };
       history.replaceState=function(...a){ const r=origReplace(...a); self.capture && self.capture.buffer.push({event_type:'NAVIGATION', page_url: location.href, timestamp: Date.now()}); return r; };
       window.addEventListener('popstate', ()=>{ self.capture && self.capture.buffer.push({event_type:'NAVIGATION', page_url: location.href, timestamp: Date.now()}); });
-      // R4: simpan ekor ke storage, bukan data: URL no-op; clear timer
-      window.addEventListener('pagehide', ()=>{ try{ clearInterval(self._autoTimer); }catch{} });
-      window.addEventListener('beforeunload', ()=>{
-        try{
-          const evs=self.capture.peek();
-          if(evs.length>=10){
-            // simpan untuk load berikutnya, bukan beacon ke data:
-            const pending=JSON.parse(localStorage.getItem('bg:pending')||'[]');
-            pending.push(...evs.slice(-100));
-            if(pending.length>500) pending.splice(0, pending.length-500);
-            localStorage.setItem('bg:pending', JSON.stringify(pending));
-          }
-          clearInterval(self._autoTimer);
-        }catch{}
-      });
+      // R4/C-21: pada leave terminal, bank ekor ke pending SECARA SINKRON (skor async
+      // tak sempat flush saat halaman mati). pagehide + beforeunload dua-duanya bank;
+      // `_bankTail` idempoten (drain setelah simpan) jadi aman dipanggil berkali-kali.
+      window.addEventListener('pagehide', ()=>{ try{ self._bankTail(); clearInterval(self._autoTimer); }catch{} });
+      window.addEventListener('beforeunload', ()=>{ try{ self._bankTail(); clearInterval(self._autoTimer); }catch{} });
+    }catch{}
+  }
+  // C-21: simpan ekor buffer yang belum jadi sesi ke akumulator lintas-halaman
+  // (`bg:pending`, raw localStorage). Idempoten: drain setelah simpan supaya handler
+  // leave lain (pagehide+beforeunload) tak menyimpan ganda.
+  _bankTail(){
+    if(!this.capture) return;
+    const evs=this.capture.peek();
+    if(evs.length < 10) return;               // terlalu sedikit untuk disimpan
+    try{
+      const pending=JSON.parse(localStorage.getItem('bg:pending')||'[]');
+      pending.push(...evs.slice(-200));
+      if(pending.length>800) pending.splice(0, pending.length-800);
+      localStorage.setItem('bg:pending', JSON.stringify(pending));
+      this.capture.drain();
     }catch{}
   }
   _trainingVectors(){
@@ -157,9 +213,21 @@ class BehaviorGuard {
     const iff=new IsolationForest(this.cfg.iforest);
     iff.fit(Xstd);
     // detektor-2: Mahalanobis (default) atau centroid lama (cfg.model2)
+    // C-22: shrinkage ADAPTIF terhadap rasio sampel/dimensi. Kovarians d×d butuh
+    // n >> d untuk stabil; live gerbang buka di n=20 padahal d=28 (n<d!) → kovarians
+    // OVERFIT: jarak in-sample kecil palsu, ambang dikalibrasi optimistik, lalu sesi
+    // PEMILIK baru (out-of-sample) meledak jadi anomali → "sesi ke-20 dst selalu
+    // MEDIUM" (FRR 98%). Regularisasi lebih berat saat sampel sedikit menariknya ke
+    // Euclidean-terstandardisasi (aman): FRR 98%→~7% di n=20, FAR ~0 utk penyusup
+    // jelas-beda. Meluruh ke shrink dasar (0.3) saat n≥~3d → korelasi penuh kelas
+    // riset kembali. Hanya jalur LIVE — conformance/golden pakai shrink tetap
+    // `cfg.mahalanobis.shrink` langsung, jadi tak tersentuh. Lihat core/DRIFT.md C-22.
+    const baseShrink=this.cfg.mahalanobis.shrink;
+    const nfe=this.cfg.features.length;
+    const adaptShrink=Math.min(0.9, Math.max(baseShrink, nfe/Math.max(1,vecs.length)));
     const det2=(this.cfg.model2||'mahalanobis')==='mahalanobis'
-      ? new Mahalanobis({ shrink: this.cfg.mahalanobis.shrink, n_features: this.cfg.features.length })
-      : new OCSVM({...this.cfg.ocsvm, n_features: this.cfg.features.length});
+      ? new Mahalanobis({ shrink: adaptShrink, n_features: nfe })
+      : new OCSVM({...this.cfg.ocsvm, n_features: nfe});
     det2.fit(Xstd);
     const ens=new Ensemble(iff, det2, this.cfg.weights, vecs.length);
     ens.calibrate(Xstd, vecs.length);
@@ -205,13 +273,14 @@ class BehaviorGuard {
       sessions:(this.sessions?this.sessions.length:0), fp:this.fingerprint, ts:Date.now()});
   }
   // R3 + hardening: gate, integrity, ratelimit, fingerprint, monotonic, challenge
-  async _ingestVector(vec, feat, eligible=true, events=null){
+  async _ingestVector(vec, feat, eligible=true, events=null, meta=null){
+    const M=meta||{};                 // C-23: telemetri idle ikut ke SEMUA jalur vonis
     // ratelimit
     const rl=checkCollect(this.userId);
     if(!rl.allowed){
       // C-4: dulu di-return diam-diam tanpa onRisk, jadi integrator tak pernah
       // tahu sesi diblokir rate-limit (jalur integrity di bawah memanggilnya).
-      const rlEvt={level:'HIGH', score:-2, action:'BLOCK_SESSION', blocked:true, reasons:[rl.reason], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, rateLimited:true};
+      const rlEvt={...M, level:'HIGH', score:-2, action:'BLOCK_SESSION', blocked:true, reasons:[rl.reason], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, rateLimited:true};
       this._cloudLog(rlEvt);
       try{ this.onRisk(rlEvt); }catch{}
       return rlEvt;
@@ -220,7 +289,7 @@ class BehaviorGuard {
     if(events){
       const integ=checkIntegrity(events, {throttled:true});
       if(integ.suspected){
-        const evt={level:'HIGH', score:-1.5, action:'BLOCK_SESSION', reasons:integ.reasons, topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, integrity:true};
+        const evt={...M, level:'HIGH', score:-1.5, action:'BLOCK_SESSION', reasons:integ.reasons, topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, integrity:true};
         this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:-1.5, eligible:false});
         await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:'HIGH'});
         this._cloudLog(evt);
@@ -230,11 +299,15 @@ class BehaviorGuard {
     }
     const eligibleCount=this.sessions.filter(s=>s.eligible!==false).length;
     if(eligibleCount < this.cfg.baseline){
+      // C-23: selama pendaftaran belum ada model pembanding, jadi absen tidak bisa
+      // ditindaklanjuti. Dibuang di sini supaya tidak menggantung dan meletus di
+      // vonis pertama sesudah pendaftaran selesai (bisa berhari-hari kemudian).
+      this._awayReturn=null;
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'LOW', score:0, eligible});
       await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:'LOW'});
       let doneEnroll=false;
       if(this.sessions.filter(s=>s.eligible!==false).length >= this.cfg.baseline){ this._rebuildModel(); doneEnroll=true; }
-      const enrollEvt={level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'sesi tidak layak - tidak masuk kolam'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
+      const enrollEvt={...M, level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'sesi tidak layak - tidak masuk kolam'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
       this._cloudLog(enrollEvt);
       if(doneEnroll) this._cloudPush(); // enrollment selesai -> unggah baseline akun ke VPS
       // C-19: jalur pendaftaran DULU tidak pernah memanggil onRisk, jadi selama 10
@@ -256,7 +329,7 @@ class BehaviorGuard {
     // C-5: toRisk() memakai `score <= thr`; untuk NaN itu SELALU false -> 'LOW'.
     // Skor rusak karena itu gagal-TERBUKA. Perlakukan sebagai anomali, bukan aman.
     if(!Number.isFinite(score)){
-      const badEvt={level:'HIGH', score:null, action:'REQUIRE_STEPUP', blocked:false,
+      const badEvt={...M, level:'HIGH', score:null, action:'REQUIRE_STEPUP', blocked:false,
         reasons:['skor tidak finit - model/statistik rusak'], topFeatures:[], features: feat,
         thresholds: {...this.cfg.thresholds}, eligible:false, degraded:true};
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:null, eligible:false});
@@ -266,6 +339,22 @@ class BehaviorGuard {
       return badEvt;
     }
     let level=toRisk(score, this.cfg.thresholds);
+    // C-23 (sisi KEAMANAN dari idle). Segmentasi sudah menangani sisi PENGUKURAN;
+    // yang ini menangani akibat yang berbeda: selama kursi kosong, orang lain bisa
+    // duduk di sesi yang SUDAH terautentikasi ("serangan jam makan siang"). Karena
+    // penyusupnya mewarisi sesi yang sah, satu-satunya sinyal yang tersedia adalah
+    // adanya absen panjang di tengah — jadi absen itu harus dicatat, bukan dilewati.
+    // Jalur pending/eksternal tidak lewat `_onCaptureEvent`, jadi jeda antar-segmen
+    // dibaca langsung dari datanya di sini.
+    const segGapMs=(M.idle && M.idle.gapBeforeMs) || 0;
+    if(segGapMs >= this.cfg.idle.awaySec*1000) this._markAwayReturn(segGapMs, 'jeda-antar-segmen');
+    let awayInfo=null;
+    if(this._awayReturn){
+      awayInfo={...this._awayReturn};
+      this._awayReturn=null;
+      this._lowStreak=0;   // streak LOW TIDAK menyeberangi absen: itu bukti tentang
+                           // orang sebelum absen, bukan tentang orang sesudahnya
+    }
     // T3: monotonic dengan decay - turun 1 tingkat tiap 3 LOW berturut
     const order={LOW:0,MEDIUM:1,HIGH:2};
     const modelLevel=level, modelScore=score;   // vonis mentah model, sebelum lantai lengket
@@ -282,10 +371,21 @@ class BehaviorGuard {
       if(order[level] < order[this.lastRisk]){ level=this.lastRisk; stickyFloor=true; }
     } else if(order[level] < order[this.lastRisk]){ level=this.lastRisk; stickyFloor=true; }
     if(order[level] > order[this.lastRisk]){ this.lastRisk=level; this._lowStreak=0; }
+    // C-23: absen melewati `reverifyAfterSec` -> naikkan LOW jadi MEDIUM supaya
+    // step-up jalan sekali, walau perilaku sesudahnya terlihat normal. Sengaja
+    // dipisah dari `awaySec`: absen 5 menit cukup untuk berhenti mengukur melintas,
+    // 15 menit (sejajar batas idle-timeout PCI DSS 8.2.8) baru cukup untuk
+    // mengganggu pengguna. Hanya menaikkan LOW — MEDIUM/HIGH sudah step-up sendiri.
+    let reverifyAfterAway=false;
+    if(awayInfo && awayInfo.awayMs >= this.cfg.idle.reverifyAfterSec*1000 && level==='LOW'){
+      level='MEDIUM'; reverifyAfterAway=true;
+      if(order[level]>order[this.lastRisk]){ this.lastRisk=level; this._lowStreak=0; }
+    }
     const top=topFeatures(xstd, F4, 3);
     let action=toAction(level);   // HIGH -> REQUIRE_STEPUP (bukan block langsung)
     // challenge step-up
     let reasons=reasonsFrom(top);
+    if(reverifyAfterAway) reasons=[`kembali setelah absen ${Math.round(awayInfo.awayMs/60000)} menit (${awayInfo.reason}) - verifikasi ulang`, ...reasons];
     if(level==='HIGH' && this.challengeTemplate){
       action='REQUIRE_CHALLENGE'; reasons=[...reasons, 'challenge: ketik kata kunci + ritme'];
     }
@@ -296,7 +396,8 @@ class BehaviorGuard {
     const blockAfter=this.cfg.blockAfterConsecutiveHigh || 2;
     let blocked=false;
     if(level==='HIGH' && this._highRun>=blockAfter){ action='BLOCK_SESSION'; blocked=true; }
-    const evt={level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...this.cfg.thresholds}, eligible, modelLevel, modelScore, stickyFloor};
+    const evt={...M, level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...this.cfg.thresholds}, eligible, modelLevel, modelScore, stickyFloor,
+      resumedAfterAway: awayInfo, reverifyAfterAway};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
     this.sessions.push({vector: vec, feat, ts: Date.now(), risk: level, score, eligible});
     // R2: cohort guard jujur - bg:cohort HANYA dari seed penyusup, bukan dari diri sendiri
@@ -431,25 +532,85 @@ class BehaviorGuard {
   }
   async endSession(){
     if(!this.capture) return null;
-    const events=this.capture.drain();
-    if(events.length < this.cfg.session.minEventsAssess) return null;
-    const feat=extractF4(events);
-    const vec=featuresToVector(feat);
-    const duration=(events[events.length-1]?.timestamp||0)-(events[0]?.timestamp||0);
-    const durationSec=duration/1000;
-    const nonZero=Object.values(feat).filter(v=> Math.abs(v)>1e-9).length;
-    const passesGate = events.length>=this.cfg.session.minEventsTrain && durationSec>=this.cfg.session.minDurationSec && nonZero>=this.cfg.session.minNonZeroFeatures;
-    return this._ingestVector(vec, feat, passesGate, events);
+    return this._assessEvents(this.capture.drain(), true);
   }
   async scoreExternalEvents(events){
-    if(!events || events.length < this.cfg.session.minEventsAssess) return null;
+    return this._assessEvents(events||[], false);
+  }
+  /**
+   * C-23: satu jalur penilaian untuk buffer live MAUPUN akumulator `bg:pending`.
+   * Aliran event dipecah pada tiap jeda idle lebih dulu, lalu TIAP segmen kontigu
+   * dinilai sendiri-sendiri. Yang berubah hanya apa yang disuapkan ke `extractF4`;
+   * rumus fiturnya (core/SPEC.md) tidak disentuh, jadi golden tetap 227/227.
+   *
+   * Versi lama: `drain()` dulu MEMBUANG buffer < minEventsAssess tanpa jejak. Dua
+   * akibatnya sekaligus diperbaiki di sini — ekor yang masih hidup dikembalikan ke
+   * buffer supaya bisa tumbuh (bukan dibuang tiap 30 detik), dan jendela yang tak
+   * menghasilkan vonis tidak lagi diam-diam berlalu (lihat `_maybeAbstain`).
+   */
+  async _assessEvents(events, carryBack){
+    const S=this.cfg.session;
+    const gapMs=(S.idleGapSec ?? 30)*1000;
+    const acct=idleAccounting(events, gapMs);
+    const segs=segmentByIdle(events, gapMs);
+    const {assess, carry, dropped}=splitForAssessment(segs, S.minEventsAssess, Date.now(), gapMs);
+    if(carryBack && carry && this.capture){
+      // ekor masih "hidup" (event terakhir belum melewati ambang jeda) -> kembalikan
+      // ke depan buffer supaya terus tumbuh. Panjangnya < minEventsAssess, jadi
+      // spread di sini aman dari stack overflow.
+      try{ this.capture.buffer.unshift(...carry.events); }catch{}
+    }
+    if(!assess.length) return this._maybeAbstain(events, acct, dropped);
+    this._noAssessRuns=0; this._abstainEmitted=false;
+    let last=null;
+    for(const seg of assess) last=await this._assessSegment(seg, acct, segs.length);
+    return last;
+  }
+  async _assessSegment(seg, acct, totalSegments){
+    const S=this.cfg.session;
+    const gapMs=(S.idleGapSec ?? 30)*1000;
+    const events=seg.events;
     const feat=extractF4(events);
     const vec=featuresToVector(feat);
-    const duration=(events[events.length-1]?.timestamp||0)-(events[0]?.timestamp||0);
-    const durationSec=duration/1000;
+    const durationSec=seg.durationMs/1000;     // durasi AKTIF, bukan rentang jam dinding
     const nonZero=Object.values(feat).filter(v=> Math.abs(v)>1e-9).length;
-    const passesGate = events.length>=this.cfg.session.minEventsTrain && durationSec>=this.cfg.session.minDurationSec && nonZero>=this.cfg.session.minNonZeroFeatures;
-    return this._ingestVector(vec, feat, passesGate, events);
+    const passesGate = events.length>=S.minEventsTrain && durationSec>=S.minDurationSec && nonZero>=S.minNonZeroFeatures;
+    const meta={ idle: {
+      activeSec: durationSec,
+      gapBeforeMs: seg.gapBeforeMs,
+      gapClass: classifyGap(seg.gapBeforeMs, gapMs, this.cfg.idle.awaySec*1000),
+      batchIdleMs: acct.idleMs, batchActiveRatio: acct.activeRatio,
+      batchSegments: totalSegments,
+    }};
+    return this._ingestVector(vec, feat, passesGate, events, meta);
+  }
+  /**
+   * C-23: jendela tanpa vonis TIDAK sama dengan jendela aman. Versi lama
+   * mengembalikan `null` diam-diam, sehingga integrator yang menunggu callback
+   * tidak bisa membedakan "sudah diperiksa, aman" dari "tak ada bukti sama sekali"
+   * — dan default diam itu selalu jatuh ke sisi mempercayai. Sekarang diterbitkan
+   * vonis 'UNKNOWN' / action 'ABSTAIN' SEKALI per rentetan idle (bukan tiap
+   * jendela, supaya tab yang ditinggal semalaman tidak membanjiri log).
+   */
+  _maybeAbstain(events, acct, dropped){
+    const I=this.cfg.idle;
+    this._noAssessRuns=(this._noAssessRuns||0)+1;
+    if(!I || !I.emitAbstain || this._abstainEmitted) return null;
+    if(this._noAssessRuns < (I.abstainAfterWindows||4)) return null;
+    this._abstainEmitted=true;
+    const n=events ? events.length : 0;
+    const evt={
+      level:'UNKNOWN', score:null, action:'ABSTAIN', blocked:false, abstain:true,
+      reasons:[ n===0
+        ? 'tidak ada input — halaman kemungkinan ditinggal'
+        : `bukti tidak cukup untuk menilai (${n} event, ambang ${this.cfg.session.minEventsAssess})` ],
+      topFeatures:[], features:null, thresholds:{...this.cfg.thresholds}, eligible:false,
+      idle:{ activeMs:acct.activeMs, idleMs:acct.idleMs, activeRatio:acct.activeRatio,
+             segments:acct.segments, droppedSegments:dropped.length, events:n,
+             windowsWithoutVerdict:this._noAssessRuns }
+    };
+    try{ this.onRisk(evt); }catch{}
+    return evt;   // sengaja TIDAK di-_cloudLog: ini keadaan lokal, bukan vonis akun
   }
   // challenge API
   async setChallenge(samples){ // samples: [{dwell, flight}]
@@ -484,6 +645,9 @@ class BehaviorGuard {
     // pengguna berikutnya di tab yang sama.
     this.sessions=[]; this.stats=null; this.model=null; this.lastRisk='LOW'; this._lowStreak=0;
     this._highRun=0; this.challengeTemplate=null; this._mfaPassedAt=null; this._mfaBusy=false;
+    // C-23: keadaan idle/absen juga milik pengguna lama - jangan diwariskan.
+    this._awayReturn=null; this._hiddenAt=null; this._lastEventAt=Date.now();
+    this._noAssessRuns=0; this._abstainEmitted=false;
     await storage.del(ns(this.userId)); await storage.del('bg:pending');
   }
 }

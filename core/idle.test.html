@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BehaviorGuard — segmentasi idle (C-23)</title>
+<body style="font:13px ui-monospace,Consolas,monospace;padding:18px">
+<h3 style="font-family:system-ui">Segmentasi idle</h3>
+<p style="font-family:system-ui;max-width:62ch;color:#555">
+Mengunci bahwa jeda idle tidak pernah ikut terukur sebagai perilaku: aliran event
+dipecah pada tiap jeda, dan <code>extractF4</code> hanya melihat potongan kontigu.
+Hasil juga ada di <code>window.BG_IDLE_TEST</code>.
+</p>
+<script type="module" src="./idle.test.mjs"></script>
+</body>

@@ -56,9 +56,32 @@ export const DEFAULTS = {
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
-  progressiveMaxPool: 30,
+  // C-22: dinaikkan 30→90. Kolam maks lama = base(10)+30 = 40; dgn d=28 fitur itu
+  // n≈1.4d, kovarians Mahalanobis masih goyah. Kolam lebih besar membuat shrink
+  // adaptif (lihat behaviorguard._rebuildModel) meluruh ke dasar 0.3 → korelasi penuh
+  // kelas riset kembali (deteksi penyusup-mirip membaik) untuk pengguna yang terus pakai.
+  progressiveMaxPool: 90,
   progressiveDupEps: 1e-3,
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30 }
+  // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
+  // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
+  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30 },
+  // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
+  //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
+  //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.
+  //  - reverifyAfterSec (900): absen selama ini -> minta verifikasi ulang walau
+  //    perilaku sesudahnya terlihat LOW. Ini jawaban untuk serangan "jam makan
+  //    siang": pemilik pergi, orang lain duduk di kursi yang sama. 15 menit
+  //    sejajar dengan batas idle-timeout PCI DSS 8.2.8 (di sana itu MAKSIMUM).
+  //  - emitAbstain: jendela yang isinya idle/bukti kurang TIDAK lagi diam-diam
+  //    dianggap aman. Sistem menerbitkan vonis 'UNKNOWN' + action 'ABSTAIN' sekali
+  //    per rentetan idle, supaya integrator tahu bedanya "terverifikasi aman" dan
+  //    "tidak ada bukti apa-apa" (lihat docs/USULAN-KONTEKS-DAN-IDLE.md §2).
+  idle: {
+    awaySec: 300,
+    reverifyAfterSec: 900,
+    emitAbstain: true,
+    abstainAfterWindows: 4,   // 4 x windowSec = ~2 menit tanpa bukti -> ABSTAIN
+  }
 };
 
 // normalisasi bobot otomatis jadi 100%

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bundle.py - bundel SDK ESM (16 file) -> SATU classic-script IIFE (dist/behaviorguard.js)
+bundle.py - bundel SDK ESM (17 file) -> SATU classic-script IIFE (dist/behaviorguard.js)
 Tanpa dependency (nol node/esbuild). Tiap modul dibungkus IIFE sendiri -> nol tabrakan nama.
 Output: <script src> biasa, tanpa type=module, tanpa sub-file, cross-origin ready.
 """
@@ -13,7 +13,7 @@ SDK  = os.path.join(ROOT, "sdk")
 ORDER = [
     "core/config.js", "core/standardize.js", "core/features.js",
     "core/ensemble.js", "core/risk.js", "core/isolation_forest.js",
-    "core/ocsvm.js", "core/mahalanobis.js", "core/capture.js", "core/challenge.js", "core/mfa.js",
+    "core/ocsvm.js", "core/mahalanobis.js", "core/capture.js", "core/idle.js", "core/challenge.js", "core/mfa.js",
     "core/integrity.js", "core/fingerprint.js", "core/lifecycle.js",
     "core/ratelimit.js", "core/token.js", "storage.js",
     "behaviorguard.js",

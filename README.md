@@ -279,7 +279,7 @@ from reading the code:
   audit had fed synthetic events straight past the capture layer.
 
 Each fix is documented with its failure mode, its empirical evidence, and a regression
-test, in [`core/DRIFT.md`](core/DRIFT.md) sections C-1 to C-18.
+test, in [`core/DRIFT.md`](core/DRIFT.md) sections C-1 to C-23.
 
 Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-MODEL.md).
 
@@ -321,7 +321,8 @@ server/       optional hybrid-mode backend and dashboard
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | Measured engine gaps and the C-1..C-18 security audit |
+| [core/DRIFT.md](core/DRIFT.md) | Measured engine gaps and the C-1..C-23 security audit |
+| [docs/USULAN-KONTEKS-DAN-IDLE.md](docs/USULAN-KONTEKS-DAN-IDLE.md) | Idle handling (C-23), the measurement-validity gate, and 20+ cases where the *instrument* changes rather than the person |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 
 ---
