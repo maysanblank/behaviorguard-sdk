@@ -16,10 +16,20 @@
 // untuk membedakan orang; tolak daripada memberi rasa aman palsu.
 export const MIN_DWELL_POINTS = 8;      // ~8 karakter tampak
 const MAD_FLOOR_MS = 3;                 // di bawah ini = derau timer, bukan sinyal
-const MAD_FLOOR_REL = 0.08;             // jitter manusia wajar: 8% dari median
+// C-20: 8% terlalu ketat. Pendaftaran 3-ronde yang konsisten bikin MAD kecil ->
+// toleransi 2.5*8%*median. Variasi ritme pemilik ANTAR-SESI (capek, mood, keyboard
+// lain) gampang tembus itu -> pemilik asli ditolak ~64% (terukur). 12% = jitter
+// manusia antar-sesi yang wajar; FRR turun drastis, FAR tetap ~0 (lihat C-20 DRIFT.md).
+const MAD_FLOOR_REL = 0.12;             // jitter manusia antar-sesi yang wajar
 const MAD_CEIL_REL = 0.50;              // pendaftaran kacau tak boleh bikin toleransi tak terbatas
 const MISS_BUDGET_REL = 0.12;           // porsi posisi yang boleh meleset
 const K_DEFAULT = 2.5;
+// C-20: tempo GLOBAL pemilik geser tiap hari (semua tombol serentak lebih lambat/cepat).
+// Yang membedakan ORANG adalah pola RELATIF antar-posisi, bukan kecepatan absolut.
+// Sebelum banding per-posisi, skala sampel ke tempo template (rasio median). Rasio
+// dijepit [0.5,2.0]: drift pemilik (±20%) terkoreksi penuh, tapi sampel ekstrem
+// (robot/tempel-datar 300ms) tidak bisa "diskalakan pas" jadi tetap ketolak.
+const TEMPO_RATIO_LO = 0.5, TEMPO_RATIO_HI = 2.0;
 
 function isFiniteArray(a, n) {
   if (!Array.isArray(a) || a.length !== n) return false;
@@ -109,14 +119,27 @@ export function verify(sample, tmpl) {
   const push = (label, i, d, lim) =>
     reasons.push(`${label} ${i} ${d.toFixed(1)}>${lim.toFixed(1)}`);
 
+  // C-20: koreksi tempo global sebelum banding per-posisi. Rasio = median template
+  // / median sampel, dijepit [0.5,2.0]. Ini membuang geseran kecepatan antar-sesi
+  // pemilik (penyebab utama FRR tinggi) tanpa menghapus pola relatif yang membedakan
+  // orang. Dijepit supaya sampel bertempo ekstrem tidak bisa diskalakan agar cocok.
+  const clampRatio = (num, den) => {
+    if (!(den > 0) || !Number.isFinite(num)) return 1;
+    return Math.min(Math.max(num / den, TEMPO_RATIO_LO), TEMPO_RATIO_HI);
+  };
+  const rD = clampRatio(medianOf([...tmpl.dwell].sort((a, b) => a - b)),
+                        medianOf([...sample.dwell].sort((a, b) => a - b)));
+  const rF = clampRatio(medianOf([...tmpl.flight].sort((a, b) => a - b)),
+                        medianOf([...sample.flight].sort((a, b) => a - b)));
+
   for (let i = 0; i < nD; i++) {
     const lim = k * tmpl.dwellMad[i];
-    const d = Math.abs(sample.dwell[i] - tmpl.dwell[i]);
+    const d = Math.abs(sample.dwell[i] * rD - tmpl.dwell[i]);
     if (d > lim) push('dwell', i, d, lim);
   }
   for (let i = 0; i < nF; i++) {
     const lim = k * tmpl.flightMad[i];
-    const d = Math.abs(sample.flight[i] - tmpl.flight[i]);
+    const d = Math.abs(sample.flight[i] * rF - tmpl.flight[i]);
     if (d > lim) push('flight', i, d, lim);
   }
 

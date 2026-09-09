@@ -215,9 +215,14 @@
     var i = window.BehaviorGuard && window.BehaviorGuard._instance;
     if (!i || !i.capture) return;
     var n = i.capture.peek().length;
+    // Ambang LAYAK (masuk pendaftaran) = minEventsTrain, bukan minEventsAssess.
+    var perlu = (i.cfg && i.cfg.session && i.cfg.session.minEventsTrain) || 100;
     el('hitung').textContent = 'kejadian tertangkap: ' + n +
-      (n < 100 ? '  (perlu ±100 sebelum sesi dihitung layak)' : '  ✓ cukup');
-    el('akhiri').disabled = n < 30;
+      (n < perlu ? '  (perlu ±' + perlu + ' sebelum sesi dihitung layak)' : '  ✓ cukup');
+    // Tombol dikunci sampai sesi benar-benar LAYAK. Sebelumnya kebuka di 30
+    // (minEventsAssess) → 2 sesi pertama yang pendek diakhiri, dinilai "tidak layak",
+    // dan panel diam di 0/10, bukan naik ke 1/10.
+    el('akhiri').disabled = n < perlu;
   }, 400);
 
   /* ---------- label peran ---------- */

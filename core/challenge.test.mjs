@@ -66,6 +66,19 @@ const r = verify({ dwell: [91, 90, 92, 89, 93, 91, 90, 92, 90, 89, 92, 91],
 check('anggaran meleset dihitung dari jumlah pemeriksaan', r.budget === Math.max(1, Math.floor(0.12 * r.checks)));
 check('jumlah pemeriksaan = dwell + flight', r.checks === 23);
 
+// --- C-20: drift tempo antar-sesi pemilik HARUS lolos, penyusup TETAP ditolak ---
+// Pemilik hari lain: pola relatif sama, tapi seluruh tempo bergeser serentak.
+// Sebelum tambalan tempo-norm + lantai MAD 12%, ini divonis gagal (FRR ~64% terukur).
+const base = { dwell: [91, 90, 92, 89, 93, 91, 90, 92, 90, 89, 92, 91],
+               flight: [140, 143, 145, 138, 146, 142, 141, 144, 142, 143, 140] };
+const scale = (s, f) => ({ dwell: s.dwell.map(x => x * f), flight: s.flight.map(x => x * f) });
+check('C-20 pemilik lebih lambat 18% (drift tempo) -> lolos', verify(scale(base, 1.18), tmpl).ok === true);
+check('C-20 pemilik lebih cepat 20% (drift tempo) -> lolos', verify(scale(base, 0.8), tmpl).ok === true);
+// Penyusup dengan POLA RELATIF beda tidak boleh lolos walau tempo-norm aktif.
+check('C-20 penyusup pola relatif beda -> tetap ditolak',
+  verify({ dwell: [60, 130, 62, 128, 64, 126, 66, 124, 68, 122, 70, 120],
+           flight: [90, 200, 92, 198, 94, 196, 96, 194, 98, 196, 90] }, tmpl).ok === false);
+
 // --- Laporan ---
 const failed = results.filter(r => !r.ok);
 const lines = results.map(r => `  ${r.ok ? 'OK  ' : 'GAGAL'} ${r.name}`).join('\n');
