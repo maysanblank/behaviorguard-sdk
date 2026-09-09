@@ -683,6 +683,95 @@ terhadap data lapangan; ketiganya dibuka sebagai knob `init({session, idle})`.
 
 ---
 
+## C-24 · Panjang sesi yang berubah terbaca sebagai identitas yang berubah
+
+**Ditemukan saat mengukur C-23, bukan dilaporkan.** Ablasi C-23 memakai lengan KONTROL —
+sesi bersih yang dipotong di titik yang sama, tanpa jeda apa pun. Kontrol itu yang
+membongkarnya: |z| fitur-cacah naik **0,96 → 2,02** hanya karena sesinya lebih pendek.
+Tanpa lengan kontrol, kenaikan itu akan salah dibaca sebagai ongkos segmentasi C-23.
+
+**Akar.** Sembilan dari 28 fitur adalah **hitungan mentah** — `mouse_direction_changes`,
+`mouse_pause_count`, `keystroke_burst_count`, `temporal_activity_bursts`, `nav_page_count`,
+`nav_step_transition_count`, `form_focus_count`, `form_blur_count`, `cart_action_count` —
+yang ikut membesar bersama panjang sesi. Akibatnya **setiap** perubahan panjang sesi
+terbaca sebagai perubahan identitas. Ini lebih tua dari idle dan menyentuh hampir semua
+kasus di `docs/USULAN-KONTEKS-DAN-IDLE.md` §4 yang mengubah panjang sesi.
+
+**Dua jalan, dan kenapa yang kedua dipilih.**
+(a) Ubah rumusnya jadi laju (`cacah / durasi_aktif`) → SPEC v1.3, regenerasi golden,
+sinkron empat port, dan **semua angka lama kehilangan reprodusibilitasnya**.
+(b) Buat panjangnya KONSTAN, sehingga cacahan otomatis sebanding → **nol baris rumus
+fitur yang berubah**. Dipilih (b), alasan yang sama dengan C-23: perbaikan ditaruh di
+lapisan sesionisasi, bukan lapisan fitur.
+
+Di bawah jendela kanonik, cacahan berubah makna jadi **komposisi** ("dari K event, berapa
+yang klik") dan `temporal_session_duration` jadi **kecepatan** ("berapa lama menghasilkan
+K event") — keduanya justru lebih biometrik daripada "sesinya kebetulan sepanjang apa".
+Syarat mutlak: dipakai di **pendaftaran DAN penilaian**, kalau tidak kita cuma menukar
+satu ketidakcocokan latih-vs-pakai dengan yang lain.
+
+**Tiga knob, SEMUANYA default mati** (`session.canonicalWindow: 0`, `aggregateWindows: 1`,
+`calibrationHoldout: 0`) sehingga jalur lama tak tersentuh dan angka headline tetap sah.
+
+**Terukur** (`tools/idle_ablation.py --canonical 120`, 19 subjek, 482.203 event mentah;
+rata-rata |z| terhadap baseline pemilik):
+
+| Lengan | fitur-WAKTU | fitur-CACAH | fitur-BENTUK |
+|---|---:|---:|---:|
+| Bersih, sesi utuh | 0,83 | 1,00 | 1,90 |
+| Kontrol: dipotong saja | 0,84 | **1,01** | 1,90 |
+| Bergap, tanpa segmentasi | 8,41 | 1,00 | 1,91 |
+| Bergap + segmentasi (C-23) | 0,84 | **1,00** | 1,89 |
+
+Bandingkan dengan tabel C-23 (tanpa kanonikalisasi): kolom fitur-CACAH di sana 0,95 vs
+**2,02**. Di sini keempat lengan berhimpit di 1,00 — **invariansi pulih penuh**. Kolom
+fitur-WAKTU membuktikan keduanya diperlukan: kanonikalisasi sendirian tidak menyembuhkan
+idle (8,41), segmentasi sendirian tidak menyembuhkan panjang sesi.
+
+**Agregasi bukti.** Jendela yang lebih pendek berarti bukti lebih sedikit per vonis.
+Jawabannya bukan melonggarkan ambang — itu memindahkan kesalahan ke sisi FAR — melainkan
+menunda vonis sampai M jendela terkumpul lalu memvonis rata-ratanya. Yang ditukar
+**latensi dengan keyakinan**, bukan FRR dengan FAR:
+
+| M | AUC | FAR | catatan |
+|---:|---:|---:|---|
+| 1 | 0,770 | 25,0% | vonis per jendela |
+| 2 | 0,789 | 16,9% | |
+| 3 | 0,808 | 12,9% | |
+| 5 | 0,829 | 9,4% | |
+
+Jalan pintas yang menggoda — rapatkan ambang sebesar `std/sqrt(M)` — **salah, dan salahnya
+searah**: jendela berurutan dari sesi yang sama berkorelasi, jadi sebaran nyatanya lebih
+lebar dan ambangnya jadi terlalu rapat. Diuji: koreksi analitik itu meninggalkan FRR di
+46,5%. Yang benar adalah mengagregasi skor LATIH dengan cara yang persis sama lalu
+mengkalibrasi di atasnya, sehingga korelasinya ikut terbawa tanpa perlu diasumsikan.
+
+**Kalibrasi ambang di luar sampel.** Ternyata sisa FRR bukan soal korelasi, melainkan
+`_rebuildModel` mengkalibrasi ambang dari skor vektor yang **persis dipakai memfit**
+detektor. Skor in-sample selalu optimistik, ambang jadi terlalu rapat, dan sesi pemilik
+berikutnya jatuh di luarnya — **mekanisme yang sama persis dengan C-22**, satu lapis lebih
+tinggi. Menyisihkan 30% kolam khusus untuk kalibrasi: **FRR 46,5% → 27,8%, EER 32,9% →
+28,6%** (AUC tetap, karena kalibrasi menggeser titik operasi, bukan daya pisah).
+
+**Yang WAJIB dijujurkan.** Ketiga knob terbukti **arahnya**, bukan **titik operasinya**.
+Pada harness ablasi, EER kanonik (~28–33%) masih jauh di bawah EER 11,9% protokol
+sesi-utuh yang dilaporkan `config.js`. Sebagian karena harness ablasi memang longgar
+(lihat catatan batas di skripnya), sebagian karena jendela 120 event memang membawa bukti
+lebih sedikit daripada sesi ~600 event. **Karena itu ketiganya default mati.** Sebelum
+angkanya dikutip di skripsi, jalankan ulang dengan protokol held-out `reproduce_db.py`.
+
+Pertukaran yang sebenarnya: kanonikalisasi menukar **daya pisah puncak** dengan
+**invariansi**. Perhatikan lengan bersih tanpa kanonikalisasi AUC 0,810, tapi begitu
+panjang sesinya berubah ia jatuh ke 0,636; dengan kanonikalisasi ia bertahan di
+0,742–0,746 di SEMUA lengan. Dan karena di produksi sesi memang berupa jendela 30 detik —
+tidak pernah sesi riset utuh — rezim yang invarian itulah yang cocok dengan penyebaran.
+
+**Uji:** `core/invariance.test.mjs` 26/26, dengan uji pertama mengunci bahwa default
+tidak mengubah apa pun. Bukti invariansi di sana: pergeseran fitur-cacah akibat masukan
+500 vs 260 event turun dari **117,0 → 1,0**.
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
@@ -699,6 +788,7 @@ terhadap data lapangan; ketiganya dibuka sebagai knob `init({session, idle})`.
 | Sinkron sdk↔extension | `tools/sync_core.ps1` | identik, exit 0 |
 | Segmentasi idle C-23 | `core/idle.test.mjs` / `.html` | 33/33 SESUAI |
 | Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
+| Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu

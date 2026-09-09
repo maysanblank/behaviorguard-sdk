@@ -64,7 +64,7 @@ export const DEFAULTS = {
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30 },
+  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.
@@ -81,7 +81,43 @@ export const DEFAULTS = {
     reverifyAfterSec: 900,
     emitAbstain: true,
     abstainAfterWindows: 4,   // 4 x windowSec = ~2 menit tanpa bukti -> ABSTAIN
-  }
+  },
+  // === C-24: INVARIANSI PANJANG SESI (ketiganya OPT-IN, default = perilaku lama) ===
+  // Ablasi C-23 memunculkan cacat yang lebih tua dari idle: 9 dari 28 fitur adalah
+  // hitungan mentah yang membesar bersama panjang sesi, jadi SETIAP perubahan panjang
+  // terbaca sebagai perubahan identitas. Terukur: |z| fitur-cacah 0,96 -> 2,02 hanya
+  // karena sesi dipotong separuh, tanpa jeda apa pun.
+  //
+  // Ada dua cara memperbaiki. (a) ubah rumusnya jadi laju -> SPEC v1.3, regenerasi
+  // golden, sinkron 4 port, dan semua angka lama kehilangan reprodusibilitas.
+  // (b) buat panjangnya KONSTAN, sehingga cacahan otomatis sebanding — nol baris
+  // rumus fitur yang berubah. Yang dipilih (b).
+  //
+  // canonicalWindow (K event): tiap segmen kontigu dipotong jadi jendela K event.
+  //   Cacahan berubah makna jadi KOMPOSISI ("dari K event, berapa yang klik") dan
+  //   temporal_session_duration jadi KECEPATAN ("berapa lama menghasilkan K event") —
+  //   keduanya lebih biometrik daripada "sesinya kebetulan sepanjang apa".
+  //   WAJIB dipakai di pendaftaran DAN penilaian, kalau tidak cuma menukar satu
+  //   ketidakcocokan latih-vs-pakai dengan yang lain.
+  //   Terukur (K=120, tools/idle_ablation.py): |z| fitur-cacah pemilik-dipotong
+  //   2,02 -> 1,01, yaitu sama persis dengan sesi utuh. Invariansi pulih penuh.
+  //
+  // aggregateWindows (M): jendela pendek lebih lemah per-vonis, jadi bukti M jendela
+  //   dikumpulkan sebelum divonis. Ini menukar LATENSI dengan KEYAKINAN, bukan FRR
+  //   dengan FAR. Terukur: AUC 0,770 (M=1) -> 0,789 -> 0,808 -> 0,829 (M=5).
+  //
+  // calibrationHoldout: porsi kolam yang disisihkan KHUSUS untuk mengkalibrasi ambang.
+  //   `_rebuildModel` mengkalibrasi dari skor vektor yang persis dipakai memfit;
+  //   skor in-sample selalu optimistik, jadi ambangnya terlalu rapat dan sesi PEMILIK
+  //   berikutnya jatuh di luarnya. Pola yang sama sudah menghantam proyek ini di C-22.
+  //   Terukur (K=120, M=3): FRR 46,5% -> 27,8%, EER 32,9% -> 28,6%.
+  //
+  // SEMUANYA DEFAULT MATI. Angka di atas dari harness ablasi, BUKAN dari protokol
+  // held-out reproduce_db.py — arahnya sudah terbukti, titik operasinya belum dituning.
+  // Nyalakan lewat init({session:{canonicalWindow:120}, aggregateWindows:3, ...}) lalu
+  // ukur ulang dengan protokol yang sah sebelum angkanya dikutip.
+  aggregateWindows: 1,
+  calibrationHoldout: 0,
 };
 
 // normalisasi bobot otomatis jadi 100%

@@ -11,6 +11,10 @@ yang berubah adalah *alat ukurnya*, bukan *orangnya*. Dokumen ini memuat perbaik
 jalan, angka ukurnya, katalog kasus sejenis, dan satu mekanisme umum yang diusulkan untuk
 menanganinya sekaligus.
 
+Menelusuri idle juga memunculkan cacat yang **lebih tua dari idle**: panjang sesi yang
+berubah-ubah terbaca sebagai identitas yang berubah. Itu pun sudah diselesaikan, dan tanpa
+menyentuh SPEC (§3b, C-24).
+
 ---
 
 ## 1. Kenapa idle merusak
@@ -125,14 +129,15 @@ Cara membaca:
   Artinya kenaikan itu **bukan ongkos segmentasi**, melainkan efek "sesi jadi lebih pendek"
   yang sudah ada dengan atau tanpa idle. Kontrol inilah yang mencegah salah baca.
 
-**Temuan turunan (usulan Tahap 2).** Sembilan dari 28 fitur adalah **cacahan mentah** —
+**Temuan turunan — SUDAH DISELESAIKAN, lihat §3b.** Sembilan dari 28 fitur adalah **cacahan mentah** —
 `mouse_direction_changes`, `mouse_pause_count`, `form_focus_count`, `nav_page_count`,
 `cart_action_count`, dan seterusnya — yang ikut membesar bersama panjang sesi. Akibatnya
 **setiap perubahan panjang sesi terbaca sebagai perubahan identitas**. Ini masalah yang
 berdiri sendiri, lebih tua dari idle, dan menyentuh setiap kasus di §4 yang mengubah panjang
-sesi. Perbaikannya: normalisasi laju (`cacah / durasi_aktif`). Karena itu menyentuh
-`core/SPEC.md`, ia perlu versi SPEC baru + regenerasi golden + sinkron empat port — pekerjaan
-terpisah yang sebaiknya tidak dicampur ke C-23.
+sesi. Perbaikan yang jelas adalah normalisasi laju (`cacah / durasi_aktif`) — tapi itu
+menyentuh `core/SPEC.md`, jadi perlu versi SPEC baru + regenerasi golden + sinkron empat
+port, dan semua angka lama kehilangan reprodusibilitasnya. **Ternyata ada jalan yang
+menghindari semua ongkos itu; lihat §3b.**
 
 > **Batas yang wajib disebut kalau angka ini dikutip.** FRR/FAR absolut dari
 > `idle_ablation.py` **bukan** angka headline skripsi: modelnya dibangun dari 10 sesi
@@ -141,6 +146,90 @@ terpisah yang sebaiknya tidak dicampur ke C-23.
 > lengan memakai model dan ambang identik. Jeda juga disuntik sintetis dengan asumsi pengguna
 > melanjutkan perilaku yang sama sesudah kembali; ini mengisolasi efek **waktu**, dan bukan
 > pengganti uji lapangan.
+
+---
+
+## 3b. Menyelesaikannya tanpa menyentuh SPEC (C-24)
+
+Perbaikan yang jelas untuk §3 adalah mengubah rumusnya jadi laju. Ongkosnya berat: SPEC
+v1.3, regenerasi golden, sinkron empat port, dan **semua angka lama kehilangan
+reprodusibilitasnya**. Ada jalan kedua yang menghindari semuanya.
+
+**Masalahnya bukan rumusnya, tapi panjangnya yang berubah-ubah.** Jadi jangan ubah rumus —
+**samakan panjangnya.** Tiap segmen kontigu dipotong jadi **jendela kanonik** berukuran
+tetap K event. Cacahan otomatis sebanding, tanpa satu baris pun rumus fitur berubah.
+
+Di bawah jendela kanonik, fiturnya bahkan berubah makna menjadi lebih baik:
+
+- cacahan → **komposisi**: "dari K event, berapa yang klik"
+- `temporal_session_duration` → **kecepatan**: "berapa lama menghasilkan K event"
+
+Keduanya lebih biometrik daripada "sesinya kebetulan sepanjang apa". Syarat mutlaknya:
+dipakai di **pendaftaran DAN penilaian** — kalau hanya salah satu, kita cuma menukar satu
+ketidakcocokan latih-vs-pakai dengan yang lain.
+
+**Hasil** (`tools/idle_ablation.py --canonical 120`, rata-rata |z|):
+
+| Lengan | fitur-WAKTU | fitur-CACAH | fitur-BENTUK |
+|---|---:|---:|---:|
+| Bersih, sesi utuh | 0,83 | 1,00 | 1,90 |
+| Kontrol: dipotong saja | 0,84 | **1,01** | 1,90 |
+| Bergap, tanpa segmentasi | 8,41 | 1,00 | 1,91 |
+| Bergap + segmentasi (C-23) | 0,84 | **1,00** | 1,89 |
+
+Bandingkan kolom fitur-CACAH dengan tabel §3 (0,95 vs **2,02**). Di sini keempat lengan
+berhimpit di 1,00 — **invariansi pulih penuh**. Dan kolom fitur-WAKTU membuktikan kedua
+perbaikan ini saling melengkapi, bukan menggantikan: kanonikalisasi sendirian tidak
+menyembuhkan idle (8,41), segmentasi sendirian tidak menyembuhkan panjang sesi.
+
+### Dua konsekuensi yang menyusul, dan penyelesaiannya
+
+**(i) Jendela pendek = bukti lebih sedikit per vonis.** Godaannya adalah melonggarkan
+ambang, tapi itu cuma memindahkan kesalahan ke sisi FAR. Yang benar: **kumpulkan bukti M
+jendela lalu vonis rata-ratanya** — menukar **latensi dengan keyakinan**, bukan FRR dengan
+FAR. Terukur: AUC 0,770 (M=1) → 0,789 → 0,808 → **0,829** (M=5), FAR 25,0% → **9,4%**.
+
+Satu jebakan yang layak dicatat di skripsi: jalan pintas analitik "rapatkan ambang sebesar
+`std/√M`" **salah, dan salahnya searah**. Rumus itu mengandaikan jendela saling bebas,
+padahal jendela berurutan dari sesi yang sama berkorelasi — sebaran nyatanya lebih lebar,
+ambangnya jadi terlalu rapat, dan pemilik yang ditolak (diuji: FRR tertahan di 46,5%).
+Yang benar adalah **mengagregasi skor latih dengan cara yang persis sama** lalu
+mengkalibrasi di atasnya, sehingga korelasinya ikut terbawa tanpa perlu diasumsikan.
+
+**(ii) Ambang dikalibrasi di dalam sampel.** Setelah (i) diperbaiki FRR ternyata masih
+tinggi, dan akarnya lebih mendasar: `_rebuildModel` mengkalibrasi ambang dari skor vektor
+yang **persis dipakai memfit** detektornya. Skor in-sample selalu optimistik — model memang
+dipas-paskan ke titik-titik itu — jadi ambangnya terlalu rapat dan sesi pemilik berikutnya
+jatuh di luarnya. **Ini mekanisme yang sama persis dengan C-22**, satu lapis lebih tinggi.
+Menyisihkan 30% kolam khusus untuk kalibrasi: **FRR 46,5% → 27,8%, EER 32,9% → 28,6%**.
+
+### Apa yang dikirim, dan apa yang belum
+
+Ketiganya sudah terpasang di SDK sebagai knob, **semuanya default MATI**:
+
+```js
+BehaviorGuard.init({
+  userId: 'andi@contoh.id',
+  session: { canonicalWindow: 120 },   // 0 = mati (default)
+  aggregateWindows: 3,                 // 1 = mati (default)
+  calibrationHoldout: 0.3,             // 0 = mati (default)
+});
+```
+
+Default mati bukan sikap malu-malu, melainkan syarat kejujuran: kalau default berubah,
+seluruh angka headline di `config.js` kehilangan reprodusibilitasnya dalam satu commit.
+
+**Yang wajib dijujurkan.** Ketiganya terbukti **arahnya**, bukan **titik operasinya**. Pada
+harness ablasi, EER kanonik (~28–33%) masih jauh di bawah EER 11,9% protokol sesi-utuh.
+Sebagian karena harness ablasi memang longgar, sebagian karena jendela 120 event memang
+membawa bukti lebih sedikit daripada sesi ~600 event. **Sebelum angkanya dikutip di
+skripsi, jalankan ulang dengan protokol held-out `reproduce_db.py`.**
+
+Pertukaran sesungguhnya: kanonikalisasi menukar **daya pisah puncak** dengan
+**invariansi**. Lengan bersih tanpa kanonikalisasi mencapai AUC 0,810 — tapi begitu panjang
+sesinya berubah ia jatuh ke 0,636. Dengan kanonikalisasi ia bertahan di 0,742–0,746 di
+**semua** lengan. Dan karena di produksi sesi memang berupa jendela 30 detik, tidak pernah
+sesi riset utuh, rezim yang invarian itulah yang cocok dengan kondisi penyebaran.
 
 ---
 
@@ -288,7 +377,8 @@ Dua metrik ini yang membuat pembahasan idle naik dari "tambalan bug" jadi kontri
 | Tahap | Isi | Menyentuh SPEC? | Status |
 |---|---|---|---|
 | **1** | Segmentasi idle, dua ambang absen, ABSTAIN | Tidak | **Selesai, teruji** |
-| **2** | Normalisasi laju fitur-CACAH (§3) + normalisasi skala kecepatan (B2) | **Ya** — SPEC v1.3 + regenerasi golden + sinkron 4 port | Diusulkan |
+| **2** | Invariansi panjang sesi: jendela kanonik + agregasi bukti + kalibrasi luar-sampel (§3b) | **Tidak** — jalur alternatif yang menghindari SPEC v1.3 | **Selesai, teruji, default mati** |
+| **2b** | Normalisasi skala kecepatan bebas-DPI (B2) | Bisa di lapisan capture, tanpa SPEC | Diusulkan |
 | **3** | Kunci konteks + baseline per konteks (B1/B4/B6) dengan pendaftaran terpisah | Tidak (lapisan siklus hidup) | Diusulkan |
 | **4** | Generalisasi ABSTAIN (D1, B3, B5) + metrik cakupan & waktu-ke-deteksi | Tidak | Diusulkan |
 
@@ -319,7 +409,13 @@ Dua metrik ini yang membuat pembahasan idle naik dari "tambalan bug" jadi kontri
 5. Ablasinya memunculkan **temuan turunan**: 9 dari 28 fitur adalah cacahan mentah yang
    membesar bersama panjang sesi, jadi setiap perubahan panjang sesi terbaca sebagai
    perubahan identitas. Itu masalah yang lebih tua dari idle dan jadi usulan Tahap 2.
-6. Idle ternyata anggota pertama dari satu kelas: **kapan yang berubah alat ukurnya, bukan
+6. Temuan itu **sudah diselesaikan juga**, dan tanpa menyentuh SPEC (§3b): masalahnya bukan
+   rumusnya melainkan panjangnya yang berubah-ubah, jadi panjangnya yang disamakan
+   (**jendela kanonik**). |z| fitur-cacah 2,02 → **1,01**, sama persis dengan sesi utuh.
+   Dua konsekuensinya juga ditutup: agregasi bukti M jendela (AUC 0,770 → 0,829) dan
+   kalibrasi ambang di luar sampel (FRR 46,5% → 27,8%, akarnya ternyata C-22 lagi).
+   Semuanya **default mati** — arahnya terbukti, titik operasinya belum dituning.
+7. Idle ternyata anggota pertama dari satu kelas: **kapan yang berubah alat ukurnya, bukan
    orangnya** (§4, 20+ kasus). Usulnya satu mekanisme untuk semuanya — gerbang validitas
    pengukuran dengan keluaran ke-4 **ABSTAIN**, karena sistem biometrik yang boleh berkata
    "saya tidak tahu" lebih jujur dan lebih aman daripada yang menebak.
@@ -335,5 +431,6 @@ Dua metrik ini yang membuat pembahasan idle naik dari "tambalan bug" jadi kontri
 | `sdk/behaviorguard.js` | Pelacak kehadiran, kebijakan kembali-dari-absen, ABSTAIN |
 | `core/idle.test.mjs` / `.html` | 33 uji modul + bukti angka §1.1 |
 | `core/idle.live.test.mjs` | 20 uji jalur penuh orkestrator |
+| `core/invariance.test.mjs` / `.html` | 26 uji C-24; uji pertama mengunci "default tidak mengubah apa pun" |
 | `tools/idle_ablation.py` | Ablasi §3 pada basis data riset |
-| `core/DRIFT.md` § C-23 | Catatan cacat dalam format audit repo ini |
+| `core/DRIFT.md` § C-23, C-24 | Catatan cacat dalam format audit repo ini |

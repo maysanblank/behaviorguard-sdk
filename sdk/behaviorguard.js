@@ -28,7 +28,7 @@ const ns = id => `bg:${id}`;
 
 class BehaviorGuard {
   constructor(){ this.cfg=structuredClone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
-  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa, session, idle}={}){
+  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa, session, idle, aggregateWindows, calibrationHoldout}={}){
     if(!userId) throw new Error('BehaviorGuard.init: userId wajib');
     this.userId=userId; this.onRisk=onRisk||(()=>{});
     // HYBRID cloud mode: baseline per tenant+userId hidup di VPS (lintas-device),
@@ -48,6 +48,9 @@ class BehaviorGuard {
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
     if(session && typeof session==='object') this.cfg.session={...this.cfg.session, ...session};
     if(idle && typeof idle==='object') this.cfg.idle={...this.cfg.idle, ...idle};
+    // C-24: ketiga knob invariansi panjang sesi. Default 0/1 = perilaku lama persis.
+    if(Number.isFinite(aggregateWindows)) this.cfg.aggregateWindows=aggregateWindows;
+    if(Number.isFinite(calibrationHoldout)) this.cfg.calibrationHoldout=calibrationHoldout;
     // fingerprint + secret + token (HMAC)
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
     try{ this.secret=await getOrCreateSecret(userId); this.token=await generateToken({secret:this.secret, userId}); }catch{}
@@ -208,8 +211,19 @@ class BehaviorGuard {
   _rebuildModel(){
     const vecs=this._trainingVectors();
     if(!vecs.length) return;
-    this.stats=computeStats(vecs);
-    const Xstd=standardizeBatch(vecs, this.stats);
+    // C-24 (opt-in): sisihkan EKOR kolam khusus untuk mengkalibrasi ambang.
+    // Versi lama mengkalibrasi dari skor vektor yang PERSIS dipakai memfit detektor.
+    // Skor in-sample selalu optimistik — model memang dipas-paskan ke titik-titik itu —
+    // sehingga ambangnya terlalu rapat dan sesi PEMILIK berikutnya, yang di luar
+    // sampel, jatuh di luar ambang. Bukan teori: itu persis mekanisme C-22.
+    // calibrationHoldout=0 (default) -> cut=vecs.length -> jalur lama, tak tersentuh.
+    const hold=this.cfg.calibrationHoldout||0;
+    let cut=vecs.length;
+    if(hold>0){ const c=Math.floor(vecs.length*(1-hold)); if(c>=8 && vecs.length-c>=4) cut=c; }
+    const fitVecs=vecs.slice(0,cut);
+    const calibVecs=cut<vecs.length ? vecs.slice(cut) : null;
+    this.stats=computeStats(fitVecs);
+    const Xstd=standardizeBatch(fitVecs, this.stats);
     const iff=new IsolationForest(this.cfg.iforest);
     iff.fit(Xstd);
     // detektor-2: Mahalanobis (default) atau centroid lama (cfg.model2)
@@ -224,19 +238,36 @@ class BehaviorGuard {
     // `cfg.mahalanobis.shrink` langsung, jadi tak tersentuh. Lihat core/DRIFT.md C-22.
     const baseShrink=this.cfg.mahalanobis.shrink;
     const nfe=this.cfg.features.length;
-    const adaptShrink=Math.min(0.9, Math.max(baseShrink, nfe/Math.max(1,vecs.length)));
+    const adaptShrink=Math.min(0.9, Math.max(baseShrink, nfe/Math.max(1,fitVecs.length)));
     const det2=(this.cfg.model2||'mahalanobis')==='mahalanobis'
       ? new Mahalanobis({ shrink: adaptShrink, n_features: nfe })
       : new OCSVM({...this.cfg.ocsvm, n_features: nfe});
     det2.fit(Xstd);
-    const ens=new Ensemble(iff, det2, this.cfg.weights, vecs.length);
-    ens.calibrate(Xstd, vecs.length);
+    const ens=new Ensemble(iff, det2, this.cfg.weights, fitVecs.length);
+    ens.calibrate(Xstd, fitVecs.length);
     this.model=ens;
+    this._aggThresholds=null;
     if(this.cfg.calibrateThresholds){
-      const baseScores=Xstd.map(x=> ens.scoreOne(x));
-      this.cfg.thresholds=(this.cfg.calibrationMode||'parametric')==='parametric'
-        ? calibrateThresholdsParametric(baseScores, this.cfg.k_low, this.cfg.k_med_extra)
-        : calibrateThresholds(baseScores, this.cfg.q_low, this.cfg.q_med);
+      const src = calibVecs ? standardizeBatch(calibVecs, this.stats) : Xstd;
+      const baseScores=src.map(x=> ens.scoreOne(x));
+      const parametric=(this.cfg.calibrationMode||'parametric')==='parametric';
+      const calib = arr => parametric
+        ? calibrateThresholdsParametric(arr, this.cfg.k_low, this.cfg.k_med_extra)
+        : calibrateThresholds(arr, this.cfg.q_low, this.cfg.q_med);
+      this.cfg.thresholds=calib(baseScores);
+      // C-24 (opt-in): ambang untuk vonis AGREGAT dikalibrasi dari skor baseline yang
+      // diagregasi dengan cara yang PERSIS sama. Jalan pintas analitik — rapatkan
+      // ambang sebesar std/sqrt(M) — salah, dan salahnya searah: jendela berurutan
+      // berkorelasi, jadi sebaran nyatanya lebih lebar dari yang diandaikan, ambang
+      // jadi terlalu rapat, dan pemilik yang ditolak. Mengagregasi data latihnya
+      // sendiri membawa korelasi itu ikut serta tanpa perlu diasumsikan.
+      const AGG=this.cfg.aggregateWindows|0;
+      if(AGG>1 && baseScores.length>=AGG){
+        const agg=[];
+        for(let i=0;i+AGG<=baseScores.length;i++)
+          agg.push(baseScores.slice(i,i+AGG).reduce((x,y)=>x+y,0)/AGG);
+        this._aggThresholds=calib(agg);
+      }
     }
   }
   // ===== HYBRID cloud (baseline per tenant+userId di VPS; event mentah tak keluar) =====
@@ -338,7 +369,33 @@ class BehaviorGuard {
       try{ this.onRisk(badEvt); }catch{}
       return badEvt;
     }
-    let level=toRisk(score, this.cfg.thresholds);
+    // C-24 (opt-in): AGREGASI BUKTI. Jendela kanonik lebih pendek dari sesi utuh,
+    // jadi tiap vonis berdiri di atas bukti yang lebih sedikit dan lebih berisik.
+    // Jawabannya bukan melonggarkan ambang — itu cuma memindahkan kesalahan ke sisi
+    // FAR — melainkan menunda vonis sampai M jendela terkumpul, lalu memvonis
+    // rata-ratanya. Yang ditukar LATENSI dengan KEYAKINAN, bukan FRR dengan FAR:
+    // terukur AUC 0,770 (M=1) -> 0,829 (M=5) pada harness ablasi.
+    // Selama bukti belum cukup, sistem menerbitkan 'PENDING' — bukan diam, karena
+    // diam selalu dibaca aman (alasan yang sama dengan ABSTAIN di C-23).
+    const AGG=this.cfg.aggregateWindows|0;
+    let aggMembers=null;
+    if(AGG>1){
+      (this._aggBuf=this._aggBuf||[]).push({score, vec, feat});
+      if(this._aggBuf.length < AGG){
+        const pend={...M, level:'UNKNOWN', score, action:'PENDING', blocked:false,
+          reasons:[`mengumpulkan bukti ${this._aggBuf.length}/${AGG} jendela`],
+          topFeatures:[], features:feat, thresholds:{...this.cfg.thresholds},
+          eligible, aggregating:{have:this._aggBuf.length, need:AGG}};
+        this._cloudLog(pend);
+        try{ this.onRisk(pend); }catch{}
+        return pend;
+      }
+      aggMembers=this._aggBuf; this._aggBuf=[];
+      score=aggMembers.reduce((a,b)=>a+b.score,0)/aggMembers.length;
+    }
+    // Ambang agregat dipakai HANYA kalau vonisnya memang agregat.
+    const usedThresholds = (aggMembers && this._aggThresholds) ? this._aggThresholds : this.cfg.thresholds;
+    let level=toRisk(score, usedThresholds);
     // C-23 (sisi KEAMANAN dari idle). Segmentasi sudah menangani sisi PENGUKURAN;
     // yang ini menangani akibat yang berbeda: selama kursi kosong, orang lain bisa
     // duduk di sesi yang SUDAH terautentikasi ("serangan jam makan siang"). Karena
@@ -396,10 +453,15 @@ class BehaviorGuard {
     const blockAfter=this.cfg.blockAfterConsecutiveHigh || 2;
     let blocked=false;
     if(level==='HIGH' && this._highRun>=blockAfter){ action='BLOCK_SESSION'; blocked=true; }
-    const evt={...M, level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...this.cfg.thresholds}, eligible, modelLevel, modelScore, stickyFloor,
-      resumedAfterAway: awayInfo, reverifyAfterAway};
+    const evt={...M, level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...usedThresholds}, eligible, modelLevel, modelScore, stickyFloor,
+      resumedAfterAway: awayInfo, reverifyAfterAway,
+      // topFeatures/features berasal dari jendela TERAKHIR; skornya dari rata-rata M.
+      aggregated: aggMembers ? {windows: aggMembers.length} : null};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
-    this.sessions.push({vector: vec, feat, ts: Date.now(), risk: level, score, eligible});
+    // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu —
+    // kalau hanya yang terakhir yang disimpan, kolam latih tumbuh M kali lebih lambat.
+    for(const m of (aggMembers || [{vec, feat}]))
+      this.sessions.push({vector: m.vec, feat: m.feat, ts: Date.now(), risk: level, score, eligible});
     // R2: cohort guard jujur - bg:cohort HANYA dari seed penyusup, bukan dari diri sendiri
     // Jika kosong, fallback window-only dan JANGAN klaim cohort-guarded
     const trainVecs=this._trainingVectors();
@@ -563,8 +625,30 @@ class BehaviorGuard {
     if(!assess.length) return this._maybeAbstain(events, acct, dropped);
     this._noAssessRuns=0; this._abstainEmitted=false;
     let last=null;
-    for(const seg of assess) last=await this._assessSegment(seg, acct, segs.length);
+    // C-24 (opt-in): pecah tiap segmen jadi jendela KANONIK berukuran tetap K event.
+    // Cacahan mentah (9 dari 28 fitur) membesar bersama panjang sesi, jadi panjang
+    // yang berubah-ubah terbaca sebagai identitas yang berubah. Menyamakan panjangnya
+    // memperbaiki itu tanpa menyentuh satu baris pun rumus fitur di core/SPEC.md.
+    for(const seg of assess){
+      for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, segs.length);
+    }
     return last;
+  }
+  // C-24: [segmen] -> [jendela K event]. K=0 (default) mengembalikan segmen apa
+  // adanya, jadi jalur lama tidak tersentuh. Sisa < K di ekor DIBUANG di sini —
+  // ia tetap aman karena `splitForAssessment` sudah lebih dulu mengembalikan ekor
+  // yang masih hidup ke buffer, jadi yang dibuang hanya sisa yang memang mati.
+  _canonicalize(seg){
+    const K=this.cfg.session.canonicalWindow|0;
+    if(K<=0 || seg.events.length<K) return [seg];
+    const out=[];
+    for(let i=0;i+K<=seg.events.length;i+=K){
+      const evs=seg.events.slice(i,i+K);
+      out.push({ events:evs, startTs:evs[0].timestamp, endTs:evs[evs.length-1].timestamp,
+                 durationMs:(evs[evs.length-1].timestamp||0)-(evs[0].timestamp||0),
+                 gapBeforeMs: i===0 ? seg.gapBeforeMs : 0 });
+    }
+    return out;
   }
   async _assessSegment(seg, acct, totalSegments){
     const S=this.cfg.session;
@@ -648,6 +732,7 @@ class BehaviorGuard {
     // C-23: keadaan idle/absen juga milik pengguna lama - jangan diwariskan.
     this._awayReturn=null; this._hiddenAt=null; this._lastEventAt=Date.now();
     this._noAssessRuns=0; this._abstainEmitted=false;
+    this._aggBuf=[]; this._aggThresholds=null;   // C-24: bukti separuh terkumpul milik pengguna lama
     await storage.del(ns(this.userId)); await storage.del('bg:pending');
   }
 }

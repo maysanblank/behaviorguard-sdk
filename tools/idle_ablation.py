@@ -123,6 +123,37 @@ def vec_of(events):
     return bg.features_to_vector(bg.extract_features(events))
 
 
+def canonical_windows(events, k):
+    """USULAN TAHAP 2 — jendela KANONIK: tiap segmen kontigu dipotong jadi jendela
+    berukuran TETAP k event. Sisa di ekor dibuang (di SDK: dikembalikan ke buffer).
+
+    Kenapa ini menyelesaikan masalah fitur-CACAH tanpa menyentuh SPEC. Sembilan
+    fitur adalah hitungan mentah yang membesar bersama panjang sesi, jadi setiap
+    perubahan panjang terbaca sebagai perubahan identitas. Ada dua cara memperbaiki:
+      (a) ubah rumusnya jadi laju (cacah/durasi) -> SPEC v1.3, regenerasi golden,
+          sinkron 4 port, dan semua angka lama kehilangan reprodusibilitas;
+      (b) buat panjangnya KONSTAN, sehingga cacahan otomatis sebanding.
+    (b) tidak menyentuh satu baris pun rumus fitur. Cacahan berubah makna jadi
+    KOMPOSISI ("dari k event, berapa yang klik") dan `temporal_session_duration`
+    berubah makna jadi KECEPATAN ("berapa lama menghasilkan k event") — yang justru
+    lebih biometrik daripada "sesinya kebetulan sepanjang apa".
+
+    Syarat mutlak: kanonikalisasi harus dipakai di PENDAFTARAN dan PENILAIAN.
+    Kalau cuma di salah satu, kita cuma menukar satu ketidakcocokan dengan yang lain.
+    """
+    out = []
+    for seg in segment_by_idle(events):
+        out.extend(plain_windows(seg, k))
+    return out
+
+
+def plain_windows(events, k):
+    """Jendela kanonik TANPA sadar-idle: dipotong lurus tiap k event. Dipakai
+    lengan 'bergap tanpa segmentasi' supaya yang dibandingkan benar-benar cuma
+    segmentasinya, bukan segmentasi + kanonikalisasi sekaligus."""
+    return [events[i:i + k] for i in range(0, len(events) - k + 1, k)]
+
+
 def vec_segmented(events, min_events=30):
     """C-23 di jalur evaluasi: nilai segmen kontigu TERPANJANG yang layak.
     (SDK menilai SEMUA segmen layak; di sini satu vonis per sesi supaya bisa
@@ -151,13 +182,73 @@ def mean_abs_z(model, vec, cols):
 
 
 # ---------------------------------------------------------------- evaluasi
-def build_owner_model(train_vecs):
+def build_owner_model(train_vecs, holdout=0.0):
+    """holdout>0: ambang dikalibrasi pada bagian kolam yang TIDAK dipakai memfit.
+
+    Kenapa ini penting. `build_model` mengkalibrasi ambang dari skor vektor yang
+    persis dipakai memfit detektornya. Skor in-sample selalu optimistik — model
+    memang dipas-paskan ke titik-titik itu — sehingga ambangnya terlalu rapat, dan
+    sesi PEMILIK berikutnya (yang di luar sampel) jatuh di luar ambang. Itu bukan
+    teori: pola yang sama sudah pernah menghantam proyek ini di C-22, di mana
+    kovarians Mahalanobis yang overfit membuat pemilik divonis MEDIUM selamanya.
+
+    Menyisihkan sebagian kolam khusus untuk kalibrasi membuat ambang mencerminkan
+    sebaran skor PEMILIK DI LUAR SAMPEL — yaitu persis populasi yang akan dinilai."""
     cfg = dict(bg.DEFAULTS)
     n = len(train_vecs)
     # shrink adaptif, sama dengan behaviorguard._rebuildModel (C-22)
     cfg = {**cfg, 'mahalanobis': {'shrink': min(0.9, max(bg.DEFAULTS['mahalanobis']['shrink'],
                                                          len(F4) / max(1, n)))}}
-    return bg.build_model(train_vecs, cfg)
+    cut = int(len(train_vecs) * (1 - holdout)) if holdout > 0 else len(train_vecs)
+    fit_part = train_vecs[:cut] if cut >= 8 else train_vecs
+    calib_part = train_vecs[cut:] if cut >= 8 and len(train_vecs) - cut >= 4 else None
+    m = bg.build_model(fit_part, cfg)
+    if calib_part:
+        oos = [m['ensemble'].score_one(bg.standardize(v, m['stats'])) for v in calib_part]
+        m['thresholds'] = bg.calibrate_thresholds_parametric(
+            oos, bg.DEFAULTS['k_low'], bg.DEFAULTS['k_med_extra'])
+    # skor kolam (URUT) untuk kalibrasi ambang agregat
+    sc = [m['ensemble'].score_one(bg.standardize(v, m['stats'])) for v in (calib_part or train_vecs)]
+    mu = sum(sc) / len(sc)
+    var = sum((x - mu) ** 2 for x in sc) / len(sc)
+    m['train_mu'] = mu
+    m['train_sd'] = math.sqrt(var) if var > 1e-12 else 1.0
+    m['train_scores'] = sc          # URUT: dipakai kalibrasi ambang agregat
+    return m
+
+
+def agg_thresholds(model, M):
+    """Ambang untuk vonis atas RATA-RATA M jendela — dikalibrasi EMPIRIS.
+
+    Godaannya adalah memakai jalan pintas analitik: rata-rata M skor bebas punya
+    simpangan baku std/sqrt(M), jadi rapatkan ambang dengan faktor itu. Jalan
+    pintas itu SALAH di sini, dan salahnya searah: jendela berurutan dari sesi yang
+    sama berkorelasi, jadi simpangan baku sesungguhnya lebih besar dari std/sqrt(M).
+    Ambang jadi terlalu rapat dan pemilik ditolak — persis pola C-22, yaitu ambang
+    yang dikalibrasi optimistik lalu meledak di luar sampel.
+
+    Yang benar: agregasikan skor LATIH dengan cara yang persis sama seperti skor
+    uji akan diagregasi, lalu kalibrasi parametrik di atas hasilnya. Korelasi apa
+    pun yang ada ikut terbawa dengan sendirinya, tanpa perlu diasumsikan."""
+    sc = model['train_scores']
+    if M <= 1 or len(sc) < M:
+        return model['thresholds']
+    agg = [sum(sc[i:i + M]) / M for i in range(0, len(sc) - M + 1)]
+    return bg.calibrate_thresholds_parametric(agg, bg.DEFAULTS['k_low'],
+                                              bg.DEFAULTS['k_med_extra'])
+
+
+def verdicts(model, vecs, M):
+    """[(skor, level)] — satu vonis per M jendela berturut (M=1: per jendela)."""
+    scores = [model['ensemble'].score_one(bg.standardize(v, model['stats'])) for v in vecs]
+    if M <= 1:
+        return [(sc, bg.to_risk(sc, model['thresholds'])) for sc in scores]
+    thr = agg_thresholds(model, M)
+    out = []
+    for i in range(0, len(scores) - M + 1, M):
+        avg = sum(scores[i:i + M]) / M
+        out.append((avg, bg.to_risk(avg, thr)))
+    return out
 
 
 def main():
@@ -169,6 +260,15 @@ def main():
                     help='porsi sesi uji yang kena jeda (1.0 = semua)')
     ap.add_argument('--seed', type=int, default=42)
     ap.add_argument('--min-sessions', type=int, default=14)
+    ap.add_argument('--canonical', type=int, default=0, metavar='K',
+                    help='jendela kanonik K event, dipakai di pendaftaran DAN penilaian '
+                         '(0 = mati, perilaku hari ini)')
+    ap.add_argument('--holdout-calib', type=float, default=0.0, metavar='FRAC',
+                    help='porsi kolam yang disisihkan untuk kalibrasi ambang di luar sampel')
+    ap.add_argument('--aggregate', type=int, default=1, metavar='M',
+                    help='satu vonis per M jendela berturut (1 = per jendela)')
+    ap.add_argument('--max-train-win', type=int, default=3,
+                    help='maks jendela kanonik per sesi pendaftaran (jaga ukuran kolam)')
     args = ap.parse_args()
 
     db = args.db or rdb.find_db()
@@ -201,9 +301,33 @@ def main():
     # cache vektor bersih per sesi (dipakai juga sebagai penyusup untuk subjek lain)
     clean_cache = {}
 
+    def train_vecs_for(sess):
+        if not args.canonical:
+            return [vec_of(evs) for _, evs in sess[:BASELINE]]
+        out = []
+        for _, evs in sess[:BASELINE]:
+            for w in canonical_windows(evs, args.canonical)[:args.max_train_win]:
+                out.append(vec_of(w))
+        return out or [vec_of(sess[0][1])]
+
+    def vecs_whole(events):
+        """Tanpa sadar-idle: satu vektor untuk seluruh aliran (mode lama), atau
+        jendela kanonik yang dipotong lurus menembus jeda (mode kanonik)."""
+        if not args.canonical:
+            return [vec_of(events)]
+        return [vec_of(w) for w in plain_windows(events, args.canonical)]
+
+    def vecs_idle_aware(events):
+        """Sadar-idle: segmen terpanjang (mode lama), atau jendela kanonik yang
+        tidak pernah menembus jeda (mode kanonik)."""
+        if not args.canonical:
+            v = vec_segmented(events)
+            return [v] if v is not None else []
+        return [vec_of(w) for w in canonical_windows(events, args.canonical)]
+
     for uid, sess in subjects:
-        train = [vec_of(evs) for _, evs in sess[:BASELINE]]
-        model = build_owner_model(train)
+        train = train_vecs_for(sess)
+        model = build_owner_model(train, args.holdout_calib)
         rng = random.Random(args.seed + uid)
 
         for sid, evs in sess[BASELINE:]:
@@ -213,31 +337,31 @@ def main():
             cut = pick_cut(evs, rng)
             gapped = inject_gap(evs, gap_ms, cut) if gap_ms else evs
             variants = {
-                'bersih': vec_of(evs),
-                'potong_saja': vec_of(longest_half(evs, cut)),
-                'bergap_lama': vec_of(gapped),
-                'bergap_segmen': vec_segmented(gapped),
+                'bersih': vecs_idle_aware(evs),
+                'potong_saja': vecs_idle_aware(longest_half(evs, cut)),
+                'bergap_lama': vecs_whole(gapped),
+                'bergap_segmen': vecs_idle_aware(gapped),
             }
             clean_cache[sid] = (uid, variants['bersih'])
             for a in arms:
-                v = variants[a]
-                if v is None:
+                vs = [v for v in variants[a] if v is not None]
+                if not vs:
                     no_segment += 1
                     continue        # ABSTAIN: tidak dihitung sebagai vonis salah
-                r = bg.score_vector(model, v)
-                owner_tot[a] += 1
-                owner_scores[a].append(r['score'])
-                if r['level'] != 'LOW':
-                    owner_nonlow[a] += 1
-                zsum[a]['waktu'] += mean_abs_z(model, v, G_WAKTU)
-                zsum[a]['cacah'] += mean_abs_z(model, v, G_CACAH)
-                zsum[a]['bentuk'] += mean_abs_z(model, v, G_BENTUK)
-                zsum[a]['n'] += 1
+                for sc, lvl in verdicts(model, vs, args.aggregate):
+                    owner_tot[a] += 1
+                    owner_scores[a].append(sc)
+                    if lvl != 'LOW':
+                        owner_nonlow[a] += 1
+                for v in vs:
+                    zsum[a]['waktu'] += mean_abs_z(model, v, G_WAKTU)
+                    zsum[a]['cacah'] += mean_abs_z(model, v, G_CACAH)
+                    zsum[a]['bentuk'] += mean_abs_z(model, v, G_BENTUK)
+                    zsum[a]['n'] += 1
 
     # --- FAR: penyusup = sesi subjek lain, DIUJI dengan lengan yang sama --------
     for uid, sess in subjects:
-        train = [vec_of(evs) for _, evs in sess[:BASELINE]]
-        model = build_owner_model(train)
+        model = build_owner_model(train_vecs_for(sess), args.holdout_calib)
         rng = random.Random(args.seed * 7 + uid)
         for other_uid, other_sess in subjects:
             if other_uid == uid:
@@ -247,20 +371,18 @@ def main():
                 cut = pick_cut(evs, rng)
                 gapped = inject_gap(evs, gap_ms, cut) if gap_ms else evs
                 variants = {
-                    'bersih': clean_cache.get(sid, (None, None))[1] or vec_of(evs),
-                    'potong_saja': vec_of(longest_half(evs, cut)),
-                    'bergap_lama': vec_of(gapped),
-                    'bergap_segmen': vec_segmented(gapped),
+                    'bersih': clean_cache.get(sid, (None, None))[1] or vecs_idle_aware(evs),
+                    'potong_saja': vecs_idle_aware(longest_half(evs, cut)),
+                    'bergap_lama': vecs_whole(gapped),
+                    'bergap_segmen': vecs_idle_aware(gapped),
                 }
                 for a in arms:
-                    v = variants[a]
-                    if v is None:
-                        continue
-                    r = bg.score_vector(model, v)
-                    imp_tot[a] += 1
-                    imp_scores[a].append(r['score'])
-                    if r['level'] == 'LOW':
-                        imp_low[a] += 1
+                    vs = [v for v in variants[a] if v is not None]
+                    for sc, lvl in verdicts(model, vs, args.aggregate):
+                        imp_tot[a] += 1
+                        imp_scores[a].append(sc)
+                        if lvl == 'LOW':
+                            imp_low[a] += 1
 
     # --- laporan ---------------------------------------------------------------
     label = {'bersih': 'BERSIH (sesi utuh, tanpa jeda)',
