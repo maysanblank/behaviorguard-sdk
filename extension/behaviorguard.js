@@ -14,7 +14,7 @@ import { Mahalanobis } from './core/mahalanobis.js';
 import { Ensemble } from './core/ensemble.js';
 import { toRisk, toAction, topFeatures, reasonsFrom, calibrateThresholds, calibrateThresholdsParametric } from './core/risk.js';
 import { createCapture } from './core/capture.js';
-import { segmentByIdle, idleAccounting, splitForAssessment, classifyGap } from './core/idle.js';
+import { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream } from './core/idle.js';
 import { storage } from './storage.js';
 import { isConverged, cohortLowRate } from './core/lifecycle.js';
 import { getOrCreateSecret, generateToken } from './core/token.js';
@@ -25,6 +25,13 @@ import { buildTemplate, verify as verifyChallenge } from './core/challenge.js';
 import { runMfaChallenge } from './core/mfa.js';
 
 const ns = id => `bg:${id}`;
+// A4: `bg:pending` DULU kunci GLOBAL, tidak seperti sesi yang sudah ber-ruang-nama.
+// Akibatnya di browser bersama: pengguna A menutup halaman -> ekornya tersimpan ->
+// pengguna B login -> init() membaca pending itu tanpa memeriksa pemiliknya ->
+// perilaku A dinilai, dan bisa ikut MELATIH, sebagai B. Itu peracunan baseline
+// lintas-akun, bukan sekadar derau. Kunci lama ikut dibersihkan sekali saat init.
+const nsPending = id => `bg:pending:${id}`;
+const LEGACY_PENDING = 'bg:pending';
 
 class BehaviorGuard {
   constructor(){ this.cfg=structuredClone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
@@ -64,9 +71,12 @@ class BehaviorGuard {
     }
     // R4: jika ada ekor yang kesimpen pas beforeunload sebelumnya, pulihkan ke buffer
     try{
-      const pending=JSON.parse(localStorage.getItem('bg:pending')||'null');
+      // A4: buang sisa kunci global lama — pemiliknya tak bisa dipastikan, jadi
+      // satu-satunya perlakuan yang aman adalah membuangnya, bukan menebak.
+      try{ localStorage.removeItem(LEGACY_PENDING); }catch{}
+      const pending=JSON.parse(localStorage.getItem(nsPending(userId))||'null');
       if(pending && pending.length){
-        localStorage.removeItem('bg:pending');
+        localStorage.removeItem(nsPending(userId));
         // pending adalah event mentah - simpan dulu, akan di-score di endSession berikutnya
         // untuk init yang baru, taruh di capture buffer sementara
         this._pendingEvents=pending;
@@ -75,7 +85,10 @@ class BehaviorGuard {
     // capture auto — C-23: callback dipakai melacak kehadiran (kapan input terakhir
     // masuk), bukan lagi no-op. Dari situ absen terdeteksi tanpa timer tambahan.
     this._lastEventAt=Date.now();
-    this.capture=createCapture(e=> this._onCaptureEvent(e));
+    // B1: penanda aliran per instance/tab, dicap ke tiap event supaya pengukuran
+    // tidak pernah menyeberangi dua tab.
+    this.tabId=Math.random().toString(36).slice(2,10);
+    this.capture=createCapture(e=>{ e.tabId=this.tabId; this._onCaptureEvent(e); });
     try{ this.capture.attach(); }catch{}
     // S6: pending skor sebagai sesi terpisah, jangan gabung (bikin durasi ngembung)
     // C-21: pending adalah AKUMULATOR ekor lintas-halaman. Versi lama meng-null-kan
@@ -91,11 +104,11 @@ class BehaviorGuard {
           const sisa=pending.slice(200);
           // B1 fix: jangan require di ESM, pakai scoreExternalEvents langsung (extractF4 sudah diimpor)
           setTimeout(()=> this.scoreExternalEvents(chunk).catch(()=>{}), 100);
-          try{ if(sisa.length) localStorage.setItem('bg:pending', JSON.stringify(sisa));
-               else localStorage.removeItem('bg:pending'); }catch{}
+          try{ if(sisa.length) localStorage.setItem(nsPending(userId), JSON.stringify(sisa));
+               else localStorage.removeItem(nsPending(userId)); }catch{}
         } else {
           // belum cukup jadi sesi -> tunggu ekor halaman berikut menambah (JANGAN buang)
-          try{ localStorage.setItem('bg:pending', JSON.stringify(pending)); }catch{}
+          try{ localStorage.setItem(nsPending(userId), JSON.stringify(pending)); }catch{}
         }
       }
     }catch{}
@@ -129,9 +142,31 @@ class BehaviorGuard {
     if(cur && cur.awayMs >= awayMs) return;
     this._awayReturn={ awayMs, reason, at: atTs||Date.now() };
   }
+  // B1: hanya SATU tab yang boleh menilai dan menulis penyimpanan. Tanpa ini, dua
+  // tab memegang array `sessions` sendiri di memori lalu `storage.set` bergantian —
+  // penulis terakhir menang dan sesi yang dikumpulkan tab lain hilang diam-diam.
+  // Denyut sederhana lewat localStorage: pemimpin memperbarui capnya; tab lain
+  // mengambil alih hanya kalau capnya sudah basi (pemimpin ditutup/crash).
+  _isLeader(){
+    const K=`bg:leader:${this.userId}`, TTL=25000;
+    try{
+      const now=Date.now();
+      const cur=JSON.parse(localStorage.getItem(K)||'null');
+      if(!cur || !cur.ts || now-cur.ts > TTL || cur.id===this.tabId){
+        localStorage.setItem(K, JSON.stringify({id:this.tabId, ts:now}));
+        return true;
+      }
+      return false;
+    }catch{ return true; }   // tanpa localStorage, anggap tab tunggal
+  }
   _wireAuto(){
     if(this._wired) return; this._wired=true;
-    this._autoTimer=setInterval(()=>{ this.endSession().catch(()=>{}); }, this.cfg.session.windowSec*1000);
+    this._autoTimer=setInterval(()=>{
+      // Tab pengikut tetap MENANGKAP (ekornya dibank dan diambil nanti), hanya tidak
+      // menilai — jadi datanya tidak hilang, cuma tidak ada dua penulis bersamaan.
+      if(!this._isLeader()){ this._bankTail(); return; }
+      this.endSession().catch(()=>{});
+    }, this.cfg.session.windowSec*1000);
     try{
       const self=this;
       document.addEventListener('visibilitychange', ()=>{
@@ -174,10 +209,10 @@ class BehaviorGuard {
     const evs=this.capture.peek();
     if(evs.length < 10) return;               // terlalu sedikit untuk disimpan
     try{
-      const pending=JSON.parse(localStorage.getItem('bg:pending')||'[]');
+      const pending=JSON.parse(localStorage.getItem(nsPending(this.userId))||'[]');
       pending.push(...evs.slice(-200));
       if(pending.length>800) pending.splice(0, pending.length-800);
-      localStorage.setItem('bg:pending', JSON.stringify(pending));
+      localStorage.setItem(nsPending(this.userId), JSON.stringify(pending));
       this.capture.drain();
     }catch{}
   }
@@ -438,10 +473,18 @@ class BehaviorGuard {
       level='MEDIUM'; reverifyAfterAway=true;
       if(order[level]>order[this.lastRisk]){ this.lastRisk=level; this._lowStreak=0; }
     }
+    // A3: bukti sebagian tidak boleh jadi DASAR KEPERCAYAAN. Vonisnya tidak dinaikkan
+    // — memaksa step-up tiap kali orang memakai password manager itu hukuman untuk
+    // kebiasaan yang justru aman. Yang dicabut adalah kemampuannya MEMBANGUN
+    // kepercayaan: ia tidak menghitung sebagai LOW berturut, jadi ia tak bisa
+    // meluruhkan lantai lengket, dan integrator diberi tahu lewat `partialEvidence`
+    // supaya aksi bernilai tinggi bisa menuntut bukti yang utuh.
+    if(M.keystrokeBypassed && level==='LOW') this._lowStreak=Math.max(0, (this._lowStreak||1)-1);
     const top=topFeatures(xstd, F4, 3);
     let action=toAction(level);   // HIGH -> REQUIRE_STEPUP (bukan block langsung)
     // challenge step-up
     let reasons=reasonsFrom(top);
+    if(M.keystrokeBypassed) reasons=['bukti keystroke dialihkan (autofill/tempel) - blok ritme ketik tidak dinilai', ...reasons];
     if(reverifyAfterAway) reasons=[`kembali setelah absen ${Math.round(awayInfo.awayMs/60000)} menit (${awayInfo.reason}) - verifikasi ulang`, ...reasons];
     if(level==='HIGH' && this.challengeTemplate){
       action='REQUIRE_CHALLENGE'; reasons=[...reasons, 'challenge: ketik kata kunci + ritme'];
@@ -456,7 +499,8 @@ class BehaviorGuard {
     const evt={...M, level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...usedThresholds}, eligible, modelLevel, modelScore, stickyFloor,
       resumedAfterAway: awayInfo, reverifyAfterAway,
       // topFeatures/features berasal dari jendela TERAKHIR; skornya dari rata-rata M.
-      aggregated: aggMembers ? {windows: aggMembers.length} : null};
+      aggregated: aggMembers ? {windows: aggMembers.length} : null,
+      partialEvidence: M.keystrokeBypassed ? 'keystroke' : null};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
     // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu —
     // kalau hanya yang terakhir yang disimpan, kolam latih tumbuh M kali lebih lambat.
@@ -611,6 +655,18 @@ class BehaviorGuard {
    * menghasilkan vonis tidak lagi diam-diam berlalu (lihat `_maybeAbstain`).
    */
   async _assessEvents(events, carryBack){
+    // B1: pisahkan per tab DULU. Dua tab aktif bersamaan tidak punya jeda untuk
+    // dipotong segmentasi idle, jadi tanpa langkah ini keduanya menyatu jadi satu
+    // "sesi" yang tidak mewakili perilaku siapa pun.
+    const streams=groupByStream(events);
+    if(streams.length > 1){
+      let last=null;
+      for(const st of streams) last=await this._assessStream(st, carryBack && st===streams[streams.length-1]);
+      return last;
+    }
+    return this._assessStream(events, carryBack);
+  }
+  async _assessStream(events, carryBack){
     const S=this.cfg.session;
     const gapMs=(S.idleGapSec ?? 30)*1000;
     const acct=idleAccounting(events, gapMs);
@@ -658,8 +714,21 @@ class BehaviorGuard {
     const vec=featuresToVector(feat);
     const durationSec=seg.durationMs/1000;     // durasi AKTIF, bukan rentang jam dinding
     const nonZero=Object.values(feat).filter(v=> Math.abs(v)>1e-9).length;
-    const passesGate = events.length>=S.minEventsTrain && durationSec>=S.minDurationSec && nonZero>=S.minNonZeroFeatures;
-    const meta={ idle: {
+    // A3: bukti keystroke DIALIHKAN, bukan sekadar tidak ada. Dibedakan dengan hati-hati
+    // dari sesi menelusuri biasa: sesi baca-baca juga nol keystroke, tapi ia nol pada
+    // baseline-nya juga, jadi tidak menyesatkan. Yang menyesatkan adalah form yang
+    // TERSENTUH tapi tidak diketik — autofill, password manager, atau tempel.
+    const nKey=events.reduce((n,e)=> n+(e.event_type==='KEYSTROKE'?1:0), 0);
+    const nPaste=events.reduce((n,e)=> n+(e.event_type==='PASTE'?1:0), 0);
+    const nFocus=events.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS'?1:0), 0);
+    const keystrokeBypassed = nPaste>0 || (nFocus>0 && nKey===0);
+    // Sesi yang blok keystroke-nya dialihkan TIDAK PERNAH melatih: kedelapan fiturnya
+    // nol secara STRUKTURAL — karena memang tidak ada yang diketik — bukan karena
+    // begitulah cara orang ini mengetik. Melatihkannya menarik baseline ke arah
+    // "tidak pernah mengetik", dan itu justru MELEBARKAN jalan bagi penyusup yang
+    // memakai autofill untuk menghapus jejak ritmenya.
+    const passesGate = !keystrokeBypassed && events.length>=S.minEventsTrain && durationSec>=S.minDurationSec && nonZero>=S.minNonZeroFeatures;
+    const meta={ keystrokeBypassed, idle: {
       activeSec: durationSec,
       gapBeforeMs: seg.gapBeforeMs,
       gapClass: classifyGap(seg.gapBeforeMs, gapMs, this.cfg.idle.awaySec*1000),
@@ -695,6 +764,20 @@ class BehaviorGuard {
     };
     try{ this.onRisk(evt); }catch{}
     return evt;   // sengaja TIDAK di-_cloudLog: ini keadaan lokal, bukan vonis akun
+  }
+  // A5: `features.js` menghitung navEv = NAVIGATION | PAGE_STEP, dan basis data riset
+  // berisi 2.672 PAGE_STEP — SEMUANYA dari alur checkout bertahap. Tapi `capture.js`
+  // tidak pernah menerbitkannya, jadi `nav_step_transition_count` dan
+  // `nav_page_transition_pattern` dihitung dari populasi event yang BERBEDA saat
+  // dilatih dan saat dipakai (kerabat C-17).
+  // Semantiknya tidak bisa ditebak otomatis — "langkah" itu urusan aplikasi, bukan
+  // DOM — jadi jalan yang jujur adalah menyediakan API eksplisit, bukan menebak dari
+  // submit/pushState dan diam-diam salah.
+  markStep(name){
+    if(!this.capture) return;
+    try{
+      this.capture.buffer.push({event_type:'PAGE_STEP', page_url: (typeof location!=='undefined'?location.href:'')+(name?('#'+name):''), timestamp: Date.now()});
+    }catch{}
   }
   // challenge API
   async setChallenge(samples){ // samples: [{dwell, flight}]
@@ -733,7 +816,8 @@ class BehaviorGuard {
     this._awayReturn=null; this._hiddenAt=null; this._lastEventAt=Date.now();
     this._noAssessRuns=0; this._abstainEmitted=false;
     this._aggBuf=[]; this._aggThresholds=null;   // C-24: bukti separuh terkumpul milik pengguna lama
-    await storage.del(ns(this.userId)); await storage.del('bg:pending');
+    await storage.del(ns(this.userId));
+    try{ localStorage.removeItem(nsPending(this.userId)); localStorage.removeItem(LEGACY_PENDING); }catch{}
   }
 }
 
@@ -743,6 +827,7 @@ if(typeof window!=='undefined'){
   window.BehaviorGuard={
     init: (opts)=> singleton.init(opts),
     endSession: ()=> singleton.endSession(),
+    markStep: (name)=> singleton.markStep(name),
     getVector: ()=> singleton.getVector(),
     _instance: singleton,
     // untuk reproduce/tools

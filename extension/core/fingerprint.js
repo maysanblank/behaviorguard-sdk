@@ -3,9 +3,13 @@
  * Tanpa backend, untuk anti ganti-profile
  */
 export async function getFingerprint(){
+  // B2: `screen.width x screen.height` DULU ikut jadi sidik. Colok monitor eksternal
+  // -> sidik berubah -> behaviorguard.js memaksa lastRisk='MEDIUM', dan lantai lengket
+  // menahannya sampai tiga sesi LOW berturut. Colok monitor bukan ganti perangkat.
+  // Resolusi adalah KONTEKS (ia menggeser skala kecepatan, lihat A2), bukan identitas
+  // mesin — jadi ia keluar dari sini dan ditangani sebagai konteks.
   const parts=[
     navigator.userAgent,
-    screen.width+'x'+screen.height,
     Intl.DateTimeFormat().resolvedOptions().timeZone,
     navigator.language,
     String(screen.colorDepth)

@@ -772,6 +772,117 @@ tidak mengubah apa pun. Bukti invariansi di sana: pergeseran fitur-cacah akibat 
 
 ---
 
+## Validasi held-out untuk C-23 dan C-24
+
+Ablasi di C-23/C-24 memakai harness longgar, jadi hanya selisih antar-lengan yang sahih.
+`tools/canonical_holdout.py` mengulangnya di bawah **protokol yang persis sama dengan
+angka headline** (whitelist 16 subjek, belah 8/8 seed 42, q dituning di FOLD-TUNE,
+dilaporkan di FOLD-REPORT), disetir vektor yang diekstrak ulang dari `raw_events`.
+`run_fold` diberi parameter opsional `vec_source`; tanpa itu perilakunya tak berubah.
+
+| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 | konv |
+|---|---:|---:|---:|---:|---:|---:|
+| 1. utuh, tanpa AFK (kontrol) | 35,5% | 2,5% | 0,907 | 17,9% | 20,1% | 0/8 |
+| 2. utuh, dengan AFK | 51,2% | 7,3% | 0,874 | 14,9% | 14,8% | 0/8 |
+| 3. utuh + segmentasi C-23, dgn AFK | 60,7% | **0,7%** | **0,902** | 15,1% | 16,7% | 0/8 |
+| 4. utuh + segmentasi C-23, tanpa AFK | 37,1% | **0,6%** | **0,941** | **11,0%** | **4,6%** | **1/8** |
+| 5. kanonik 120 (C-24), tanpa AFK | 66,1% | 2,3% | 0,820 | 24,6% | 46,4% | 0/8 |
+| 6. kanonik 120 + segmentasi, dgn AFK | 66,5% | 2,5% | 0,808 | 24,7% | 44,9% | 0/8 |
+
+**Kontrolnya sah.** Baris 1 (FRR 35,5%) berimpit dengan `reproduce_db.py` (FRR 35,1%),
+jadi ekstraksi ulang dari raw_events tidak memasukkan bias.
+
+**Kerusakan idle terkonfirmasi di titik operasi yang sah** (baris 2 vs 1): AUC 0,907 ->
+0,874. Keluhan pembimbing bukan artefak harness.
+
+**C-23 memulihkannya** (baris 3 vs 2): AUC 0,874 -> **0,902**, praktis kembali ke kontrol,
+dengan FAR turun 7,3% -> **0,7%**.
+
+**Yang tidak diduga - baris 4.** Segmentasi C-23 dipakai TANPA jeda suntikan sama sekali
+justru **melampaui kontrol**: AUC 0,907 -> **0,941**, EER 17,9% -> **11,0%**, FAR@FRR15
+20,1% -> **4,6%** (4,4x lebih baik pada FRR yang sama), dan ia satu-satunya lengan yang
+konvergen. Sebabnya: **sesi di basis data riset itu sendiri mengandung jeda idle alami
+>= 30 detik.** Jadi C-23 bukan sekadar tambalan untuk jeda buatan - ia membersihkan
+korpus aslinya. Wajib dicatat: 0,941/11,0% ini mesin OCSVM (`reproduce_db.py`), BUKAN
+Mahalanobis yang menghasilkan headline `config.js`. Yang sahih diklaim adalah peningkatan
+terhadap kontrolnya SENDIRI (0,907 -> 0,941), bukan perbandingan lintas mesin.
+
+**C-24 ditolak di korpus ini** (baris 5 vs 1): AUC 0,907 -> 0,820. Jendela 120 event
+membuang lebih banyak bukti daripada yang diselamatkan dari ketidakinvariansian panjang
+sesi. Invariansinya nyata dan terukur, tapi harganya terlalu mahal di sini. **Hasil
+negatif, dilaporkan apa adanya** - dan inilah pembenaran terukur untuk keputusan
+mengirimnya default mati.
+
+---
+
+## C-25 - Audit "yang berubah alat ukurnya, bukan orangnya"
+
+Setelah C-23 dan C-24, kelas cacatnya ditelusuri ke seluruh kode. Dua belas temuan, tiga
+di antaranya dibuktikan dengan menjalankan kodenya. Rincian di
+`docs/AUDIT-VALIDITAS-PENGUKURAN.md`; yang ditambal:
+
+**A1 - KRITIS, sesi "cuma menelusuri" diblokir sebagai bot.** Fallback
+`filtered.length>=10 ? filtered : events` di `integrity.js` MEMBATALKAN maksud T5: saat
+keystroke+klik < 10, ia jatuh ke seluruh event, yang isinya `MOUSE_MOVE` hasil throttle
+50 ms kita sendiri. Intervalnya bukan mirip-mirip melainkan **persis konstan** - terukur
+60Hz std 0,00 ms; 100Hz 0,00; 125Hz 0,00; 144Hz 0,50. Semuanya < 3 ms ->
+`BLOCK_SESSION` untuk manusia yang membaca artikel sambil menggerakkan mouse. Rapuh
+pula: satu klik nyasar menaikkan std di atas ambang, jadi gejalanya "kadang-kadang" dan
+nyaris mustahil dilacak dari laporan pengguna. **Aturan barunya: jangan pernah menilai
+keteraturan interval pada aliran yang kita throttle sendiri.** Kalau bukti kurang,
+lewati cek itu - jangan ganti sumbernya.
+
+**A3 - Autofill mematikan 8 fitur keystroke sekaligus.** Terukur: dwell 80->0, flight
+120->0, speed 4,81->0, entropi 1,10->0; **8 dari 8 fitur jatuh ke nol**. Dua arah:
+pemilik yang memakai password manager terlihat menyimpang tiap login, DAN penyusup bisa
+menyenjatakannya untuk menghapus seluruh blok bukti ketikan. `paste` kini ditangkap, dan
+"form tersentuh tapi tak diketik" ditandai `partialEvidence:'keystroke'`. Vonisnya
+**tidak** dinaikkan - menghukum pemakaian password manager itu salah sasaran - tapi sesi
+itu tak pernah melatih model dan tak bisa membangun streak LOW. Bukti sebagian boleh
+dipakai menilai, tidak boleh dipakai **mempercayai**.
+
+**A4 - Ekor perilaku bocor antar-pengguna.** `bg:pending` adalah kunci GLOBAL, tidak
+ber-ruang-nama seperti sesi. Pengguna A menutup halaman -> ekornya tersimpan -> B login
+di browser yang sama -> ekor A dinilai, dan bisa ikut melatih, sebagai B. Kini
+`bg:pending:<userId>`; kunci lama dibuang saat init karena pemiliknya tak bisa dipastikan.
+
+**A5 - `PAGE_STEP` dilatih tapi tak pernah ditangkap.** `features.js` membaca
+`NAVIGATION | PAGE_STEP`, basis data riset punya 2.672 PAGE_STEP (semuanya alur
+checkout), `capture.js` tak pernah menerbitkannya - kerabat C-17. Semantik "langkah" itu
+urusan aplikasi, bukan DOM, jadi jalan yang jujur adalah API eksplisit `markStep(nama)`,
+bukan menebak dari submit/pushState lalu diam-diam salah.
+
+**B1 - Dua tab diukur menyatu.** Dua tab aktif bersamaan tidak punya jeda untuk dipotong
+segmentasi idle, jadi keduanya menyatu jadi satu "sesi" yang tidak mewakili siapa pun.
+Prinsip C-23 dipakai lagi: kalau dua pengukuran datang dari alat berbeda, pisahkan.
+Event dicap `tabId` dan `groupByStream` memisahkannya sebelum apa pun diukur. Ditambah
+pemilihan pemimpin lewat denyut localStorage supaya hanya satu tab yang menilai dan
+menulis; dulu penulis terakhir menang dan sesi tab lain hilang diam-diam.
+
+**B2 - Resolusi layar keluar dari sidik perangkat.** Colok monitor eksternal bukan ganti
+perangkat, padahal dulu itu memaksa `lastRisk='MEDIUM'` plus lantai lengket. Resolusi
+adalah konteks (ia menggeser skala kecepatan), bukan identitas mesin.
+
+**B4 - Layar sentuh.** `touchmove` kini ditangkap dan dipetakan ke `MOUSE_MOVE` (bertanda
+`touch:true`). Tanpa ini sembilan fitur mouse nol dan pengguna ponsel tak pernah bisa
+dinilai sama sekali. Tidak mengubah apa pun di desktop.
+
+**B7 - Kolam terpotong di 30 tanpa IndexedDB.** localStorage dulu memotong ke 30 sesi
+padahal `progressiveMaxPool` = 90; C-22 sudah menunjukkan akibat kolam terlalu kecil
+dibanding d=28. Kini `feat` (murni untuk penjelasan) dibuang dan 90 vektor disimpan.
+
+**Belum ditambal, sengaja.** A2 (kecepatan px/ms bergantung ukuran layar - terukur 2,00x
+pada monitor 2x lebih besar, curvature 0,50x) dan B3 (`scroll_delta` piksel mentah)
+adalah satu paket normalisasi skala yang **membuat baseline lama tidak sebanding**, jadi
+butuh penandaan versi baseline. B5 (waktu-hari sebagai biometrik) dan B6 (fitur konstan
+di baseline -> z besar) menyentuh vektor/SPEC. Keempatnya diusulkan, bukan dikirim.
+
+**Uji:** `core/audit.test.mjs` 32/32, seluruh suite lama tetap hijau (conformance 227/227
+di Python dan JS, idle 33/33, jalur penuh 20/20, invariansi 26/26, step-up 23/23, gerbang
+11/11, integrity 10/10).
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
@@ -789,6 +900,8 @@ tidak mengubah apa pun. Bukti invariansi di sana: pergeseran fitur-cacah akibat 
 | Segmentasi idle C-23 | `core/idle.test.mjs` / `.html` | 33/33 SESUAI |
 | Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
 | Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
+| Audit validitas pengukuran C-25 | `core/audit.test.mjs` | 32/32 SESUAI |
+| Validasi held-out C-23/C-24 | `python tools/canonical_holdout.py` | tabel di atas |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu

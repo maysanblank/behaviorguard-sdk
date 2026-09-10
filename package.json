@@ -21,6 +21,8 @@
     "test:idle": "node core/idle.test.mjs",
     "test:idle:live": "node core/idle.live.test.mjs",
     "test:invariance": "node core/invariance.test.mjs",
+    "test:audit": "node core/audit.test.mjs",
+    "holdout:c23": "python tools/canonical_holdout.py",
     "ablation:idle": "python tools/idle_ablation.py",
     "conformance:rust": "cd ports/rust && cargo run --release",
     "conformance:java": "java ports/java/BgConformance.java core/golden.json",

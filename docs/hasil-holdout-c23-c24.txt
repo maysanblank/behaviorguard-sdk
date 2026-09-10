@@ -1,0 +1,37 @@
+DB: C:\Users\USER\OneDrive\Documents\skripsi\database\05 08 2026\behavior_detection_20260805_085856.db
+Protokol: reproduce_db.py — whitelist 16 subjek, belah 8/8 seed 42, q dituning di FOLD-TUNE, dilaporkan di FOLD-REPORT
+Engine  : W7 70/30, sklearn RealOCSVM
+Kanonik : K=120 event | AFK: [2, 5, 10, 20] menit, hanya ke sesi evaluasi
+
+Memuat raw_events untuk 16 subjek ...
+  653 sesi berevent
+
+menjalankan: 1. utuh, tanpa AFK          (kontrol) ...
+menjalankan: 2. utuh, dengan AFK         (hari ini) ...
+menjalankan: 3. utuh + segmentasi C-23,  dgn AFK ...
+menjalankan: 4. utuh + segmentasi C-23,  tanpa AFK ...
+menjalankan: 5. kanonik 120 (C-24),        tanpa AFK ...
+menjalankan: 6. kanonik 120 + segmentasi,  dgn AFK ...
+
+Kondisi                                      q     FRR     FAR     AUC     EER  FAR@FRR15  konv
+----------------------------------------------------------------------------------------------------
+1. utuh, tanpa AFK          (kontrol)     0.10   35.5%    2.5%   0.907   17.9%      20.1%  0/8
+2. utuh, dengan AFK         (hari ini)    0.10   51.2%    7.3%   0.874   14.9%      14.8%  0/8
+3. utuh + segmentasi C-23,  dgn AFK       0.10   60.7%    0.7%   0.902   15.1%      16.7%  0/8
+4. utuh + segmentasi C-23,  tanpa AFK     0.10   37.1%    0.6%   0.941   11.0%       4.6%  1/8
+5. kanonik 120 (C-24),        tanpa AFK   0.10   66.1%    2.3%   0.820   24.6%      46.4%  0/8
+6. kanonik 120 + segmentasi,  dgn AFK     0.10   66.5%    2.5%   0.808   24.7%      44.9%  0/8
+
+CARA MEMBACA
+  Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,
+  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.
+  Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.
+  Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.
+               Ini pertanyaan terpenting di tabel ini.
+  Baris 3 vs 1  = seberapa dekat C-23 mengembalikan keadaan ke sebelum ada idle.
+  Baris 4 vs 1  = ongkos C-23 ketika idle TIDAK ada sama sekali (harus ~nol).
+  Baris 5 vs 1  = ongkos murni kanonikalisasi C-24 (default MATI).
+
+  Perhatikan EER dan AUC lebih dulu: keduanya bebas titik-operasi. FRR/FAR
+  bergantung pada q yang dituning per kondisi, jadi keduanya bisa saling tukar
+  tanpa ada yang benar-benar membaik.

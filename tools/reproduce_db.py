@@ -195,13 +195,26 @@ def roc(owner_scores, imp_scores):
         return best[2] if best else 100
     return dict(auc=auc, eer=eer, eer_thr=eer_thr, far_at_15=far_at(15), far_at_5=far_at(5), n=len(thr_list), thr_range=(min(all_thr), max(all_thr)), pts=pts)
 
-def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True):
+def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True, vec_source=None, calib_holdout=0.0):
+    """vec_source: {uid: [(vektor, event_count), ...]} menggantikan tabel `features`.
+
+    Ditambahkan untuk C-24. Tujuannya SATU: mengevaluasi representasi lain (mis.
+    jendela kanonik yang diekstrak ulang dari raw_events) di bawah protokol
+    held-out yang PERSIS SAMA — bukan protokol tandingan yang lebih longgar.
+    Kalau perbandingannya dijalankan di harness yang berbeda, angkanya tidak bisa
+    dibandingkan dan klaim apa pun di atasnya tidak sah. Dengan None, perilakunya
+    identik dengan sebelumnya (baca dari tabel `features`)."""
     if feature_cols is None: feature_cols=F4
+    def baseline_of(): return 10
     totalOwner=ownerNonLow=0; totalImp=impLow=0; convs=0; owner_scores=[]; imp_scores=[]
     for uid in subject_ids:
         cols=','.join('f.'+f for f in feature_cols)
-        rows=c.execute(f"SELECT s.session_id, s.event_count, {cols} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id=? ORDER BY s.session_id", (uid,)).fetchall()
-        vecs=[list(r[2:]) for r in rows]; sids=[r[0] for r in rows]; ecounts=[r[1] for r in rows]
+        if vec_source is not None:
+            vecs=[list(v) for v,_ in vec_source.get(uid,[])]; ecounts=[e for _,e in vec_source.get(uid,[])]
+        else:
+            rows=c.execute(f"SELECT s.session_id, s.event_count, {cols} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id=? ORDER BY s.session_id", (uid,)).fetchall()
+            vecs=[list(r[2:]) for r in rows]; ecounts=[r[1] for r in rows]
+        if len(vecs) <= baseline_of(): continue
         def is_eligible(vec, ec):
             nz=sum(1 for v in vec if abs(v)>1e-9)
             if 'temporal_session_duration' in feature_cols:
@@ -220,6 +233,14 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             low_part=dedup_behavioral(low_part, feature_cols)
             pool_vecs=base_part+low_part
             if not pool_vecs: pool_vecs=vecs[:1]
+            # C-24: ambang boleh dikalibrasi DI LUAR SAMPEL. Versi lama mengkalibrasi
+            # dari skor vektor yang persis dipakai memfit -> skor in-sample optimistik
+            # -> ambang terlalu rapat -> sesi PEMILIK berikutnya jatuh di luarnya.
+            calib_vecs=None
+            if calib_holdout>0:
+                cut=int(len(pool_vecs)*(1-calib_holdout))
+                if cut>=8 and len(pool_vecs)-cut>=4:
+                    calib_vecs=pool_vecs[cut:]; pool_vecs=pool_vecs[:cut]
             stats=compute_stats(pool_vecs)
             Xstd=[standardize(v,stats) for v in pool_vecs]
             iff=IF(); iff.fit(Xstd); ocs=OCSVM(len(feature_cols)); ocs.fit(Xstd)
@@ -241,6 +262,7 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
                     xstd=standardize(v,stats)
                     return gw['isolation_forest']*((iff.score_one(xstd)-m1)/s1)+gw['svm']*((ocs.score_one(xstd)-m2)/s2)
                 base_scores=[ens_fn(v) for v in pool_vecs]
+            if calib_vecs: base_scores=[ens_fn(v) for v in calib_vecs]
             thr=calibrate_thresholds(base_scores, q_low=qq, q_med=qq*0.33)
             return stats,iff,ocs,m1,s1,m2,s2,ens_fn,thr,gw
         stats,iff,ocs,m1,s1,m2,s2,ens,thr,gw=build(pool, q_low)
@@ -257,7 +279,10 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
                     cohort_ids=set(shuf_ids[:len(shuf_ids)//2]); far_ids=set(shuf_ids[len(shuf_ids)//2:])
                     q_cohort=','.join(str(x) for x in cohort_ids) if cohort_ids else qmarks
                     q_far=','.join(str(x) for x in far_ids) if far_ids else qmarks
-                    cohort_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_cohort}) ORDER BY s.session_id").fetchall() if cohort_ids else []
+                    if vec_source is not None:
+                        cohort_rows=[v for x in cohort_ids for v,_ in vec_source.get(x,[])]
+                    else:
+                        cohort_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_cohort}) ORDER BY s.session_id").fetchall() if cohort_ids else []
                     other_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall() if far_ids else []
                     cohort_scores=[ens(list(r)) for r in cohort_rows]
                     lowRate=sum(1 for sc in cohort_scores if sc>thr['low'])/len(cohort_scores) if cohort_scores else 1
@@ -281,7 +306,10 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             shuf_ids=list(other_ids); rng_sub.shuffle(shuf_ids)
             far_ids=set(shuf_ids[len(shuf_ids)//2:])
             q_far=','.join(str(x) for x in far_ids) if far_ids else qmarks
-            other_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall()
+            if vec_source is not None:
+                other_rows=[v for x in far_ids for v,_ in vec_source.get(x,[])]
+            else:
+                other_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall()
             for r in other_rows:
                 sc_imp=ens(list(r)); imp_scores.append(sc_imp)
                 totalImp+=1

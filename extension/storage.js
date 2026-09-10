@@ -106,7 +106,16 @@ export const storage={
     try{
       let toSave=v;
       if(v && v.sessions && v.sessions.length>30){
-        toSave={...v, sessions: v.sessions.slice(-30)};
+        // B7: DULU dipotong ke 30 sesi terakhir. IndexedDB menerima yang utuh, jadi
+        // biasanya tak terasa — tapi di mode penyamaran atau browser yang memblokir
+        // IDB, kolam terkunci di 30 padahal progressiveMaxPool = 90. C-22 sudah
+        // menunjukkan apa akibat kolam terlalu kecil dibanding d=28: kovarians goyah,
+        // deteksi melemah. Dan karena hanya menimpa SEBAGIAN pengguna, gejalanya
+        // gampang disalahartikan sebagai perbedaan orang.
+        // Yang dibutuhkan model cuma `vector`; `feat` (28 pasangan nama-nilai) murni
+        // untuk penjelasan. Membuangnya membuat jauh lebih banyak sesi muat.
+        const slim=v.sessions.map(x=> x && x.feat ? {...x, feat:null} : x);
+        toSave={...v, sessions: slim.length>90 ? slim.slice(-90) : slim};
       }
       const sealedLocal=await seal(toSave,k);
       if(sealedLocal.length < MAX_LOCAL_BYTES) localStorage.setItem(k, sealedLocal);

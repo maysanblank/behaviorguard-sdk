@@ -51,6 +51,29 @@ export function createCapture(onEvent){
       focus: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
       blur: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
+      // A3: form yang diisi password manager / autofill / tempel TIDAK menghasilkan
+      // satu pun event keyboard, sehingga KEDELAPAN fitur keystroke jatuh ke nol
+      // (terukur: dwell 80->0, flight 120->0, speed 4,8->0, entropi 1,1->0, dst).
+      // Dua arah bahayanya: pemilik yang memakai password manager terlihat menyimpang
+      // tiap login, DAN penyusup bisa menyenjatakannya untuk menghapus seluruh blok
+      // bukti ketikan. Nol di sini berarti "tidak ada bukti", bukan "beginilah cara
+      // orang ini mengetik" — dan model tidak bisa membedakannya sendiri.
+      // Peristiwanya ditandai di sini; keputusannya (ABSTAIN pada blok keystroke)
+      // ada di behaviorguard.js, sama seperti C-23 menandai idle lalu memutuskan.
+      paste: e=>{ try{
+        const n=(e.clipboardData && e.clipboardData.getData ? (e.clipboardData.getData('text')||'') : '').length;
+        push({event_type:'PASTE', chars:n, page_url: location.href});
+      }catch{ push({event_type:'PASTE', chars:0, page_url: location.href}); } },
+      // B4: di layar sentuh `mousemove` praktis tidak pernah muncul, sehingga SEMBILAN
+      // fitur mouse jadi nol — pola yang sama dengan A3, blok yang berbeda. Sentuhan
+      // dan mouse adalah dua ALAT UKUR untuk gerakan yang sama, jadi ia dipetakan ke
+      // tipe event yang sama; tanpa ini, pengguna ponsel tidak pernah bisa dinilai
+      // sama sekali. Ditandai `touch:true` supaya lapisan konteks bisa memisahkan
+      // baselinenya kalau nanti diperlukan.
+      touch: e=>{ try{
+        const t=e.touches && e.touches[0]; if(!t) return;
+        push({event_type:'MOUSE_MOVE', x:t.clientX, y:t.clientY, velocity: withVelocity(t), touch:true, page_url: location.href});
+      }catch{} },
       cart: e=>{ try{ const t=e.target && e.target.closest && e.target.closest('[data-bg-cart], .add-to-cart, [data-cart]'); if(t) push({event_type:'CART_ACTION', page_url: location.href}); }catch{} }
     };
     // mousemove throttled: 1 per 50ms untuk cap volume
@@ -72,6 +95,10 @@ export function createCapture(onEvent){
     document.addEventListener('focusout', handlers.blur, opts);
     window.addEventListener('popstate', handlers.nav);
     document.addEventListener('submit', handlers.nav, opts);
+    document.addEventListener('paste', handlers.paste, opts);
+    // touchmove di-throttle memakai penjaga yang sama dengan mousemove
+    handlers.throttledTouch=e=>{ const now=Date.now(); if(now-lastMove < 50) return; lastMove=now; handlers.touch(e); };
+    document.addEventListener('touchmove', handlers.throttledTouch, opts);
   }
   function detach(){
     if(!attached) return;
@@ -87,6 +114,8 @@ export function createCapture(onEvent){
     document.removeEventListener('focusout', h.blur);
     window.removeEventListener('popstate', h.nav);
     document.removeEventListener('submit', h.nav);
+    document.removeEventListener('paste', h.paste);
+    document.removeEventListener('touchmove', h.throttledTouch);
     handlers=null;
   }
   function drain(){ const c=[...buf]; buf.length=0; dropped=0; return c; }

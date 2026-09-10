@@ -36,6 +36,33 @@
 export const GAP_MS_DEFAULT  = 30_000;    // = session.windowSec: jeda sepanjang satu jendela penilaian bukan perilaku
 export const AWAY_MS_DEFAULT = 300_000;   // 5 menit: batas "kursi mungkin kosong"
 
+/**
+ * B1: pisahkan event menurut ALIRAN asalnya (tab) sebelum apa pun diukur.
+ *
+ * Dua tab aplikasi yang sama menulis ke akumulator pending yang sama, jadi event
+ * dari dua halaman berbeda — yang dipakai bergantian, saling menyela dalam waktu —
+ * dulu tergabung jadi satu "sesi". Segmentasi idle tidak menolong di sini: kedua
+ * aliran itu aktif BERSAMAAN, jadi tak ada jeda untuk dipotong. Yang tercipta
+ * adalah orang ketiga yang tidak pernah ada: selisih antar-event melompat-lompat
+ * antara dua konteks, dan tak satu pun mencerminkan perilaku siapa pun.
+ *
+ * Prinsipnya sama dengan C-23: kalau dua pengukuran datang dari alat yang berbeda,
+ * jangan dirata-ratakan — pisahkan. Event tanpa `tabId` (data lama, atau event yang
+ * disuntik integrator) diperlakukan sebagai satu aliran bersama, jadi perilaku lama
+ * tidak berubah.
+ */
+export function groupByStream(events){
+  if(!events || !events.length) return [];
+  const byTab=new Map();
+  for(const e of events){
+    const k=e && e.tabId ? e.tabId : '';
+    if(!byTab.has(k)) byTab.set(k, []);
+    byTab.get(k).push(e);
+  }
+  // urut deterministik: aliran dengan event paling awal lebih dulu
+  return [...byTab.values()].sort((a,b)=>(a[0].timestamp||0)-(b[0].timestamp||0));
+}
+
 /** Urutkan menaik menurut timestamp tanpa memutasi masukan. Akumulator
  *  `bg:pending` menggabung ekor dari banyak halaman, jadi urutan tidak dijamin. */
 function byTs(events){
