@@ -207,6 +207,7 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
     if feature_cols is None: feature_cols=F4
     def baseline_of(): return 10
     totalOwner=ownerNonLow=0; totalImp=impLow=0; convs=0; owner_scores=[]; imp_scores=[]
+    per_user={}
     for uid in subject_ids:
         cols=','.join('f.'+f for f in feature_cols)
         if vec_source is not None:
@@ -294,7 +295,9 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             v=vecs[i]; ec=ecounts[i]
             sc=ens(v); owner_scores.append(sc); lvl=to_risk(sc, thr); scores.append(lvl)
             totalOwner+=1
-            if lvl!='LOW': ownerNonLow+=1
+            pu=per_user.setdefault(uid, {'n':0,'bad':0,'nsess':len(vecs),'own':[],'imp':[],'thr':None})
+            pu['n']+=1; pu['own'].append(sc)
+            if lvl!='LOW': ownerNonLow+=1; pu['bad']+=1
             if lvl=='LOW' and is_eligible(v, ec):
                 pool.append(v)
         if len(scores)>=window and all(x=='LOW' for x in scores[-window:]):
@@ -312,10 +315,12 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
                 other_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall()
             for r in other_rows:
                 sc_imp=ens(list(r)); imp_scores.append(sc_imp)
+                pu2=per_user.setdefault(uid, {'n':0,'bad':0,'nsess':0,'own':[],'imp':[],'thr':None})
+                pu2['imp'].append(sc_imp); pu2['thr']=thr['low']
                 totalImp+=1
                 if to_risk(sc_imp, thr)=='LOW': impLow+=1
     return dict(owner=totalOwner, ownerNonLow=ownerNonLow, frr=ownerNonLow/totalOwner*100 if totalOwner else 0,
-                imp=totalImp, impLow=impLow, far=impLow/totalImp*100 if totalImp else 0, conv=convs, nsub=len(subject_ids),
+                imp=totalImp, impLow=impLow, far=impLow/totalImp*100 if totalImp else 0, conv=convs, nsub=len(subject_ids), per_user=per_user,
                 owner_scores=owner_scores, imp_scores=imp_scores)
 
 def main():
