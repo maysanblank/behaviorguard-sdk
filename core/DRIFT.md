@@ -949,7 +949,16 @@ di Python dan JS, idle 33/33, jalur penuh 20/20, invariansi 26/26, step-up 23/23
 
 ---
 
-## C-26 - FRR 23% bukan batas algoritma, melainkan pendaftaran yang terlalu pendek
+## C-26 - FRR 23% dan panjang pendaftaran (DIUKUR DI MESIN YANG SALAH - lihat C-27)
+
+> **Ditarik 10 Sep 2026.** Seluruh tabel di bagian ini memakai `reproduce_db.py`, yang
+> ternyata memakai sklearn OCSVM dengan bobot IF 0,70 - sedangkan yang DIKIRIM adalah
+> Mahalanobis dengan bobot IF 0,30. Di mesin yang benar, FRR-nya 12,1% (bukan 28,4%)
+> dan keunggulan pendaftaran 16 sesi LARUT ke dalam sebaran. Bagian ini dipertahankan
+> sebagai catatan proses; kesimpulannya hanya berlaku untuk mesin OCSVM. Lihat C-27.
+
+### Catatan asli (mesin OCSVM)
+
 
 FRR 23% pada FAR 2% tidak layak kirim. Bagian ini membongkar dari mana angka itu
 datang. Alatnya `tools/frr_levers.py`, yang **mereproduksi `reproduce_db.py` digit per
@@ -1041,6 +1050,77 @@ dikirim.
 
 Reproduksi:
 `python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --baseline 16 --eval-from 16`
+
+---
+
+## C-27 - KRITIS: yang DIUKUR bukan yang DIKIRIM (mesin ensemble)
+
+Kelas cacat C-16/C-17 - "yang dilatih dan yang dipakai bukan besaran yang sama" -
+ternyata juga ada di **lapisan evaluasinya sendiri**, dan itu membuat sistem ini
+dinilai jauh lebih buruk daripada kemampuan sebenarnya.
+
+| | detektor-2 | bobot |
+|---|---|---|
+| `sdk/core/config.js` (**yang dikirim**) | `model2:'mahalanobis'` | IF **0,30** / slot-2 **0,70** |
+| `tools/reproduce_db.py` (**yang mengukur**) | sklearn `RealOCSVM` | IF **0,70** / slot-2 **0,30** |
+
+Bukan hanya mesinnya berbeda - **bobotnya terbalik.** Jadi seluruh angka yang pernah
+dihasilkan `reproduce_db.py`, termasuk semua tabel C-23..C-26 di atas, mengukur sistem
+yang tidak pernah dijalankan pengguna mana pun.
+
+`core/bg_core.py:Mahalanobis` adalah padanan bit-per-bit `sdk/core/mahalanobis.js`, jadi
+`frr_levers.py --scorer maha` memakai kelas itu LANGSUNG, bukan tiruan. Shrinkage
+adaptif C-22 direplikasi dari `behaviorguard._rebuildModel`: `min(0.9, max(0.3, d/n))`.
+
+### Selisihnya, 5 belahan 8/8, grid q bersama
+
+| Mesin | FRR | blokir | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|---:|
+| OCSVM, IF 0,70 (yang diukur selama ini) | 28,4% | 24,0% | 4,1% | 0,919 | 13,9% | 11,9% |
+| **Mahalanobis, IF 0,30 (yang dikirim)** | **12,1%** | **10,7%** | 12,6% | **0,954** | **10,8%** | **6,9%** |
+
+Rentang FRR [22..35] -> **[9..15]**; rentang EER [10..20] -> [9..15].
+
+**FRR 23-28% yang memicu seluruh penyelidikan ini tidak pernah nyata.** Ia milik mesin
+yang tidak dikirim. Metrik bebas-ambang ikut membaik semuanya, jadi ini bukan pertukaran
+titik operasi melainkan mesin yang memang lebih baik di korpus ini.
+
+Yang tetap harus disebut jujur: pada titik operasi hasil tuning, FAR-nya 12,6% lawan
+4,1%. Tunernya memang mencari |FRR-FAR| terkecil sehingga mendarat dekat EER. FAR@FRR15
+= 6,9% adalah angka yang dipakai kalau titik operasinya digeser ke FRR 15%.
+
+### Akibatnya untuk C-26 - KLAIM PENDAFTARAN DITARIK
+
+C-26 menyimpulkan pendaftaran 10 sesi terlalu pendek dan 16 jauh lebih baik. Diulang di
+mesin yang benar, dengan himpunan uji tetap identik (`--eval-from 16`):
+
+| Mahalanobis, uji sesi >=16 | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|
+| pendaftaran 10 | 12,4% | 12,9% | 0,948 | 11,6% | 8,4% |
+| pendaftaran 16 | 11,4% | 12,7% | 0,946 | 10,9% | 6,6% |
+
+Selisihnya di dalam sebaran antar-belahan. **Manfaat pendaftaran panjang itu artefak
+mesin yang lemah.** Masuk akal secara mekanis: OCSVM kelaparan sampel, sementara
+Mahalanobis + shrinkage adaptif C-22 memang dirancang untuk n kecil - jadi menambah
+sampel tidak menambah apa-apa. Tabel C-26 dipertahankan sebagai catatan, TAPI
+kesimpulannya hanya berlaku untuk mesin OCSVM dan tidak boleh dikutip.
+
+### Empat tuas C-26 juga tidak sah lagi
+
+LOO, z-norm, pengurangan dimensi, dan agregasi semuanya diukur di mesin OCSVM. Peringkat
+antar-tuas harus diuji ulang sebelum salah satunya dikutip. Diagnosis yang TETAP berlaku
+karena ia sifat protokol, bukan sifat mesin: FRR menyebar rata antar subjek, dan kolam
+latih hanya tumbuh dari sesi yang divonis LOW sehingga ambang ketat membuat kolam
+kelaparan.
+
+### Yang harus dikerjakan
+
+`reproduce_db.py` HARUS diberi mode yang memakai Mahalanobis + bobot SDK, dan angka
+headline skripsi dihitung ulang di sana. Sampai itu selesai, setiap angka dari
+`reproduce_db.py` wajib diberi label mesin yang dipakainya.
+
+Reproduksi:
+`python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --scorer maha --w-if 0.30`
 
 ---
 

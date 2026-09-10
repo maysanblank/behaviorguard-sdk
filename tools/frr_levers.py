@@ -41,29 +41,135 @@ Jalankan: python tools/frr_levers.py --levers none znorm loo znorm+loo
 import argparse, math, random, sqlite3, sys, pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'core'))
 import reproduce_db as rdb
 
 BASELINE, STEP, WINDOW, MAX_POOL = 10, 6, 6, 30
 
 
-def _fit(pool_vecs, feature_cols, weights, use_real):
+def _signed_log(v):
+    """Kompresi ekor. Fitur seperti kecepatan, jeda klik dan durasi berekor sangat
+    panjang: satu sesi ekstrem menggeser mean/std kolam yang cuma 10..30 sampel, dan
+    seluruh penggaris ikut melenceng. sign(x)*log1p(|x|) itu monoton, jadi tidak ada
+    informasi urutan yang hilang - hanya skalanya yang dijinakkan."""
+    return [math.copysign(math.log1p(abs(x)), x) for x in v]
+
+
+def _robust_stats(vecs):
+    """Median + MAD, pengganti mean + std. Dengan n=10..30, SATU sesi menyimpang
+    sudah cukup menggelembungkan std sehingga penyusup ikut terlihat wajar, atau
+    menggeser mean sehingga pemilik terlihat menyimpang. Median/MAD tahan itu."""
+    d = len(vecs[0])
+    med, mad = [0.0] * d, [1.0] * d
+    for i in range(d):
+        col = sorted(v[i] for v in vecs)
+        n = len(col)
+        m = col[n // 2] if n % 2 else (col[n // 2 - 1] + col[n // 2]) / 2
+        dev = sorted(abs(v[i] - m) for v in vecs)
+        a = dev[n // 2] if n % 2 else (dev[n // 2 - 1] + dev[n // 2]) / 2
+        med[i] = m
+        mad[i] = max(a * 1.4826, 1e-3)
+    return med, mad
+
+
+def _fit(pool_vecs, feature_cols, weights, use_real, robust=False, scorer='ens',
+         cohort_vecs=None):
     """Kembalikan ens_fn mentah untuk satu kolam. Disalin dari build() di
-    reproduce_db.run_fold - dipisah supaya LOO bisa memanggilnya berulang."""
-    stats = rdb.compute_stats(pool_vecs)
-    Xstd = [rdb.standardize(v, stats) for v in pool_vecs]
+    reproduce_db.run_fold - dipisah supaya LOO bisa memanggilnya berulang.
+
+    scorer:
+      'ens'    IsolationForest + OCSVM, persis acuan.
+      'knn'    jarak ke k tetangga terdekat di kolam. Dengan n=10..30 dan d=28,
+               model kepadatan tidak punya cukup sampel untuk menaksir bentuk;
+               jarak ke tetangga tidak menaksir bentuk apa pun.
+      'cohort' PEMBEDA dua kelas: kolam pemilik lawan kohort orang lain. Selama ini
+               sistemnya satu-kelas - hanya melihat contoh pemilik, tidak pernah
+               contoh 'bukan pemilik' - padahal datanya ADA. Ini yang membuat
+               verifikasi suara dan wajah bekerja, dan belum pernah dicoba di sini.
+               Kohortnya WAJIB disjoin dari subjek pengukur FAR.
+    """
+    if robust:
+        pool_vecs = [_signed_log(v) for v in pool_vecs]
+        if cohort_vecs:
+            cohort_vecs = [_signed_log(v) for v in cohort_vecs]
+    pre = _signed_log if robust else (lambda v: v)
+
+    if scorer == 'maha':
+        # MESIN YANG SEBENARNYA DIKIRIM. reproduce_db.py memakai sklearn OneClassSVM,
+        # tapi sdk/core/config.js memakai model2:'mahalanobis' DAN bobot terbalik
+        # (IF 0.30 / slot-svm 0.70, bukan 0.70/0.30). Jadi seluruh angka yang diukur
+        # lewat reproduce_db mengukur mesin yang TIDAK dikirim ke pengguna.
+        # bg_core.Mahalanobis adalah padanan bit-per-bit dari mahalanobis.js, jadi di
+        # sini dipakai kelas itu langsung, bukan tiruan.
+        # Shrinkage ADAPTIF direplikasi dari behaviorguard._rebuildModel (C-22):
+        #   min(0.9, max(0.3, d/n)) — makin sedikit sampel, makin berat regularisasi.
+        from bg_core import Mahalanobis
+        stats = _robust_stats(pool_vecs) if robust else rdb.compute_stats(pool_vecs)
+        Xs = [rdb.standardize(v, stats) for v in pool_vecs]
+        d = len(feature_cols)
+        shrink = min(0.9, max(0.3, d / max(1, len(pool_vecs))))
+        det2 = Mahalanobis(shrink=shrink, n_features=d)
+        det2.fit(Xs)
+        iff = rdb.IF()
+        iff.fit(Xs)
+        gw = rdb.gate_weights(weights, len(pool_vecs))
+        m1, s1 = rdb.score_stats([iff.score_one(x) for x in Xs])
+        if gw['svm'] == 0:
+            return lambda v: (iff.score_one(rdb.standardize(pre(v), stats)) - m1) / s1
+        m2, s2 = rdb.score_stats([det2.score_one(x) for x in Xs])
+
+        def maha(v):
+            x = rdb.standardize(pre(v), stats)
+            return gw['isolation_forest'] * ((iff.score_one(x) - m1) / s1) + \
+                   gw['svm'] * ((det2.score_one(x) - m2) / s2)
+        return maha
+
+    if scorer == 'knn':
+        stats = _robust_stats(pool_vecs) if robust else rdb.compute_stats(pool_vecs)
+        P = [rdb.standardize(v, stats) for v in pool_vecs]
+        k = max(1, min(3, len(P) - 1))
+
+        def knn(v):
+            x = rdb.standardize(pre(v), stats)
+            d = sorted(sum((x[i] - p[i]) ** 2 for i in range(len(x))) ** 0.5 for p in P)
+            return -sum(d[:k]) / k          # makin dekat = makin normal
+        return knn
+
+    if scorer == 'cohort':
+        if not cohort_vecs or not rdb.SKLEARN:
+            scorer = 'ens'
+        else:
+            from sklearn.linear_model import LogisticRegression
+            stats = _robust_stats(pool_vecs) if robust else rdb.compute_stats(pool_vecs)
+            X = [rdb.standardize(v, stats) for v in pool_vecs] + \
+                [rdb.standardize(v, stats) for v in cohort_vecs]
+            y = [1] * len(pool_vecs) + [0] * len(cohort_vecs)
+            # C kecil + class_weight seimbang: positifnya cuma 10..30 lawan ratusan
+            # negatif, dan tanpa regularisasi kuat d=28 bisa dipisahkan sempurna
+            # (overfit total).
+            clf = LogisticRegression(C=0.05, class_weight='balanced', max_iter=2000)
+            clf.fit(X, y)
+
+            def coh(v):
+                return float(clf.decision_function([rdb.standardize(pre(v), stats)])[0])
+            return coh
+
+    stats = _robust_stats(pool_vecs) if robust else rdb.compute_stats(pool_vecs)
+    _std0 = rdb.standardize
+    Xstd = [_std0(v, stats) for v in pool_vecs]
     iff = rdb.IF()
     iff.fit(Xstd)
     gw = rdb.gate_weights(weights, len(pool_vecs))
     if gw['svm'] == 0:
         m1, s1 = rdb.score_stats([iff.score_one(x) for x in Xstd])
-        return lambda v: (iff.score_one(rdb.standardize(v, stats)) - m1) / s1
+        return lambda v: (iff.score_one(_std0(pre(v), stats)) - m1) / s1
     ocs = rdb.RealOCSVM(len(feature_cols)) if (rdb.SKLEARN and use_real) else rdb.OCSVM(len(feature_cols))
     ocs.fit(Xstd)
     m1, s1 = rdb.score_stats([iff.score_one(x) for x in Xstd])
     m2, s2 = rdb.score_stats([ocs.score_one(x) for x in Xstd])
 
     def ens(v):
-        x = rdb.standardize(v, stats)
+        x = _std0(pre(v), stats)
         return gw['isolation_forest'] * ((iff.score_one(x) - m1) / s1) + \
                gw['svm'] * ((ocs.score_one(x) - m2) / s2)
     return ens
@@ -136,7 +242,8 @@ def pick_features(conn, tune_ids, k, vec_source=None):
 
 
 def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True,
-             vec_source=None, znorm=False, loo=False, agg=1, eval_from=0):
+             vec_source=None, znorm=False, loo=False, agg=1, eval_from=0,
+             robust=False, scorer='ens'):
     """eval_from: indeks sesi paling awal yang BOLEH masuk hitungan FRR.
 
     Wajib dipakai saat membandingkan panjang pendaftaran. Menaikkan BASELINE dari 10
@@ -195,14 +302,16 @@ def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True
             pv = pool_vecs[:base_n] + rdb.dedup_behavioral(low_part, feature_cols)
             if not pv:
                 pv = vecs[:1]
-            ens = _fit(pv, feature_cols, weights, use_real)
+            ens = _fit(pv, feature_cols, weights, use_real,
+                       robust=robust, scorer=scorer, cohort_vecs=cohort_vecs)
             if znorm and cohort_vecs:
                 cm, cs = _msd([ens(v) for v in cohort_vecs])
                 ens = (lambda _r, _m, _s: (lambda v: (_r(v) - _m) / _s))(ens, cm, cs)
             if loo and len(pv) >= 12:
                 base = []
                 for i in range(len(pv)):
-                    e2 = _fit(pv[:i] + pv[i + 1:], feature_cols, weights, use_real)
+                    e2 = _fit(pv[:i] + pv[i + 1:], feature_cols, weights, use_real,
+                              robust=robust, scorer=scorer, cohort_vecs=cohort_vecs)
                     if znorm and cohort_vecs:
                         m2, s2 = _msd([e2(v) for v in cohort_vecs])
                         base.append((e2(pv[i]) - m2) / s2)
@@ -296,6 +405,12 @@ def main():
                     default=[0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.12, 0.15])
     ap.add_argument('--topk', type=int, default=0, help='pakai k fitur terbaik (0 = semua 28)')
     ap.add_argument('--agg', type=int, default=1)
+    ap.add_argument('--scorer', default='ens', choices=['ens', 'maha', 'knn', 'cohort'],
+                    help="mesin penilai: 'ens' (acuan), 'knn', atau 'cohort'")
+    ap.add_argument('--w-if', type=float, default=0.70,
+                    help='bobot IsolationForest. reproduce_db pakai 0.70; sdk/core/config.js pakai 0.30')
+    ap.add_argument('--robust', action='store_true',
+                    help='log bertanda + median/MAD, pengganti mean/std')
     ap.add_argument('--eval-from', type=int, default=0,
                     help='hitung FRR hanya dari indeks sesi ini ke atas (adil saat membandingkan panjang pendaftaran)')
     ap.add_argument('--baseline', type=int, default=10,
@@ -305,9 +420,10 @@ def main():
     BASELINE = a.baseline
 
     conn = sqlite3.connect(rdb.find_db())
-    W = {'isolation_forest': 0.70, 'svm': 0.30, 'lstm': 0}
+    W = {'isolation_forest': a.w_if, 'svm': round(1.0 - a.w_if, 4), 'lstm': 0}
     print(f"Protokol reproduce_db (belah 8/8, q dituning di FOLD-TUNE) | "
-          f"benih {a.seeds} | topk={a.topk or 28} | agg={a.agg} | daftar={a.baseline}\n")
+          f"benih {a.seeds} | topk={a.topk or 28} | agg={a.agg} | daftar={a.baseline} | "
+          f"mesin={a.scorer}{' +robust' if a.robust else ''} | bobot IF={a.w_if}\n")
 
     acc = {}
     for seed in a.seeds:
@@ -322,11 +438,13 @@ def main():
             zn, lo = 'znorm' in lv, 'loo' in lv
             best_q, best_gap = None, float('inf')
             for q in a.q_grid:
-                t = run_fold(conn, tune, W, q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from)
+                t = run_fold(conn, tune, W, q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from,
+                         robust=a.robust, scorer=a.scorer)
                 g = abs(t['frr'] - t['far'])
                 if g < best_gap:
                     best_gap, best_q = g, q
-            rep = run_fold(conn, report, W, best_q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from)
+            rep = run_fold(conn, report, W, best_q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from,
+                         robust=a.robust, scorer=a.scorer)
             rc = rdb.roc(rep['owner_scores'], rep['imp_scores'])
             acc.setdefault(lv, []).append((rep['frr'], rep['far'], rc['auc'], rc['eer'],
                                            rc['far_at_15'], rep['block']))

@@ -11,13 +11,13 @@
  * seluruhnya dari satu run yang sama.
  */
 export const DEFAULTS = {
-  // C-26: 10 TERLALU PENDEK untuk d=28. Dengan himpunan uji dibuat identik
-  // (tools/frr_levers.py --eval-from), pendaftaran 16 sesi memberi FAR@FRR15
-  // 5,2% lawan 16,4%, AUC 0,930 lawan 0,904, EER 12,9% lawan 16,0% — satu-satunya
-  // perubahan yang menurunkan FRR DAN FAR sekaligus. Jenuh setelah itu: 22 tidak
-  // mengalahkan 16. TIDAK dinaikkan di sini karena menukar 6 sesi tanpa
-  // perlindungan itu keputusan produk, dan ia membuat seluruh angka headline lama
-  // tidak sebanding. Lihat core/DRIFT.md C-26.
+  // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
+  // KLAIM ITU DITARIK. Ia diukur lewat tools/reproduce_db.py, yang memakai sklearn
+  // OCSVM + bobot IF 0,70 — BUKAN Mahalanobis + IF 0,30 yang dikirim dari file ini.
+  // Di mesin yang benar, 10 lawan 16 (himpunan uji identik) memberi AUC 0,948 vs 0,946
+  // dan EER 11,6% vs 10,9% — selisihnya di dalam sebaran antar-belahan. Shrinkage
+  // adaptif C-22 memang sudah menangani n kecil, jadi menambah sesi tidak menambah apa
+  // apa. Tetap 10. Lihat core/DRIFT.md C-27.
   baseline: 10,               // sesi pendaftaran awal
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas
