@@ -64,6 +64,15 @@ export const DEFAULTS = {
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
+  //
+  // PERINGATAN HASIL (10 Sep 2026, 5 belahan 8/8, core/DRIFT.md):
+  // segmentasi ini adalah KOREKSI KEBENARAN PENGUKURAN yang sahih (durasi 731 -> 5,5
+  // dtk, interval klik 48.708 -> 710 ms), tapi ia TIDAK memperbaiki FRR/FAR — malah
+  // merugikan daya pisah: EER 10,7% -> 16,1%, rentang [14..19] tidak beririsan dengan
+  // kontrol [9..12]. Melonggarkan ambang tidak menolong (30/120/300 dtk: FRR 35,3% ->
+  // 39,9% -> 42,3%). JANGAN kutip segmentasi ini sebagai peningkatan akurasi.
+  // Nilai ini juga menyetir idleAccounting dan ABSTAIN, yang TIDAK ikut teradili di
+  // tolok ukur itu — memisahkannya jadi knob sendiri adalah pekerjaan berikutnya.
   session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen

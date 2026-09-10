@@ -76,7 +76,7 @@ def load_raw(conn, uid):
     return out
 
 
-def build_source(raw_by_uid, mode, K, afk, gap_min, seed):
+def build_source(raw_by_uid, mode, K, afk, gap_min, seed, gap_ms_override=0):
     """{uid: [(vektor, event_count)]} menurut satu kondisi.
 
     mode: 'utuh'      satu vektor per sesi, apa adanya (perilaku sebelum C-23)
@@ -95,7 +95,7 @@ def build_source(raw_by_uid, mode, K, afk, gap_min, seed):
             if mode == 'utuh':
                 vecs.append((abl.vec_of(evs), len(evs)))
             elif mode == 'segmen':
-                for seg in abl.segment_by_idle(evs):
+                for seg in abl.segment_by_idle(evs, gap_ms_override or abl.GAP_MS):
                     if len(seg) >= 30:                 # session.minEventsAssess
                         vecs.append((abl.vec_of(seg), len(seg)))
             else:
@@ -149,6 +149,11 @@ def main():
     ap.add_argument('--seeds', type=int, nargs='+', default=[42],
                     help='benih belahan 8/8. Beri beberapa untuk melihat SEBARAN; satu '
                          'belahan tunggal tidak cukup untuk memeringkat representasi.')
+    ap.add_argument('--idle-gap-sec', type=float, nargs='+', default=None,
+                    help='sapu beberapa nilai session.idleGapSec untuk mode segmen. '
+                         'Memotong di 30 dtk juga memotong JEDA BERPIKIR biasa, dan sesi '
+                         'yang lebih pendek membawa bukti lebih sedikit — ongkos yang '
+                         'sama persis dengan yang menenggelamkan C-24.')
     ap.add_argument('--only', type=int, nargs='+', default=None,
                     help='jalankan hanya kondisi bernomor ini (hemat waktu)')
     args = ap.parse_args()
@@ -184,9 +189,16 @@ def main():
     ]
     if args.only:
         conds = [c for i, c in enumerate(conds, 1) if i in args.only]
+    if args.idle_gap_sec:
+        conds = [c for c in conds if c[1] != 'segmen'] + [
+            (f"3.{int(g)}s utuh + segmentasi @{int(g)} dtk, dgn AFK", 'segmen', True)
+            for g in args.idle_gap_sec]
     rows = []
     for label, mode, afk in conds:
-        src = build_source(raw, mode, K, afk, args.gap_min, args.seed)
+        gms = 0
+        if args.idle_gap_sec and mode == 'segmen':
+            gms = float(label.split('@')[1].split()[0]) * 1000
+        src = build_source(raw, mode, K, afk, args.gap_min, args.seed, gms)
         runs = []
         for sd in args.seeds:
             print(f"menjalankan: {label} | benih belahan {sd} ...", flush=True)

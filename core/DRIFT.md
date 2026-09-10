@@ -772,81 +772,112 @@ tidak mengubah apa pun. Bukti invariansi di sana: pergeseran fitur-cacah akibat 
 
 ---
 
-## Validasi held-out untuk C-23 dan C-24 - DAN KENAPA IA BELUM MEMUTUSKAN APA PUN
+## Validasi held-out untuk C-23 dan C-24 - VONIS AKHIR (5 belahan)
 
-> **Koreksi 10 Sep 2026.** Versi pertama bagian ini menyimpulkan bahwa C-23 melampaui
-> kontrol (AUC 0,907 -> 0,941). **Kesimpulan itu ditarik.** Ia tidak bertahan begitu
-> grid `q` dilebarkan, dan berbalik lagi begitu kalibrasi ambang dipindah ke luar
-> sampel. Yang tersisa bukan pemenang, melainkan temuan yang lebih penting: dengan
-> protokol ini, **pilihan tuning punya pengaruh lebih besar terhadap angka daripada
-> perubahan yang sedang diukur.** Rinciannya di bawah.
+> **Riwayat koreksi.** Versi pertama bagian ini mengklaim C-23 melampaui kontrol
+> (AUC 0,907 -> 0,941). Klaim itu **ditarik**: ia berbalik begitu grid `q` dilebarkan,
+> lalu berbalik lagi begitu kalibrasi dipindah ke luar sampel - tiga konfigurasi
+> protokol, tiga jawaban, untuk perubahan kode yang persis sama. Sebabnya ditelusuri
+> ke tiga cacat protokol (di bawah), ketiganya kini diperbaiki, dan hasilnya diulang
+> atas **5 belahan 8/8** dengan grid `q` yang sama untuk semua lengan. Bagian ini
+> melaporkan hasil yang diperbaiki itu. **Ia negatif untuk C-23.**
 
-`tools/canonical_holdout.py` mengulang ablasi C-23/C-24 di bawah protokol yang persis
-sama dengan angka headline (whitelist 16 subjek, belah 8/8, q dituning di FOLD-TUNE,
-dilaporkan di FOLD-REPORT), disetir vektor yang diekstrak ulang dari `raw_events`.
-`run_fold` diberi parameter opsional `vec_source` dan `calib_holdout`; tanpa keduanya
-perilakunya identik dengan sebelumnya.
+### Cacat protokol yang diperbaiki
 
-### Pertanyaannya: apakah C-23 menolong saat ada AFK? (baris 3 vs baris 2)
+1. **`q` mentok di pinggir grid.** Di jalankan awal SEMUA kondisi memilih 0,10 - nilai
+   terkecil yang tersedia. Tuner ingin lebih longgar tapi tak diberi pilihan, jadi tiap
+   lengan dinilai pada titik operasi yang bukan pilihannya sendiri. **Inilah sumber FRR
+   50-60% yang bikin panik itu - artefak penempatan ambang, bukan kegagalan sistem.**
+   Grid dilebarkan ke [0,01 .. 0,15]; FRR kontrol turun 35,5% -> 23,0%.
+2. **`q` ikut memilih data latih.** Kolam hanya bertambah dari sesi yang divonis LOW,
+   jadi mengubah `q` mengubah kolam, sehingga mengubah model. Dua nilai `q` bukan dua
+   titik pada satu kurva; itu dua model. Karena itu grid harus **sama untuk semua lengan**.
+3. **Satu belahan tidak punya sebaran.** FOLD-REPORT hanya 8 subjek. Kini 5 belahan
+   (benih 42/7/13/2026/99) dan **[min..maks] dilaporkan**, bukan satu bilangan.
 
-Tiga konfigurasi protokol, pertanyaan yang sama, **jawaban yang berbeda-beda**:
+### Hasil, 5 belahan, grid `q` bersama
 
-| Konfigurasi protokol | tanpa C-23 | dengan C-23 | Selisih |
-|---|---:|---:|---:|
-| grid q [0,10..0,20], kalibrasi in-sample | AUC 0,874 | AUC **0,902** | +0,028 menolong |
-| grid q [0,01..0,10], kalibrasi in-sample | AUC 0,913 | AUC **0,879** | -0,034 MERUGIKAN |
-| grid q [0,01..0,10], kalibrasi luar-sampel | AUC 0,652 | AUC **0,828** | +0,176 sangat menolong |
+| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|
+| 1. utuh, tanpa AFK (kontrol) | 23,0% | 2,0% | **0,946** | **10,4%** | **4,1%** |
+| 2. utuh, dengan AFK | **32,8%** | 1,3% | 0,938 | 10,7% | 5,7% |
+| 3. + segmentasi C-23 @30 dtk, dgn AFK | 35,3% | 2,8% | 0,905 | 16,1% | 17,4% |
+| 4. + segmentasi C-23 @120 dtk, dgn AFK | 39,9% | 2,0% | 0,903 | 15,9% | 17,7% |
+| 5. + segmentasi C-23 @300 dtk, dgn AFK | 42,3% | 2,4% | 0,907 | 13,9% | 12,2% |
 
-Rentang selisihnya -0,034 sampai +0,176 untuk perubahan kode yang **persis sama**.
-Tidak ada satu pun dari ketiganya yang boleh dikutip sebagai "hasil".
+Rentang EER: kontrol [9..12], AFK [8..13], C-23@30 **[14..19]**, @120 [14..19], @300 [12..16].
 
-### Kenapa seliar itu
+### Tiga temuan
 
-Bukan derau acak — ada mekanismenya, dan mekanismenya penting untuk dipahami.
+**(a) Kerusakan idle nyata, tapi muncul di FRR - BUKAN di AUC.** Baris 2 vs 1: FRR
+23,0% -> 32,8% (+9,8 poin), sementara AUC nyaris tak bergerak (0,946 -> 0,938) dan EER
+tetap (~10,5%). Mekanismenya: jeda AFK disuntikkan ke sesi evaluasi **pemilik maupun
+penyusup**, jadi distorsinya searah untuk keduanya - **peringkat lestari, kalibrasi
+bergeser.** AUC adalah metrik peringkat, jadi ia **buta** terhadap mode kegagalan ini.
+Ini sendiri layak masuk skripsi: melaporkan AUC saja akan menyembunyikan keluhan
+pembimbing sepenuhnya. Koreksi: klaim lama "kerusakan idle terkonfirmasi lewat AUC
+0,907 -> 0,874" **tidak bertahan**; yang bertahan adalah kerusakan di FRR.
 
-1. **`q` bukan sekadar ambang, ia ikut memilih data latih.** Di `run_fold`, kolam hanya
-   bertambah dari sesi yang divonis LOW. Mengubah `q` mengubah sesi mana yang LOW,
-   sehingga mengubah **kolam**, sehingga mengubah **model**. Membandingkan dua nilai `q`
-   bukan menggeser titik operasi pada kurva yang sama; itu membandingkan dua model.
-2. **`q` mentok di pinggir grid.** Di jalankan pertama, SEMUA kondisi memilih 0,10 —
-   nilai terkecil yang tersedia. Tuner ingin lebih longgar tapi tak diberi pilihan, jadi
-   tiap kondisi dinilai pada titik operasi yang bukan pilihannya sendiri. Itu sendirian
-   sudah cukup membuat perbandingan tidak sah.
-3. **Holdout kalibrasi mengecilkan kolam fit.** Implementasi di sini menyisihkan 30%
-   kolam dari PEMFITAN, bukan hanya dari kalibrasi. Dengan kolam 10-30 vektor, itu
-   perubahan besar — jadi baris ketiga tabel mengukur "kolam lebih kecil + kalibrasi
-   luar-sampel", bukan kalibrasi luar-sampel saja. Confound yang harus dipisah.
-4. **FOLD-REPORT hanya 8 subjek.** Satu belahan tunggal tidak punya sebaran sama sekali,
-   dan dengan n=8 sebarannya cukup besar untuk membalik peringkat.
+**(b) Segmentasi C-23 tidak memperbaikinya, dan merusak daya pisah.** Baris 3 vs 2: FRR
+tidak turun (35,3%), dan EER 10,7% -> 16,1% dengan FAR@FRR15 5,7% -> 17,4%. Rentang EER
+C-23 [14..19] **tidak beririsan** dengan kontrol [9..12] maupun dengan lengan AFK [8..13]
+di kelima belahan. Ini negatif yang konsisten, bukan derau.
 
-### Yang bisa dan tidak bisa diklaim sekarang
+**(c) Hipotesis "ambang 30 detik terlalu agresif" DITOLAK.** Dugaannya: memotong tiap
+jeda 30 detik ikut mencincang jeda berpikir biasa, jadi C-23 membayar ongkos "sesi lebih
+pendek" yang sama seperti C-24. Kalau benar, melonggarkan ambang seharusnya menolong.
+Ia **tidak**: 30 -> 120 -> 300 detik justru memperburuk FRR secara monoton
+(35,3% -> 39,9% -> 42,3%) sementara AUC diam di ~0,905. EER membaik sedikit di 300 detik
+(13,9%) tapi tetap di luar rentang kontrol. Jadi kerugiannya **bukan** soal panjang
+segmen, dan melonggarkan ambang bukan jalan keluarnya.
 
-**Bisa diklaim** (mekanis, tidak bergantung protokol, terbukti di `core/idle.test.mjs`):
-jeda 12 menit tidak boleh masuk ke `mouse_click_interval_mean`. Segmentasi memulihkan
-`temporal_session_duration` 731,2 -> 5,5 dtk, interval klik 48.708 -> 710 ms, dan |z|
-fitur-waktu 12,42 -> 1,14. Itu koreksi kebenaran pengukuran, dan ia berdiri sendiri.
+### Apa yang boleh dan tidak boleh diklaim
 
-**Bisa diklaim**: kerusakan idle nyata di titik operasi yang sah - di ketiga konfigurasi,
-menambahkan AFK selalu memperburuk kontrol.
+**BOLEH** (mekanis, tak bergantung protokol, `core/idle.test.mjs`): jeda 12 menit tidak
+boleh masuk `mouse_click_interval_mean`. Segmentasi memulihkan `temporal_session_duration`
+731,2 -> 5,5 dtk, interval klik 48.708 -> 710 ms, |z| fitur-waktu 12,42 -> 1,14. Itu
+**koreksi kebenaran pengukuran** dan ia berdiri sendiri.
 
-**BELUM bisa diklaim**: berapa besar C-23 memperbaiki FRR/FAR. Butuh grid `q` yang sama
-untuk semua lengan, holdout yang tidak mengecilkan kolam fit, dan **beberapa belahan 8/8
-dengan sebarannya dilaporkan**. `tools/canonical_holdout.py --seeds ...` sekarang
-menyediakan yang terakhir.
+**BOLEH**: kerusakan idle nyata di titik operasi yang sah, terlihat di FRR (+9,8 poin).
 
-**BELUM bisa diklaim juga**: bahwa C-24 pasti kalah. Ia kalah di dua konfigurasi pertama
-(0,820 dan 0,802 lawan kontrol 0,907 dan 0,924) tapi MENANG di yang ketiga (0,863 lawan
-0,825). Alasan mengirimnya default-mati tetap berlaku - tidak ada bukti ia menolong -
-tapi "terbukti merugikan" terlalu jauh.
+**TIDAK BOLEH**: bahwa segmentasi C-23 memperbaiki FRR/FAR. Buktinya sekarang justru
+**sebaliknya**, konsisten di 5 belahan dan 3 ambang jeda. Ini **hasil negatif** dan
+dilaporkan apa adanya.
+
+**BELUM TERUJI**: lapisan kedua dan ketiga C-23 - pelacakan kehadiran (`awaySec`,
+`reverifyAfterSec`) dan ABSTAIN. Keduanya **mekanisme keamanan**, bukan perubahan
+penilaian, jadi tolok ukur ini secara struktural tidak bisa mengukurnya: korpusnya tidak
+punya skenario ambil-alih-sesi-tak-dijaga. Argumennya kebijakan (PCI DSS 8.2.8), bukan
+empiris, dan harus disajikan begitu.
+
+**BELUM BISA DIKLAIM juga**: bahwa C-24 pasti kalah. Ia kalah di dua konfigurasi (0,820
+dan 0,802 lawan 0,907 dan 0,924) tapi menang di satu (0,863 lawan 0,825). Alasan
+mengirimnya default-mati tetap berlaku - **tidak ada bukti ia menolong** - tapi "terbukti
+merugikan" terlalu jauh.
+
+### Konsekuensi untuk default
+
+Preseden C-24 berlaku sama kerasnya untuk segmentasi C-23: **fitur yang tidak terbukti
+menolong tidak boleh nyala secara default.** Buktinya untuk C-23 bahkan lebih kuat dari
+C-24 - bukan sekadar "tak ada bukti menolong" melainkan bukti konsisten bahwa ia
+merugikan daya pisah. Yang menahan flip otomatis: `idleGapSec` yang sama juga menyalakan
+`idleAccounting` dan ABSTAIN, jadi mematikannya begitu saja ikut mematikan dua mekanisme
+yang tidak sedang diadili. Memisahkan ketiganya jadi knob terpisah adalah langkah
+berikutnya, dan sampai itu dikerjakan angka di tabel ini yang berlaku - **bukan** asumsi
+bahwa C-23 nyala itu lebih baik.
 
 ### Pelajaran metodologisnya
 
-Ini layak masuk skripsi sebagai temuan tersendiri: **pada protokol few-shot on-device
-seperti ini, evaluasinya sendiri adalah sumber ketidakpastian terbesar.** Kolam latih
-yang tumbuh dari vonisnya sendiri menciptakan umpan balik antara ambang dan data, dan
-dengan 8 subjek pelapor, satu belahan tunggal tidak cukup untuk memeringkat apa pun.
-Angka apa pun dari protokol ini - **termasuk angka headline lama** - sebaiknya dilaporkan
-dengan sebaran atas beberapa belahan, bukan sebagai satu bilangan.
+Layak jadi temuan tersendiri di skripsi: **pada protokol few-shot on-device seperti ini,
+evaluasinya sendiri adalah sumber ketidakpastian terbesar.** Kolam latih yang tumbuh dari
+vonisnya sendiri menciptakan umpan balik antara ambang dan data; grid `q` yang mentok di
+pinggir bisa menciptakan FRR 50-60% dari ketiadaan; dan dengan 8 subjek pelapor, satu
+belahan tunggal tidak cukup untuk memeringkat apa pun. Angka apa pun dari protokol ini -
+**termasuk angka headline lama** - sebaiknya dilaporkan dengan sebaran atas beberapa
+belahan, bukan sebagai satu bilangan.
+
+Reproduksi:
+`python tools/canonical_holdout.py --only 1 2 3 --idle-gap-sec 30 120 300 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15`
 
 ---
 
@@ -936,7 +967,7 @@ di Python dan JS, idle 33/33, jalur penuh 20/20, invariansi 26/26, step-up 23/23
 | Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
 | Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
 | Audit validitas pengukuran C-25 | `core/audit.test.mjs` | 32/32 SESUAI |
-| Validasi held-out C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13` | BELUM MEMUTUSKAN, lihat koreksi |
+| Validasi held-out C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIF untuk segmentasi C-23 |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
