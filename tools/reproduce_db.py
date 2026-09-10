@@ -7,6 +7,23 @@ A3: held-out 8/8 seed 42 — tune threshold via EER di FOLD-TUNE, lapor di FOLD-
 Deterministik, stdout utf-8, tanpa augment, tanpa geser gate/window.
 """
 import sqlite3, math, pathlib, sys, random, argparse
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'core'))
+
+# C-27: MESIN YANG DIKIRIM, bukan mesin yang kebetulan ada di skrip ini.
+# sdk/core/config.js memakai model2:'mahalanobis' dengan bobot IF 0,30 / slot-2 0,70.
+# Versi lama skrip ini memakai sklearn OneClassSVM dengan bobot TERBALIK (0,70/0,30),
+# jadi setiap angka yang pernah dikeluarkannya menilai sistem yang tidak pernah
+# dijalankan pengguna mana pun. Selisihnya besar: FRR 28,4% -> 12,1%, AUC 0,919 ->
+# 0,954 (5 belahan). Lihat core/DRIFT.md C-27.
+# `--legacy-ocsvm` tetap disediakan HANYA untuk mereproduksi angka lama apa adanya.
+ENGINE_DEFAULT = 'maha'
+WEIGHTS_SDK    = {'isolation_forest': 0.30, 'svm': 0.70, 'lstm': 0}
+WEIGHTS_LEGACY = {'isolation_forest': 0.70, 'svm': 0.30, 'lstm': 0}
+try:
+    from bg_core import Mahalanobis
+    HAS_MAHA = True
+except Exception:
+    HAS_MAHA = False
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
@@ -195,7 +212,7 @@ def roc(owner_scores, imp_scores):
         return best[2] if best else 100
     return dict(auc=auc, eer=eer, eer_thr=eer_thr, far_at_15=far_at(15), far_at_5=far_at(5), n=len(thr_list), thr_range=(min(all_thr), max(all_thr)), pts=pts)
 
-def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True, vec_source=None, calib_holdout=0.0):
+def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True, vec_source=None, calib_holdout=0.0, engine=None):
     """vec_source: {uid: [(vektor, event_count), ...]} menggantikan tabel `features`.
 
     Ditambahkan untuk C-24. Tujuannya SATU: mengevaluasi representasi lain (mis.
@@ -246,13 +263,23 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             Xstd=[standardize(v,stats) for v in pool_vecs]
             iff=IF(); iff.fit(Xstd); ocs=OCSVM(len(feature_cols)); ocs.fit(Xstd)
             n=len(pool_vecs); gw=gate_weights(weights, n)
-            # pilih OCSVM real jika tersedia dan gate membolehkan SVM
-            use_real = SKLEARN and use_real_ocsvm and gw['svm']>0
-            if use_real:
-                # ganti ocs dengan RealOCSVM
-                ocs_real=RealOCSVM(len(feature_cols))
-                ocs_real.fit(Xstd)
-                ocs=ocs_real
+            eng = engine or ENGINE_DEFAULT
+            if eng=='maha' and HAS_MAHA and gw['svm']>0:
+                # Shrinkage ADAPTIF, direplikasi dari behaviorguard._rebuildModel (C-22):
+                # kovarians d×d butuh n >> d; gerbang buka di n=20 padahal d=28, jadi
+                # regularisasi harus lebih berat justru saat sampelnya sedikit.
+                d_=len(feature_cols)
+                shrink=min(0.9, max(0.3, d_/max(1,len(pool_vecs))))
+                det2=Mahalanobis(shrink=shrink, n_features=d_)
+                det2.fit(Xstd)
+                ocs=det2
+            else:
+                # pilih OCSVM real jika tersedia dan gate membolehkan SVM
+                use_real = SKLEARN and use_real_ocsvm and gw['svm']>0
+                if use_real:
+                    ocs_real=RealOCSVM(len(feature_cols))
+                    ocs_real.fit(Xstd)
+                    ocs=ocs_real
             if gw['svm']==0:
                 raw=[iff.score_one(x) for x in Xstd]; m1,s1=score_stats(raw); m2,s2=(0,1)
                 def ens_fn(v): return (iff.score_one(standardize(v,stats))-m1)/s1
@@ -328,10 +355,27 @@ def main():
     ap.add_argument('--ablation', action='store_true', help='IF 100%')
     ap.add_argument('--centroid', action='store_true', help='pakai centroid JS (ocs.js) bukan sklearn — untuk kuantifikasi gap engine')
     ap.add_argument('--db', help='path DB override')
+    ap.add_argument('--legacy-ocsvm', action='store_true',
+                    help='C-27: pakai sklearn OCSVM + bobot IF 0,70 (mesin LAMA yang TIDAK dikirim). '
+                         'Hanya untuk mereproduksi angka lama; jangan dipakai melaporkan hasil.')
     args=ap.parse_args()
-    weights={'isolation_forest':1.0,'svm':0,'lstm':0} if args.ablation else {'isolation_forest':0.70,'svm':0.30,'lstm':0}
+    legacy=args.legacy_ocsvm or args.centroid
+    ENG = 'ocsvm' if legacy else ENGINE_DEFAULT
+    if ENG=='maha' and not HAS_MAHA:
+        print('ERROR: core/bg_core.py:Mahalanobis tidak bisa diimpor — mesin yang dikirim tidak tersedia.')
+        print('       Jangan diam-diam jatuh ke OCSVM: itu justru cacat C-27 yang sedang diperbaiki.')
+        sys.exit(1)
+    base_w = WEIGHTS_LEGACY if legacy else WEIGHTS_SDK
+    weights={'isolation_forest':1.0,'svm':0,'lstm':0} if args.ablation else dict(base_w)
     use_real=not args.centroid
-    print(f"Mode: {'ABLATION IF 100%' if args.ablation else 'FINAL W7 70/30'} | engine={'centroid JS' if args.centroid else 'sklearn RealOCSVM'}")
+    eng_name = ('centroid JS' if args.centroid else
+                'sklearn RealOCSVM (LAMA — tidak dikirim)' if legacy else
+                'Mahalanobis + shrink adaptif (SAMA dengan sdk/core/config.js)')
+    print(f"Mode: {'ABLATION IF 100%' if args.ablation else 'FINAL'} | engine={eng_name}")
+    print(f"Bobot: IF {weights['isolation_forest']:.2f} / slot-2 {weights['svm']:.2f}"
+          + ('' if legacy or args.ablation else '  <- sama dengan yang dikirim'))
+    if legacy:
+        print('PERINGATAN C-27: ini mesin LAMA. Angkanya TIDAK mewakili sistem yang dikirim.')
     db=args.db or find_db()
     if not db or not pathlib.Path(db).exists():
         print("DB tidak ditemukan"); sys.exit(1)
@@ -356,37 +400,47 @@ def main():
     print(f"\nFOLD-TUNE (8): {fold_tune}")
     print(f"FOLD-REPORT (8): {fold_report}  <- headline")
     # tune threshold quantile di FOLD-TUNE via EER (bukan cari FRR cakep)
-    cands=[0.10,0.12,0.15,0.18,0.20]
+    # C-27: grid LAMA [0,10..0,20] MENTOK DI PINGGIR — kedua mesin selalu memilih 0,10,
+    # yaitu nilai terkecil yang tersedia. Tuner ingin lebih longgar tapi tidak diberi
+    # pilihan, jadi sistemnya dinilai pada titik operasi yang bukan pilihannya sendiri.
+    # Itulah asal FRR 35% yang selama ini dikira batas kemampuan model. Grid dilebarkan
+    # ke bawah; kalau q terpilih masih menyentuh ujung grid, skrip BERTERIAK.
+    cands=[0.01,0.02,0.03,0.05,0.08,0.10,0.12,0.15,0.18,0.20]
     best_q=None; best_gap=float('inf'); best_res=None
     print("\n[TUNE] cari q_low via EERgap (jarak titik-seimbang, bukan EER) di FOLD-TUNE (berprinsip):")
     for q in cands:
-        r=run_fold(c, fold_tune, weights, q, use_real_ocsvm=use_real)
+        r=run_fold(c, fold_tune, weights, q, use_real_ocsvm=use_real, engine=ENG)
         gap=abs(r['frr']-r['far'])
         print(f"  q={q:.2f} -> FRR {r['frr']:.1f}% FAR {r['far']:.1f}% gap {gap:.1f}% conv {r['conv']}/{r['nsub']}")
         if gap < best_gap:
             best_gap=gap; best_q=q; best_res=r
     print(f"Note: q=0.10 vs 0.12 gap selisih kecil = noise — pemilihan q rapuh, EERgap hanya kriteria pemilihan q, bukan EER sungguhan")
     print(f"Dipilih q_low={best_q:.2f} karena gap terkecil ({best_gap:.1f}%) di FOLD-TUNE — bukan karena mendekati 15.2")
-    rep=run_fold(c, fold_report, weights, best_q, use_real_ocsvm=use_real)
+    # C-27: kalau q terpilih menyentuh ujung grid, tunernya sedang dibatasi, bukan
+    # sedang memilih. Angka apa pun di bawahnya adalah titik operasi yang dipaksakan.
+    if best_q in (cands[0], cands[-1]):
+        print(f"PERINGATAN C-27: q_low={best_q:.2f} MENTOK di ujung grid {cands[0]}..{cands[-1]}. "
+              f"Tuner tidak sedang memilih, ia sedang dibatasi — lebarkan grid sebelum angka ini dikutip.")
+    rep=run_fold(c, fold_report, weights, best_q, use_real_ocsvm=use_real, engine=ENG)
     print(f"\n[HEADLINE] FOLD-REPORT (held-out, q={best_q:.2f} beku):")
     print(f"  FRR {rep['frr']:.1f}% ({rep['ownerNonLow']}/{rep['owner']}) FAR {rep['far']:.1f}% ({rep['impLow']}/{rep['imp']}) conv {rep['conv']}/{rep['nsub']}")
     rc=roc(rep['owner_scores'], rep['imp_scores'])
     print(f"  ROC (skor beku, ambang geser): AUC {rc['auc']:.3f} EER {rc['eer']:.1f}% thr {rc['eer_thr']:.3f} FAR@FRR15% {rc['far_at_15']:.1f}% FAR@FRR5% {rc['far_at_5']:.1f}% n={rc['n']} thr_range {rc['thr_range'][0]:.2f}..{rc['thr_range'][1]:.2f}")
-    full=run_fold(c, SUBJECT_IDS, weights, best_q, use_real_ocsvm=use_real)
+    full=run_fold(c, SUBJECT_IDS, weights, best_q, use_real_ocsvm=use_real, engine=ENG)
     print(f"\n[IN-SAMPLE 16 penuh, optimistik, jangan jadi klaim utama]:")
     print(f"  FRR {full['frr']:.1f}% FAR {full['far']:.1f}% conv {full['conv']}/16 (q={best_q:.2f})")
     if not args.ablation:
         w_if={'isolation_forest':1.0,'svm':0,'lstm':0}
-        rep_if=run_fold(c, fold_report, w_if, best_q, use_real_ocsvm=use_real)
+        rep_if=run_fold(c, fold_report, w_if, best_q, use_real_ocsvm=use_real, engine=ENG)
         print(f"\n[ABLATION di FOLD-REPORT] W7 FAR {rep['far']:.1f}% vs IF-only FAR {rep_if['far']:.1f}% -> arah +SVM {'OK' if rep['far']<rep_if['far'] else 'TIDAK'}")
-    print(f"\n[C1] Ablasi fitur di FOLD-REPORT (q={best_q:.2f} beku, W7 {'RealOCSVM' if use_real else 'centroid'}):")
+    print(f"\n[C1] Ablasi fitur di FOLD-REPORT (q={best_q:.2f} beku, {eng_name}):")
     for name, cols in [("F4 28",F4), ("F3 37",F3), ("F4-minus-temp",F4_MINUS_TEMP)]:
-        r=run_fold(c, fold_report, weights, best_q, feature_cols=cols, use_real_ocsvm=use_real)
+        r=run_fold(c, fold_report, weights, best_q, feature_cols=cols, use_real_ocsvm=use_real, engine=ENG)
         print(f"  {name:15s} FRR {r['frr']:4.1f}% FAR {r['far']:4.1f}% conv {r['conv']}/{r['nsub']}")
     print(f"\nSebelum (385/7, tanpa guard) vs Sesudah (653/16 held-out) berdampingan di atas.")
     print("Quality gate 100/5s/6: menolak 2/653 sesi (0.3%) — praktis no-op di dataset ini, aktif untuk data live")
     print("Deterministik: ORDER BY session_id, Random(42) shuffle, tanpa ORDER BY RANDOM, tanpa augment")
-    engine_label='sklearn RealOCSVM' if use_real and SKLEARN else 'centroid JS (ocs.js) — SDK'
+    engine_label=eng_name
     print(f"Engine: {engine_label}; gamma scale; dedup 1e-3 tanpa temporal; quality gate 100/5s/6")
     if not use_real:
         print("Catatan: centroid JS FAR 36.2% vs Real 0.7% — F4 terbaik hanya di Real, terbalik di centroid (F4 terburuk 36.2% vs F3 20.6%)")

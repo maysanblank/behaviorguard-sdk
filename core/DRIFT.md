@@ -1139,6 +1139,68 @@ Reproduksi:
 
 ---
 
+### Angka setelah `reproduce_db.py` diperbaiki
+
+Tiga cacat skrip diperbaiki sekaligus, dan ketiganya berdiri sendiri:
+
+1. **Mesin** - default kini Mahalanobis + shrink adaptif, bobot IF 0,30 / slot-2 0,70,
+   sama dengan `sdk/core/config.js`. `--legacy-ocsvm` mereproduksi angka lama TAPI
+   mencetak peringatan. Kalau `bg_core.Mahalanobis` gagal diimpor skrip BERHENTI -
+   jatuh diam-diam ke OCSVM justru cacat yang sedang diperbaiki.
+2. **Grid q** - `[0,10..0,20]` selalu memilih 0,10, yaitu nilai TERKECIL yang tersedia.
+   Tuner tidak sedang memilih, ia sedang dibatasi. Dilebarkan ke `[0,01..0,20]`.
+3. **Alarm ujung grid** - kalau q terpilih menyentuh ujung, skrip berteriak. Ia langsung
+   berbunyi lagi di mesin baru (q=0,01, ujung bawah), jadi angka belahan-tunggal pun
+   masih titik operasi yang dipaksakan.
+
+**Belahan tunggal seed 42 TIDAK memutuskan apa pun.** Mahalanobis unggul AUC (0,931 vs
+0,922) dan FRR (14,5% vs 35,1%) tapi KALAH EER (14,9% vs 12,6%) dan FAR@FRR15 (13,8% vs
+8,5%). Baru di 5 belahan Mahalanobis unggul di semua metrik. Ini penegasan ketiga di
+dokumen ini bahwa **satu belahan 8 subjek tidak cukup untuk memeringkat apa pun.**
+
+### Idle diukur ulang di mesin yang dikirim (5 belahan, grid q bersama)
+
+| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|
+| 1. tanpa AFK (kontrol) | **11,0%** | 11,2% | **0,961** | **9,8%** | **5,0%** |
+| 2. dengan AFK, tanpa C-23 | 18,4% | 9,2% | 0,952 | 11,1% | 7,6% |
+| 3. dengan AFK + segmentasi C-23 | 18,8% | 13,9% | 0,927 | 14,3% | 13,6% |
+
+**Kerusakan idle NYATA di mesin yang benar**: FRR 11,0% -> 18,4%, +7,4 poin. Keluhan
+pembimbing valid, dan kali ini terukur pada sistem yang benar-benar dikirim.
+
+**C-23 tetap TIDAK memperbaikinya**: FRR tidak turun (18,8%), dan daya pisah malah rusak
+(AUC 0,952 -> 0,927, EER 11,1% -> 14,3%). Berbeda dengan temuan pendaftaran C-26 yang
+larut begitu mesinnya dibetulkan, kesimpulan C-23 **bertahan lintas mesin**. Itu membuatnya
+jauh lebih kuat sebagai hasil negatif.
+
+**Angka jujur sistem yang dikirim**, 5 belahan, grid q lebar, tanpa AFK:
+FRR 11,0% - FAR 11,2% - AUC 0,961 - EER 9,8% - FAR@FRR15 5,0%.
+
+### Apa yang tidak tersentuh oleh perbaikan mesin
+
+Temuan audit C-25 (A1 sesi menelusuri diblokir sebagai bot, A3 autofill, A4 ekor bocor
+antar-pengguna, B1 dua tab, B4 layar sentuh) **tidak diukur oleh tolok ukur ini dan tidak
+bisa diukur olehnya**: korpusnya tidak punya aliran throttled yang salah divonis, tidak
+punya autofill, tidak punya dua tab, tidak punya sesi sentuh. Semuanya cacat KEBENARAN,
+dibuktikan dengan menjalankan kodenya (`core/audit.test.mjs` 32/32), bukan cacat yang
+muncul sebagai FRR/FAR. Mesin yang lebih baik tidak memperbaiki satu pun: pengguna yang
+diblokir karena A1 tetap diblokir seberapa pun bagusnya Mahalanobis.
+
+Jadi keduanya menjawab pertanyaan berbeda dan tidak saling menggantikan - dan itu sendiri
+adalah alasan kenapa laporan yang HANYA berisi FRR/FAR tidak cukup untuk sistem ini.
+
+### Yang MASIH cacat di protokolnya, belum disentuh
+
+- **Melapor dari SATU belahan 8 subjek.** Sumber setiap pembalikan di dokumen ini.
+- **Kriteria pemilihan q mengejar FRR ~ FAR**, jadi selalu mendarat dekat EER. Untuk
+  sistem keamanan biasanya FAR ditetapkan lebih dulu, baru FRR dilaporkan. Itulah kenapa
+  FAR di semua tabel di atas berkisar 9-14%.
+
+Keduanya mengubah DEFINISI angka headline, jadi tidak diubah sepihak.
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |

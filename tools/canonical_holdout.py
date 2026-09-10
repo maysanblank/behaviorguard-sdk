@@ -162,8 +162,11 @@ def main():
     if not db:
         print("DB tidak ditemukan"); return 1
     conn = sqlite3.connect(db)
+    # C-27: bobot mengikuti sdk/core/config.js (IF 0,30 / slot-2 0,70), dan mesinnya
+    # mengikuti rdb.ENGINE_DEFAULT ('maha'). Versi lama file ini memakai 0,70/0,30 di
+    # atas OCSVM — mengukur sistem yang tidak dikirim.
     weights = ({'isolation_forest': 1.0, 'svm': 0, 'lstm': 0} if args.ablation
-               else {'isolation_forest': 0.70, 'svm': 0.30, 'lstm': 0})
+               else dict(rdb.WEIGHTS_SDK))
 
     print(f"DB: {db}")
     print(f"Protokol: reproduce_db.py — whitelist 16 subjek, belah 8/8 seed 42, "
