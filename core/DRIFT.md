@@ -1105,10 +1105,25 @@ Mahalanobis + shrinkage adaptif C-22 memang dirancang untuk n kecil - jadi menam
 sampel tidak menambah apa-apa. Tabel C-26 dipertahankan sebagai catatan, TAPI
 kesimpulannya hanya berlaku untuk mesin OCSVM dan tidak boleh dikutip.
 
-### Empat tuas C-26 juga tidak sah lagi
+### Empat tuas C-26 juga tidak sah lagi - dan diuji ulang, semuanya kalah
 
-LOO, z-norm, pengurangan dimensi, dan agregasi semuanya diukur di mesin OCSVM. Peringkat
-antar-tuas harus diuji ulang sebelum salah satunya dikutip. Diagnosis yang TETAP berlaku
+LOO, z-norm, pengurangan dimensi, dan agregasi semuanya diukur di mesin OCSVM. Diuji
+ulang di mesin yang dikirim, 5 belahan:
+
+| Di atas Mahalanobis + IF 0,30 | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|
+| tanpa tuas | 12,1% | 12,6% | **0,954** | **10,8%** | **6,9%** |
+| + kalibrasi LOO | 14,2% | 16,1% | 0,940 | 13,9% | 11,9% |
+| + pembeda kohort | 10,7% | 18,3% | 0,897 | 15,1% | 15,1% |
+
+**Konfigurasi terbaik adalah yang SUDAH dikirim.** Tidak ada satu pun tuas yang menambah
+apa-apa di atasnya. LOO yang di mesin OCSVM sempat terlihat menolong justru MERUGIKAN di
+sini - ambang in-sample yang terlalu ketat itu masalah OCSVM, bukan masalah Mahalanobis.
+Pembeda dua kelas juga kalah: dengan 10..30 contoh positif lawan ratusan negatif, ia
+mempelajari batas antar-subjek di korpus ini, bukan identitas pemiliknya.
+
+Kesimpulan yang bertahan: masalahnya tidak pernah ada di model, di ambang, di jumlah
+fitur, di agregasi, atau di panjang pendaftaran. Masalahnya ada di **alat ukurnya**. Diagnosis yang TETAP berlaku
 karena ia sifat protokol, bukan sifat mesin: FRR menyebar rata antar subjek, dan kolam
 latih hanya tumbuh dari sesi yang divonis LOW sehingga ambang ketat membuat kolam
 kelaparan.
