@@ -1,0 +1,59 @@
+########## A. grid q diperlebar ke bawah (kalibrasi masih in-sample) ##########
+Kondisi                                      q     FRR     FAR     AUC     EER  FAR@FRR15  konv
+----------------------------------------------------------------------------------------------------
+1. utuh, tanpa AFK          (kontrol)     0.05   30.2%    1.3%   0.924   12.1%       6.0%  0/8
+1. utuh, tanpa AFK          (kontrol)     0.05   30.2%    1.3%   0.924   12.1%       6.0%  0/8
+2. utuh, dengan AFK         (hari ini)    0.01   36.7%    2.7%   0.913   13.3%      11.9%  0/8
+2. utuh, dengan AFK         (hari ini)    0.01   36.7%    2.7%   0.913   13.3%      11.9%  0/8
+3. utuh + segmentasi C-23,  dgn AFK       0.01   41.4%    4.4%   0.879   18.5%      24.1%  0/8
+3. utuh + segmentasi C-23,  dgn AFK       0.01   41.4%    4.4%   0.879   18.5%      24.1%  0/8
+4. utuh + segmentasi C-23,  tanpa AFK     0.01   23.0%    2.0%   0.912   11.0%       5.9%  1/8
+4. utuh + segmentasi C-23,  tanpa AFK     0.01   23.0%    2.0%   0.912   11.0%       5.9%  1/8
+5. kanonik 120 (C-24),        tanpa AFK   0.01   49.1%   11.3%   0.802   25.6%      43.2%  0/8
+5. kanonik 120 (C-24),        tanpa AFK   0.01   49.1%   11.3%   0.802   25.6%      43.2%  0/8
+6. kanonik 120 + segmentasi,  dgn AFK     0.02   55.1%    7.3%   0.802   25.8%      51.5%  0/8
+6. kanonik 120 + segmentasi,  dgn AFK     0.02   55.1%    7.3%   0.802   25.8%      51.5%  0/8
+
+CARA MEMBACA
+  Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,
+  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.
+  Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.
+  Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.
+               Ini pertanyaan terpenting di tabel ini.
+  Baris 3 vs 1  = seberapa dekat C-23 mengembalikan keadaan ke sebelum ada idle.
+  Baris 4 vs 1  = ongkos C-23 ketika idle TIDAK ada sama sekali (harus ~nol).
+  Baris 5 vs 1  = ongkos murni kanonikalisasi C-24 (default MATI).
+
+  Perhatikan EER dan AUC lebih dulu: keduanya bebas titik-operasi. FRR/FAR
+  bergantung pada q yang dituning per kondisi, jadi keduanya bisa saling tukar
+  tanpa ada yang benar-benar membaik.
+
+########## B. grid lebar + kalibrasi ambang DI LUAR SAMPEL ##########
+Kondisi                                      q     FRR     FAR     AUC     EER  FAR@FRR15  konv
+----------------------------------------------------------------------------------------------------
+1. utuh, tanpa AFK          (kontrol)     0.01   20.6%   32.7%   0.825   25.8%      45.6%  2/8
+1. utuh, tanpa AFK          (kontrol)     0.01   20.6%   32.7%   0.825   25.8%      45.6%  2/8
+2. utuh, dengan AFK         (hari ini)    0.02   33.9%   28.2%   0.652   39.2%      69.7%  1/8
+2. utuh, dengan AFK         (hari ini)    0.02   33.9%   28.2%   0.652   39.2%      69.7%  1/8
+3. utuh + segmentasi C-23,  dgn AFK       0.01   38.9%    8.7%   0.828   19.5%      27.6%  0/8
+3. utuh + segmentasi C-23,  dgn AFK       0.01   38.9%    8.7%   0.828   19.5%      27.6%  0/8
+4. utuh + segmentasi C-23,  tanpa AFK     0.03   29.7%    8.6%   0.872   22.5%      33.5%  1/8
+4. utuh + segmentasi C-23,  tanpa AFK     0.03   29.7%    8.6%   0.872   22.5%      33.5%  1/8
+5. kanonik 120 (C-24),        tanpa AFK   0.05   46.8%    3.6%   0.863   19.7%      41.6%  0/8
+5. kanonik 120 (C-24),        tanpa AFK   0.05   46.8%    3.6%   0.863   19.7%      41.6%  0/8
+6. kanonik 120 + segmentasi,  dgn AFK     0.05   46.7%    7.0%   0.823   22.3%      43.0%  0/8
+6. kanonik 120 + segmentasi,  dgn AFK     0.05   46.7%    7.0%   0.823   22.3%      43.0%  0/8
+
+CARA MEMBACA
+  Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,
+  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.
+  Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.
+  Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.
+               Ini pertanyaan terpenting di tabel ini.
+  Baris 3 vs 1  = seberapa dekat C-23 mengembalikan keadaan ke sebelum ada idle.
+  Baris 4 vs 1  = ongkos C-23 ketika idle TIDAK ada sama sekali (harus ~nol).
+  Baris 5 vs 1  = ongkos murni kanonikalisasi C-24 (default MATI).
+
+  Perhatikan EER dan AUC lebih dulu: keduanya bebas titik-operasi. FRR/FAR
+  bergantung pada q yang dituning per kondisi, jadi keduanya bisa saling tukar
+  tanpa ada yang benar-benar membaik.

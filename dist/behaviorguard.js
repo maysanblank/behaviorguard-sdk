@@ -120,15 +120,14 @@ const DEFAULTS = {
   //   berikutnya jatuh di luarnya. Pola yang sama sudah menghantam proyek ini di C-22.
   //   Terukur (K=120, M=3): FRR 46,5% -> 27,8%, EER 32,9% -> 28,6%.
   //
-  // SEMUANYA DEFAULT MATI, dan sekarang ada alasan TERUKUR-nya. Diuji ulang di bawah
-  // protokol held-out reproduce_db.py yang sah (tools/canonical_holdout.py):
-  //   sesi utuh, tanpa AFK (kontrol)       AUC 0,907  EER 17,9%  FAR@FRR15 20,1%
-  //   kanonik 120, tanpa AFK               AUC 0,820  EER 24,6%  FAR@FRR15 46,4%
-  // Jendela kanonik KALAH telak di korpus ini: jendela 120 event membuang lebih banyak
-  // bukti daripada yang diselamatkannya dari ketidakinvariansian panjang sesi.
-  // Invariansinya nyata (lihat tabel |z| di atas) tapi harganya terlalu mahal di sini.
-  // Ini HASIL NEGATIF dan dilaporkan apa adanya. Nyalakan hanya kalau ada alasan
-  // spesifik, dan ukur ulang dengan protokol yang sah sebelum angkanya dikutip.
+  // SEMUANYA DEFAULT MATI. Invariansinya nyata dan terukur (tabel |z| di atas), tapi
+  // KEUNTUNGAN FRR/FAR-nya belum terbukti. Diuji di bawah protokol held-out
+  // reproduce_db.py, kanonik 120 lawan kontrolnya: AUC 0,820 vs 0,907 (kalah),
+  // 0,802 vs 0,924 (kalah), lalu 0,863 vs 0,825 (menang) — tiga konfigurasi protokol,
+  // tiga jawaban. Perbandingannya belum stabil; lihat koreksi di core/DRIFT.md.
+  // Default mati karena TIDAK ADA BUKTI ia menolong — bukan karena terbukti merugikan.
+  // Nyalakan hanya kalau ada alasan spesifik, dan ukur ulang dengan beberapa belahan
+  // 8/8 (`--seeds`) sebelum angkanya dikutip.
   aggregateWindows: 1,
   calibrationHoldout: 0,
 };

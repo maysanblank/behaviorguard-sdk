@@ -105,10 +105,17 @@ def build_source(raw_by_uid, mode, K, afk, gap_min, seed):
     return src
 
 
-def run_protocol(conn, src, weights, label, use_real=True, q_grid=None, holdout=0.0):
+def run_protocol(conn, src, weights, label, use_real=True, q_grid=None, holdout=0.0,
+                 split_seed=42):
     """Protokol held-out reproduce_db.py, disetir `src`. Tuning q di FOLD-TUNE,
-    lapor di FOLD-REPORT — persis seperti angka headline skripsi dihasilkan."""
-    rng = random.Random(42)
+    lapor di FOLD-REPORT — persis seperti angka headline skripsi dihasilkan.
+
+    `split_seed` MENGACAK belahan 8/8. Satu belahan tunggal (seed 42) memberi satu
+    angka tanpa sebaran, dan dengan hanya 8 subjek pelapor sebarannya besar — cukup
+    besar untuk membalik urutan peringkat antar-representasi. Karena itu skrip ini
+    mengulang beberapa belahan dan melaporkan rerata plus rentangnya.
+    """
+    rng = random.Random(split_seed)
     shuf = list(rdb.SUBJECT_IDS)
     rng.shuffle(shuf)
     fold_tune, fold_report = sorted(shuf[:8]), sorted(shuf[8:])
@@ -139,6 +146,11 @@ def main():
                          'selalu memilih 0.10, tanda ia mau lebih longgar tapi tak dikasih pilihan.')
     ap.add_argument('--holdout-calib', type=float, default=0.0, metavar='FRAC',
                     help='porsi kolam yang disisihkan untuk kalibrasi ambang di luar sampel')
+    ap.add_argument('--seeds', type=int, nargs='+', default=[42],
+                    help='benih belahan 8/8. Beri beberapa untuk melihat SEBARAN; satu '
+                         'belahan tunggal tidak cukup untuk memeringkat representasi.')
+    ap.add_argument('--only', type=int, nargs='+', default=None,
+                    help='jalankan hanya kondisi bernomor ini (hemat waktu)')
     args = ap.parse_args()
 
     db = args.db or rdb.find_db()
@@ -170,18 +182,40 @@ def main():
         (f"5. kanonik {K} (C-24),        tanpa AFK", 'kanonik', False),
         (f"6. kanonik {K} + segmentasi,  dgn AFK",   'kanonik', True),
     ]
+    if args.only:
+        conds = [c for i, c in enumerate(conds, 1) if i in args.only]
     rows = []
     for label, mode, afk in conds:
-        print(f"menjalankan: {label} ...", flush=True)
         src = build_source(raw, mode, K, afk, args.gap_min, args.seed)
-        rows.append(run_protocol(conn, src, weights, label, q_grid=args.q_grid, holdout=args.holdout_calib))
+        runs = []
+        for sd in args.seeds:
+            print(f"menjalankan: {label} | benih belahan {sd} ...", flush=True)
+            runs.append(run_protocol(conn, src, weights, label, q_grid=args.q_grid,
+                                     holdout=args.holdout_calib, split_seed=sd))
+        agg = {'label': label, 'n': len(runs)}
+        for k in ('frr', 'far', 'auc', 'eer', 'far15'):
+            vals = [r[k] for r in runs]
+            agg[k] = sum(vals) / len(vals)
+            agg[k + '_lo'], agg[k + '_hi'] = min(vals), max(vals)
+        agg['q'] = runs[0]['q']
+        agg['conv'] = sum(r['conv'] for r in runs) / len(runs)
+        agg['nsub'] = runs[0]['nsub']
+        rows.append(agg)
 
     print()
-    print(f"{'Kondisi':40} {'q':>5} {'FRR':>7} {'FAR':>7} {'AUC':>7} {'EER':>7} {'FAR@FRR15':>10}  konv")
-    print("-" * 100)
+    n = rows[0]['n'] if rows else 1
+    print(f"Rerata atas {n} belahan 8/8; [min..maks] di baris kedua tiap kondisi.")
+    print(f"{'Kondisi':40} {'FRR':>7} {'FAR':>7} {'AUC':>7} {'EER':>7} {'FAR@FRR15':>10}")
+    print("-" * 92)
     for r in rows:
-        print(f"{r['label']:40} {r['q']:5.2f} {r['frr']:6.1f}% {r['far']:6.1f}% "
-              f"{r['auc']:7.3f} {r['eer']:6.1f}% {r['far15']:9.1f}%  {r['conv']}/{r['nsub']}")
+        print(f"{r['label']:40} {r['frr']:6.1f}% {r['far']:6.1f}% "
+              f"{r['auc']:7.3f} {r['eer']:6.1f}% {r['far15']:9.1f}%")
+        if n > 1:
+            print(f"{'':40} [{r['frr_lo']:.0f}..{r['frr_hi']:.0f}] "
+                  f"[{r['far_lo']:.0f}..{r['far_hi']:.0f}] "
+                  f"[{r['auc_lo']:.3f}..{r['auc_hi']:.3f}] "
+                  f"[{r['eer_lo']:.0f}..{r['eer_hi']:.0f}] "
+                  f"[{r['far15_lo']:.0f}..{r['far15_hi']:.0f}]")
 
     print()
     print("CARA MEMBACA")
