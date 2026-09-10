@@ -11,6 +11,13 @@
  * seluruhnya dari satu run yang sama.
  */
 export const DEFAULTS = {
+  // C-26: 10 TERLALU PENDEK untuk d=28. Dengan himpunan uji dibuat identik
+  // (tools/frr_levers.py --eval-from), pendaftaran 16 sesi memberi FAR@FRR15
+  // 5,2% lawan 16,4%, AUC 0,930 lawan 0,904, EER 12,9% lawan 16,0% — satu-satunya
+  // perubahan yang menurunkan FRR DAN FAR sekaligus. Jenuh setelah itu: 22 tidak
+  // mengalahkan 16. TIDAK dinaikkan di sini karena menukar 6 sesi tanpa
+  // perlindungan itu keputusan produk, dan ia membuat seluruh angka headline lama
+  // tidak sebanding. Lihat core/DRIFT.md C-26.
   baseline: 10,               // sesi pendaftaran awal
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas

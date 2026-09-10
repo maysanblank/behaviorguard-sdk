@@ -136,13 +136,21 @@ def pick_features(conn, tune_ids, k, vec_source=None):
 
 
 def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True,
-             vec_source=None, znorm=False, loo=False, agg=1):
+             vec_source=None, znorm=False, loo=False, agg=1, eval_from=0):
+    """eval_from: indeks sesi paling awal yang BOLEH masuk hitungan FRR.
+
+    Wajib dipakai saat membandingkan panjang pendaftaran. Menaikkan BASELINE dari 10
+    ke 16 memindahkan sesi 10..15 dari 'diuji' ke 'mendaftar' — jadi himpunan ujinya
+    ikut berubah, dan sesi-sesi awal itu justru yang paling sulit (model masih naif,
+    pengguna belum mapan). Tanpa eval_from, sebagian 'perbaikan' hanyalah efek
+    membuang soal tersulit dari ujian. Sesi sebelum eval_from tetap dinilai dan tetap
+    boleh menumbuhkan kolam — hanya tidak dihitung."""
     if feature_cols is None:
         feature_cols = rdb.F4
     idx = [rdb.F4.index(f) for f in feature_cols]
     sel = lambda v: [v[i] for i in idx]
 
-    totalOwner = ownerNonLow = totalImp = impLow = convs = 0
+    totalOwner = ownerNonLow = ownerHigh = totalImp = impLow = convs = 0
     owner_scores, imp_scores = [], []
 
     for uid in subject_ids:
@@ -237,12 +245,20 @@ def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True
                 continue
             sc = sum(buf) / len(buf)
             buf = []
-            owner_scores.append(sc)
             lvl = rdb.to_risk(sc, thr)
             levels.append(lvl)
-            totalOwner += 1
-            if lvl != 'LOW':
+            counted = i >= eval_from
+            if counted:
+                owner_scores.append(sc)
+                totalOwner += 1
+            if lvl != 'LOW' and counted:
                 ownerNonLow += 1
+            # FRR menggabungkan dua konsekuensi yang SANGAT berbeda: MEDIUM memicu
+            # verifikasi tambahan (pemilik lanjut, dengan satu langkah ekstra),
+            # HIGH memblokir. Melaporkan keduanya sebagai satu angka membuat sistem
+            # berlapis terlihat seburuk sistem yang memang menendang orang keluar.
+            if lvl == 'HIGH' and counted:
+                ownerHigh += 1
             if lvl == 'LOW' and is_eligible(vecs[i], ecounts[i]):
                 pool.append(vecs[i])
         if len(levels) >= WINDOW and all(x == 'LOW' for x in levels[-WINDOW:]):
@@ -266,6 +282,7 @@ def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True
                     impLow += 1
 
     return dict(frr=ownerNonLow / totalOwner * 100 if totalOwner else 0,
+                block=ownerHigh / totalOwner * 100 if totalOwner else 0,
                 far=impLow / totalImp * 100 if totalImp else 0,
                 conv=convs, owner_scores=owner_scores, imp_scores=imp_scores,
                 n_own=totalOwner, n_imp=totalImp)
@@ -279,12 +296,18 @@ def main():
                     default=[0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.12, 0.15])
     ap.add_argument('--topk', type=int, default=0, help='pakai k fitur terbaik (0 = semua 28)')
     ap.add_argument('--agg', type=int, default=1)
+    ap.add_argument('--eval-from', type=int, default=0,
+                    help='hitung FRR hanya dari indeks sesi ini ke atas (adil saat membandingkan panjang pendaftaran)')
+    ap.add_argument('--baseline', type=int, default=10,
+                    help='jumlah sesi pendaftaran sebelum penilaian dimulai (default 10)')
     a = ap.parse_args()
+    global BASELINE
+    BASELINE = a.baseline
 
     conn = sqlite3.connect(rdb.find_db())
     W = {'isolation_forest': 0.70, 'svm': 0.30, 'lstm': 0}
     print(f"Protokol reproduce_db (belah 8/8, q dituning di FOLD-TUNE) | "
-          f"benih {a.seeds} | topk={a.topk or 28} | agg={a.agg}\n")
+          f"benih {a.seeds} | topk={a.topk or 28} | agg={a.agg} | daftar={a.baseline}\n")
 
     acc = {}
     for seed in a.seeds:
@@ -299,24 +322,28 @@ def main():
             zn, lo = 'znorm' in lv, 'loo' in lv
             best_q, best_gap = None, float('inf')
             for q in a.q_grid:
-                t = run_fold(conn, tune, W, q, cols, znorm=zn, loo=lo, agg=a.agg)
+                t = run_fold(conn, tune, W, q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from)
                 g = abs(t['frr'] - t['far'])
                 if g < best_gap:
                     best_gap, best_q = g, q
-            rep = run_fold(conn, report, W, best_q, cols, znorm=zn, loo=lo, agg=a.agg)
+            rep = run_fold(conn, report, W, best_q, cols, znorm=zn, loo=lo, agg=a.agg, eval_from=a.eval_from)
             rc = rdb.roc(rep['owner_scores'], rep['imp_scores'])
-            acc.setdefault(lv, []).append((rep['frr'], rep['far'], rc['auc'], rc['eer'], rc['far_at_15']))
+            acc.setdefault(lv, []).append((rep['frr'], rep['far'], rc['auc'], rc['eer'],
+                                           rc['far_at_15'], rep['block']))
             print(f"  [benih {seed}] {lv:12s} q*={best_q:.2f} "
-                  f"FRR {rep['frr']:5.1f}% FAR {rep['far']:4.1f}% "
+                  f"FRR {rep['frr']:5.1f}% (blokir {rep['block']:4.1f}%) FAR {rep['far']:4.1f}% "
                   f"AUC {rc['auc']:.3f} EER {rc['eer']:5.1f}%")
 
     print(f"\nRerata atas {len(a.seeds)} belahan")
-    print(f"{'Tuas':14s} {'FRR':>7s} {'FAR':>7s} {'AUC':>7s} {'EER':>7s} {'FAR@FRR15':>10s}")
-    print('-' * 56)
+    print(f"{'Tuas':14s} {'FRR':>7s} {'blokir':>7s} {'FAR':>7s} {'AUC':>7s} {'EER':>7s} {'FAR@FRR15':>10s}")
+    print('-' * 64)
     for lv, rows in acc.items():
         n = len(rows)
         f = lambda j: sum(x[j] for x in rows) / n
-        print(f"{lv:14s} {f(0):6.1f}% {f(1):6.1f}% {f(2):7.3f} {f(3):6.1f}% {f(4):9.1f}%")
+        rng_ = lambda j: f"[{min(x[j] for x in rows):.0f}..{max(x[j] for x in rows):.0f}]"
+        print(f"{lv:14s} {f(0):6.1f}% {f(5):6.1f}% {f(1):6.1f}% {f(2):7.3f} {f(3):6.1f}% {f(4):9.1f}%")
+        if n > 1:
+            print(f"{'':14s} {rng_(0):>7s} {rng_(5):>7s} {rng_(1):>7s} {'':>7s} {rng_(3):>7s}")
 
 
 if __name__ == '__main__':

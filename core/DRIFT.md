@@ -949,6 +949,101 @@ di Python dan JS, idle 33/33, jalur penuh 20/20, invariansi 26/26, step-up 23/23
 
 ---
 
+## C-26 - FRR 23% bukan batas algoritma, melainkan pendaftaran yang terlalu pendek
+
+FRR 23% pada FAR 2% tidak layak kirim. Bagian ini membongkar dari mana angka itu
+datang. Alatnya `tools/frr_levers.py`, yang **mereproduksi `reproduce_db.py` digit per
+digit** sebelum tuas apa pun dipasang - versi pertamanya tidak, karena menghilangkan
+separuh syarat konvergensi, dan itu sendiri memakan 0,11 AUC. Harness yang tidak diadu
+dulu dengan acuannya tidak bisa dipercaya.
+
+### Dua diagnosis yang menentukan arah
+
+**FRR menyebar rata**, 11% sampai 56% di kedelapan subjek pelapor. Jadi sistemik, bukan
+segelintir subjek berdata kotor.
+
+**Ambang ORACLE** (dipilih setelah melihat jawabannya) pada FAR<=2% masih memberi FRR
+**20,6%**. Jadi penempatan ambang menyumbang ~13 poin dan itu gratis, tapi 20,6%
+sisanya adalah langit-langit SKOR-nya. Tambahan: oracle satu-ambang-untuk-semua (28,6%)
+tertinggal 8 poin dari oracle per-pengguna (20,6%), murni karena satu penggaris dipaksa
+muat ke skala skor yang berbeda-beda.
+
+### Empat tuas model - SEMUANYA GAGAL
+
+Diuji atas 5 belahan 8/8, grid q bersama:
+
+| Tuas | FRR | FAR | AUC | EER | Vonis |
+|---|---:|---:|---:|---:|---|
+| (tanpa tuas) | 28,4% | 4,1% | 0,919 | 13,9% | acuan |
+| kalibrasi leave-one-out | 18,3% | 7,8% | 0,923 | 14,0% | **hanya geser titik operasi** |
+| z-norm kohort | 18,5% | 20,7% | 0,826 | 22,2% | ditolak |
+| kurangi dimensi 28->12 | 27,0% | 2,1% | 0,926 | 13,3% | netral |
+| agregasi 2-3 jendela | 13,5% | 28,5% | 0,864 | 21,0% | ditolak |
+
+**LOO sempat terlihat menang di satu belahan** (AUC 0,922 -> 0,931) dan ditarik setelah
+5 belahan: AUC 0,923 vs 0,919 dan EER 14,0% vs 13,9% - selisihnya nol. FRR turun, FAR
+naik sepadan. Ini pelajaran yang SAMA dengan koreksi C-23 di atas, dan tetap terulang.
+
+Mekanisme LOO tetap layak dicatat walau efeknya nol: sesi baru masuk kolam latih hanya
+setelah divonis LOW, jadi ambang yang terlalu ketat memblokir data pemilik masuk ke
+modelnya SENDIRI - kolam kelaparan dan tetap sempit. Umpan balik itu nyata; yang tidak
+terbukti adalah bahwa memperbaikinya menggeser daya pisah.
+
+**Dua implementasi agregasi lebih dulu SALAH**, dan salahnya di kelas yang sama dengan
+C-16/C-17: (a) ambang dikalibrasi pada skor tunggal tapi vonis diambil dari rerata-k -
+sebaran rerata jauh lebih sempit, FAR meledak ke 35%; (b) skor beberapa penyusup BERBEDA
+dirata-ratakan, yang mengarang "orang rata-rata" yang justru lebih dekat ke pusat model
+pemilik daripada penyusup mana pun. Keduanya diperbaiki; sesudah diperbaiki agregasi
+tetap kalah. Kalau merata-ratakan merusak, daya bedanya tidak terletak di pergeseran
+rata-rata melainkan di sesi-sesi EKSTREM - dan merata-ratakan menghapus yang ekstrem.
+(Hipotesis, konsisten dengan data, belum diuji terpisah.)
+
+**Pembingkaian "cuma diminta verifikasi ulang" juga gugur.** FRR digabung dari MEDIUM
+(step-up, pemilik lanjut) dan HIGH (blokir). Dipisah: dari FRR 28,4%, sebanyak **24,0%
+adalah HIGH**. Mayoritasnya blokir keras, jadi pembingkaian itu tidak sah dan tidak
+dipakai.
+
+### Yang berhasil: panjang pendaftaran
+
+`baseline` = 10 sesi pendaftaran untuk d=28 fitur. Dinaikkan ke 16, **dengan himpunan uji
+DIBUAT IDENTIK** lewat `--eval-from` (tanpa itu, menaikkan baseline memindahkan sesi
+10..15 dari 'diuji' ke 'mendaftar', dan sebagian 'perbaikan' hanyalah efek membuang soal
+dari ujian):
+
+| Diuji pada sesi >=16 | FRR | blokir | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|---:|
+| pendaftaran 10 sesi | 32,1% | 27,6% | 4,1% | 0,904 | 16,0% | 16,4% |
+| pendaftaran 16 sesi | **23,6%** | **21,6%** | **0,7%** | **0,930** | **12,9%** | **5,2%** |
+
+Rentang EER 5 belahan: [11..23] -> **[12..15]**.
+
+Ini satu-satunya perubahan di sesi ini yang memperbaiki **FRR dan FAR sekaligus**, ikut
+menaikkan metrik bebas-ambang, DAN mempersempit sebarannya. FAR@FRR15 membaik 3x.
+
+Perhatikan arah confound-nya: pendaftaran 10 justru jadi LEBIH BURUK saat diuji dari sesi
+16 (28,4% -> 32,1%). Model yang didaftar terlalu pendek makin tertinggal seiring waktu -
+konsisten dengan lingkaran umpan balik kolam di atas.
+
+**Manfaatnya jenuh setelah 16.** Diuji pada sesi >=22, 22 lawan 16: AUC 0,911 vs 0,910,
+EER 16,3% vs 15,6%, FAR@FRR15 20,9% vs 16,2% - nol, bahkan sedikit merugikan. Jadi
+klaimnya adalah "10 terlalu pendek", BUKAN "makin panjang makin baik".
+
+Kedua perbandingan itu memakai himpunan uji yang berbeda (>=16 dan >=22), jadi angkanya
+TIDAK boleh dirantai. Yang sah: pada uji >=16, 16 mengalahkan 10; pada uji >=22, 22 tidak
+mengalahkan 16.
+
+### Konsekuensi untuk default - BELUM diubah, sengaja
+
+`config.js: baseline` masih 10. Menaikkannya ke 16 menukar 6 sesi tanpa perlindungan
+dengan FAR@FRR15 3x lebih baik - itu keputusan produk, bukan keputusan metrik, dan ia
+membuat SELURUH angka headline yang sudah ada tidak sebanding lagi. Diusulkan, tidak
+dikirim.
+
+Reproduksi:
+`python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --baseline 16 --eval-from 16`
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
