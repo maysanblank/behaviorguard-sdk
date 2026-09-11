@@ -80,7 +80,7 @@ public class BgConformance {
     // ============================ Konstanta normatif ============================
     static final int N_ESTIMATORS=100, MAX_SAMPLES=256, SEED=42, GATE_SVM=20;
     static final double W_IF=0.30, W_SVM=0.70, Q_LOW=0.10, Q_MED=0.033; // detektor-2=Mahalanobis
-    static final double K_LOW=3.3, K_MED_EXTRA=2.0, MAHA_SHRINK=0.3;    // kalibrasi parametrik + shrink
+    static final double K_LOW=1.75, K_MED_EXTRA=2.0, MAHA_SHRINK=0.3;   // C-33: K_LOW 3,3 -> 1,75    // kalibrasi parametrik + shrink
     static final double STD_FLOOR_EPS=1e-9, STD_FLOOR_VALUE=1.0;
     static final double SCORE_STD_MIN=1e-3, SCORE_STD_MAX=10.0, Z_CLAMP=6.0;
 

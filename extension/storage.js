@@ -115,7 +115,15 @@ export const storage={
         // Yang dibutuhkan model cuma `vector`; `feat` (28 pasangan nama-nilai) murni
         // untuk penjelasan. Membuangnya membuat jauh lebih banyak sesi muat.
         const slim=v.sessions.map(x=> x && x.feat ? {...x, feat:null} : x);
-        toSave={...v, sessions: slim.length>90 ? slim.slice(-90) : slim};
+        // C-31: DULU `slim.slice(-90)` — memotong 90 TERAKHIR, jadi blok pendaftaran di
+        // DEPAN ikut terbuang. Sesudah reload, 10 sesi apa pun yang kebetulan ada di
+        // depan (bisa sesi MEDIUM/HIGH, bisa sesi penyusup) diperlakukan sebagai
+        // pendaftaran tanpa syarat: peracunan baseline lewat pemotongan. Blok
+        // pendaftaran (`enrollPrefix`, dikirim orkestrator) selalu dipertahankan.
+        const pre=Math.min(slim.length, Number.isFinite(v.enrollPrefix) ? v.enrollPrefix : 10);
+        const tail=slim.slice(pre);
+        toSave={...v, sessions: tail.length>90 ? [...slim.slice(0,pre), ...tail.slice(-90)] : slim,
+                enrollPrefix: pre};
       }
       const sealedLocal=await seal(toSave,k);
       if(sealedLocal.length < MAX_LOCAL_BYTES) localStorage.setItem(k, sealedLocal);

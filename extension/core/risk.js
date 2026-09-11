@@ -30,7 +30,8 @@ export function calibrateThresholds(baselineScores, q_low=null, q_med=null){
 }
 // Kalibrasi PARAMETRIK: low = mean - k_low*std skor baseline; MEDIUM lebih ketat.
 // Padanan PERSIS bg_core.py:calibrate_thresholds_parametric.
-export function calibrateThresholdsParametric(baselineScores, k_low=3.3, k_med_extra=0.6){
+// Default parameter = DEFAULTS (C-33): dulu 3,3/0,6, beda dengan config (1,75/2,0).
+export function calibrateThresholdsParametric(baselineScores, k_low=DEFAULTS.k_low, k_med_extra=DEFAULTS.k_med_extra){
   const n=baselineScores.length;
   if(n===0) return {low:-0.4, medium:-0.8};
   let m=0; for(const x of baselineScores) m+=x; m/=n;

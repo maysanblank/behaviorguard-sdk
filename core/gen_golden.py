@@ -163,6 +163,10 @@ def build():
             'scoreStdMin': bg.DEFAULTS['scoreStdMin'],
             'scoreStdMax': bg.DEFAULTS['scoreStdMax'],
             'zClamp': bg.DEFAULTS['zClamp'],
+            # C-33: dicatat eksplisit supaya kontrak numerik tidak diam-diam ikut default
+            'calibrationMode': 'parametric',
+            'k_low': bg.DEFAULTS['k_low'],
+            'k_med_extra': bg.DEFAULTS['k_med_extra'],
         },
         # SPEC v1.1: event mentah -> vektor 28-float
         'feature_cases': [],

@@ -41,7 +41,14 @@ export const DEFAULTS = {
   calibrateThresholds: true,
   // kalibrasi pita risiko: 'parametric' (mean-k*std, efisien titik-operasi) default
   calibrationMode: 'parametric',
-  k_low: 3.3, k_med_extra: 2.0, // k_low=security-first; k_med_extra lebar -> HIGH jadi MFA, bukan block
+  // C-33: k_low 3,3 -> 1,75. Nilai 3,3 dipilih di atas data riset yang 25-42% eventnya
+  // KEMBAR (C-29) dan dengan satuan sesi utuh; di SDK sungguhan ia meloloskan 27,6%
+  // penyusup di vonis pertamanya. Dipilih ulang dengan SDK ini sendiri, mode live, bukti
+  // 150 event, tuning di 8 subjek & lapor di 8 lainnya, 5 belahan: tuner memilih
+  // 1,5-2,0 (median 1,75). Hasil lapor rerata: pemilik diminta verifikasi 16,6%
+  // [12..19], penyusup lolos vonis pertama 8,9% [4..14], diblokir 0%. Integrator bisa
+  // menggeser: init({calibration:{k_low}}) — kecil = ketat, besar = longgar.
+  k_low: 1.75, k_med_extra: 2.0, // k_med_extra lebar -> HIGH jadi step-up, bukan block
   q_low: 0.10, q_med: 0.033, // dipakai bila calibrationMode='quantile'
   convergence: { window: 6, cohortLowRate: 0.35, minSessions: 10 },
   iforest: { n_estimators: 100, max_samples: 256, seed: 42 },
@@ -68,6 +75,9 @@ export const DEFAULTS = {
   // adaptif (lihat behaviorguard._rebuildModel) meluruh ke dasar 0.3 → korelasi penuh
   // kelas riset kembali (deteksi penyusup-mirip membaik) untuk pengguna yang terus pakai.
   progressiveMaxPool: 90,
+  // C-31: riwayat vonis yang disimpan = blok pendaftaran utuh + historyMax entri terakhir.
+  // Harus > progressiveMaxPool (kolam diambil dari sini) + jendela konvergensi.
+  historyMax: 240,
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
@@ -87,7 +97,16 @@ export const DEFAULTS = {
   // evaluasi): FRR 18,4% -> 9,7%, FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968. Tanpa AFK
   // netral: FRR 11,0% -> 10,1%, AUC 0,961 -> 0,964. Dengan knob ini nyala, idleGapSec
   // hanya dipakai untuk akuntansi idle, ekor buffer, dan ABSTAIN. 0 = jalur C-23 lama.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, canonicalWindow: 0 },
+  //
+  // C-33: `minEventsAssess` 30 -> 150 dan `carryMaxAgeSec` 900. Vonis dulu jatuh tiap
+  // jendela 30 dtk (~30-100 event) — satuan yang TIDAK PERNAH diukur: semua angka lama
+  // memakai sesi riset utuh (~700 event). Diukur dengan SDK ini sendiri
+  // (tools/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
+  // pemilik: 30 ev 23,8% | 100 ev 14,2% | 150 ev 12,3% | 200 ev 10,7% (tapi 4,5% sesi
+  // penyusup tak pernah mendapat vonis). Kini jendela tetap berdetak tiap 30 dtk, tetapi
+  // bukti yang belum cukup DIKUMPULKAN (hingga 15 mnt) sampai 150 event. Untuk aksi
+  // sensitif sebelum bukti cukup: `assessNow()`.
+  session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.

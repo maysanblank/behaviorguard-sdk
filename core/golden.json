@@ -55,7 +55,10 @@
   "stdFloorValue": 1.0,
   "scoreStdMin": 0.001,
   "scoreStdMax": 10.0,
-  "zClamp": 6.0
+  "zClamp": 6.0,
+  "calibrationMode": "parametric",
+  "k_low": 1.75,
+  "k_med_extra": 2.0
  },
  "feature_cases": [
   {
@@ -1021,8 +1024,8 @@
    ],
    "expect": {
     "thresholds": {
-     "low": -3.299999999999999,
-     "medium": -5.299999999999999
+     "low": -1.7499999999999996,
+     "medium": -3.749999999999999
     },
     "stats_mean_head": [
      -1.4127794166666667,
@@ -1063,9 +1066,9 @@
       "topFeature": "nav_step_transition_count"
      },
      {
-      "level": "LOW",
+      "level": "MEDIUM",
       "score": -2.4338581946274074,
-      "action": "ALLOW_SESSION",
+      "action": "REQUIRE_MFA",
       "topFeature": "mouse_curvature_mean"
      },
      {
@@ -1997,8 +2000,8 @@
    ],
    "expect": {
     "thresholds": {
-     "low": -3.074088096827168,
-     "medium": -4.937171791873936
+     "low": -1.6301982331659224,
+     "medium": -3.4932819282126912
     },
     "stats_mean_head": [
      -1.5535795416666665,
@@ -2027,9 +2030,9 @@
     },
     "verdicts": [
      {
-      "level": "MEDIUM",
+      "level": "HIGH",
       "score": -4.496641346711723,
-      "action": "REQUIRE_MFA",
+      "action": "REQUIRE_STEPUP",
       "topFeature": "cursor_idle_ratio"
      },
      {
@@ -2039,9 +2042,9 @@
       "topFeature": "mouse_velocity_std"
      },
      {
-      "level": "MEDIUM",
+      "level": "HIGH",
       "score": -4.610835213007873,
-      "action": "REQUIRE_MFA",
+      "action": "REQUIRE_STEPUP",
       "topFeature": "form_focus_count"
      },
      {
@@ -2051,9 +2054,9 @@
       "topFeature": "mouse_velocity_std"
      },
      {
-      "level": "MEDIUM",
+      "level": "HIGH",
       "score": -4.650754058324127,
-      "action": "REQUIRE_MFA",
+      "action": "REQUIRE_STEPUP",
       "topFeature": "keystroke_transition_entropy"
      },
      {
@@ -2493,8 +2496,8 @@
    ],
    "expect": {
     "thresholds": {
-     "low": -3.3,
-     "medium": -5.3
+     "low": -1.75,
+     "medium": -3.75
     },
     "stats_mean_head": [
      1.6633052000000004,
@@ -2529,21 +2532,21 @@
       "topFeature": "form_blur_count"
      },
      {
-      "level": "LOW",
+      "level": "MEDIUM",
       "score": -2.9648316462022835,
-      "action": "ALLOW_SESSION",
+      "action": "REQUIRE_MFA",
       "topFeature": "mouse_click_interval_mean"
      },
      {
-      "level": "LOW",
+      "level": "MEDIUM",
       "score": -2.038590864012116,
-      "action": "ALLOW_SESSION",
+      "action": "REQUIRE_MFA",
       "topFeature": "mouse_click_interval_mean"
      },
      {
-      "level": "LOW",
+      "level": "MEDIUM",
       "score": -2.0867073273851555,
-      "action": "ALLOW_SESSION",
+      "action": "REQUIRE_MFA",
       "topFeature": "mouse_click_interval_mean"
      }
     ]

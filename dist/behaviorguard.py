@@ -45,12 +45,13 @@ DEFAULTS = {
     'calibrateThresholds': True,
     # Kalibrasi pita risiko. Mode default = 'parametric' (mean - k*std skor
     # baseline) yang jauh lebih efisien titik-operasinya daripada kuantil.
-    # k_low=3.3 dipilih security-first (FAR rendah) via held-out FOLD-TUNE.
+    # C-33: k_low 1,75 dipilih ulang dengan SDK sungguhan (tools/eval_sdk.mjs --live).
+    # Nilai lama 3,3 dipilih di atas data riset yang eventnya kembar (C-29).
     'calibrationMode': 'parametric',
     # k_med_extra melebarkan pita MEDIUM(MFA): makin besar -> lebih banyak
     # salah-tolak pemilik jadi "minta MFA" ketimbang "BLOCK" (FAR tak berubah).
     # 2.0 = setelan lunak (block keras owner ~turun setengah vs 0.6).
-    'k_low': 3.3, 'k_med_extra': 2.0,
+    'k_low': 1.75, 'k_med_extra': 2.0,   # C-33: 3,3 -> 1,75 (lihat sdk/core/config.js)
     'q_low': 0.10, 'q_med': 0.033,  # dipakai bila calibrationMode='quantile'
     'convergence': {'window': 6, 'cohortLowRate': 0.35, 'minSessions': 10},
     'iforest': {'n_estimators': 100, 'max_samples': 256, 'seed': 42},
@@ -447,7 +448,7 @@ def calibrate_thresholds(baseline_scores, q_low=None, q_med=None):
     return {'low': low, 'medium': med}
 
 
-def calibrate_thresholds_parametric(baseline_scores, k_low=3.3, k_med_extra=0.6):
+def calibrate_thresholds_parametric(baseline_scores, k_low=1.75, k_med_extra=2.0):  # = DEFAULTS (C-33)
     """Pita risiko parametrik: low = mean - k_low*std, medium lebih ketat.
 
     Jauh lebih efisien titik-operasinya daripada kuantil-10-sampel: mengikuti

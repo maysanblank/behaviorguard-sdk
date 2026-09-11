@@ -47,7 +47,8 @@ function burst(startTs, n = 140, jitter = 1) {
 }
 
 const bg = new BehaviorGuard();
-await bg.init({ userId: 'uji-idle@contoh.id', mfa: { enabled: false }, session: { idleCompressSec: 0 } });
+// minEventsAssess 30: tes ini menguji logika idle, bukan ukuran bukti (C-33 -> lifecycle.test)
+await bg.init({ userId: 'uji-idle@contoh.id', mfa: { enabled: false }, session: { idleCompressSec: 0, minEventsAssess: 30 } });
 try { clearInterval(bg._autoTimer); } catch {}   // jangan tahan proses tetap hidup
 
 // --- pendaftaran: 10 sesi bersih ------------------------------------------
@@ -119,7 +120,7 @@ check('D: hanya satu callback untuk seluruh rentetan idle', seen.length === 1);
 
 // --- E. C-28: kompresi (default) -------------------------------------------
 const bc = new BehaviorGuard();
-await bc.init({ userId: 'uji-kompres@contoh.id', mfa: { enabled: false } });
+await bc.init({ userId: 'uji-kompres@contoh.id', mfa: { enabled: false }, session: { minEventsAssess: 30 } });
 try { clearInterval(bc._autoTimer); } catch {}
 check('E: default mengirim kompresi 15 dtk', bc.cfg.session.idleCompressSec === 15);
 let tc = Date.UTC(2026, 8, 9, 3, 0, 0);

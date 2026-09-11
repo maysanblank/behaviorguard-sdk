@@ -1344,6 +1344,222 @@ suite lama tetap hijau.
 Reproduksi:
 `python tools/canonical_holdout.py --only 1 2 7 8 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15 0.18 0.20`
 
+> **Catatan sesudah C-29.** Angka absolut C-28 berasal dari harness Python tiruan,
+> dengan satuan sesi utuh dan data berkembar. Di SDK sungguhan (mode live, C-29) arah
+> hasilnya bertahan. Pada data AFK, kompresi menaikkan AUC per pemilik 0,910 -> 0,927
+> dan menurunkan sesi penyusup yang tak pernah dinilai 10,9% -> 2,8%. Yang dikutip
+> adalah arah ini, bukan 18,4% -> 9,7%.
+
+---
+
+## C-29 - KRITIS: tiga harness, tidak satu pun mengukur SDK. Sekarang SDK mengukur dirinya sendiri
+
+C-27 membetulkan mesin di `reproduce_db.py`, tetapi harness itu tetap **meniru** SDK di
+Python. Begitu tiruannya diadu dengan SDK sungguhan, ternyata ia masih meleset di tujuh
+tempat:
+
+| | tiruan Python | SDK yang dikirim |
+|---|---|---|
+| ambang | kuantil, **dituning** per belahan | parametrik `k_low` **tetap** |
+| z per detektor | tak di-clamp | clamp [-6, 6] |
+| Mahalanobis (`experiment.py`) | shrink tetap 0,3 | shrink adaptif C-22 |
+| kolam | 30 | 10 + 90 |
+| sesi lolos-MFA | tak pernah melatih | melatih (TRUST-LOOP) |
+| lantai lengket, blokir beruntun | tidak ada | ada |
+| **satuan vonis** | **sesi riset utuh (~700 event)** | **jendela 30 dtk** |
+
+**Alat baru: `tools/eval_sdk.mjs`.** Setiap sesi dimasukkan ke `BehaviorGuard` asli.
+Mode `--live` memanggil `endSession()` setiap 30 detik terhadap buffer tiruan, jadi
+kompresi, integritas, ekstraksi fitur JS, ambang, lantai, carry-back ekor, `bg:pending`
+lintas kunjungan, dan `init()` per kunjungan semuanya berjalan dengan kode SDK sendiri.
+Hanya dua hal yang disimulasikan: jam dinding, dan jawaban popup verifikasi (lewat API
+publik `reportStepUp`). Data diekspor oleh `tools/export_sessions.py` ke direktori
+sementara OS, **tidak pernah ke repo**.
+
+**Tujuh artefak alat ukur ditemukan dan dibuang sebelum angkanya dipercaya.** Semuanya
+dari harness ini sendiri, dan semuanya membuat angka tampak lebih buruk atau lebih baik
+tanpa ada yang berubah di SDK:
+1. jam simulasi terlalu rapat sehingga rate-limit terpicu dan menghasilkan BLOCK palsu;
+2. satu instance untuk banyak kunjungan, sehingga jeda antar-hari terbaca sebagai "absen";
+3. `k_low` dipasang sesudah `init()` padahal ambang sudah dihitung;
+4. step-up dijawab di akhir kunjungan, bukan seketika;
+5. jam dinding macet di tanggal lain, sehingga ekor bukti tak pernah basi;
+6. jam belum digeser ke awal kunjungan saat `init()`, sehingga pending lama dianggap segar;
+7. sesi penyusup tanpa vonis tidak dihitung.
+
+Dicatat karena **ketujuhnya sekelas dengan C-27**: harness yang tidak diperiksa terhadap
+mekanisme yang diukurnya menghasilkan angka yang terlihat sah.
+
+### Temuan 1 - data riset berkembar (25-42% event identik)
+
+Setiap jenis event di basis data riset punya kembaran identik sampai milidetik dan
+piksel: KEYSTROKE 36,5%, FORM_FOCUS 41,1%, MOUSE_MOVE 26,2%. Kadarnya tidak merata
+antar-sesi. Akibatnya `checkIntegrity` ("timestamp duplikat > 5") menuduh **458 dari
+653 sesi manusia** sebagai bot. Sesudah kembaran dibuang: **0**. Nilai maksimum ketikan
+berbeda yang kebetulan jatuh di milidetik yang sama pada manusia adalah 4.
+
+Tambalan: `idle.js:dropExactDuplicates` dijalankan sebelum apa pun diukur. Kembaran
+tidak membawa informasi perilaku, dan penyebabnya selalu artefak pencatatan (pendengar
+ganda, batch terkirim ulang, pending terbaca dua kali). SDK kini tahan terhadap semuanya.
+Dampaknya pada harness Python ternyata kecil (AUC 0,961 -> 0,959), jadi angka lama tidak
+digelembungkan oleh kembaran. Yang terkena adalah **integritas**.
+
+### Temuan 2 - AUC gabungan menipu, AUC per pemilik tidak
+
+AUC gabungan SDK (0,928) jauh di bawah tiruan (0,965). Per pemilik, keduanya hampir sama
+(misalnya subjek 7: 0,997 vs 1,000; subjek 11: 1,000 vs 1,000). Clamp z [-6,6] merapatkan
+skala skor antar-orang, jadi AUC **gabungan** turun tanpa daya pisah per orang berubah.
+Ambang SDK dibuat per pemilik, sehingga yang relevan adalah **AUC/EER per pemilik**
+(makro). `eval_sdk` melaporkan keduanya. Membuang clamp hanya menaikkan AUC gabungan
+0,928 -> 0,934, sedangkan FRR/FAR sama persis. Hipotesis clamp sebagai penyebab
+**ditolak**.
+
+### Temuan 3 - satuan vonis (penyebab terbesar)
+
+| bukti per vonis (mode live) | 30 | 100 | 150 | 200 | 300 |
+|---|---:|---:|---:|---:|---:|
+| EER per pemilik | 23,8% | 14,2% | 12,3% | 10,7% | 9,0% |
+| sesi penyusup tak pernah dinilai | 0% | 0% | 0,6% | 4,5% | 25% |
+
+SDK yang dikirim menilai setiap jendela 30 detik. Jendela sekecil itu sering hanya berisi
+gerak mouse, atau hanya ketikan, sehingga EER-nya **dua kali** angka sesi utuh. Semua
+angka yang pernah dilaporkan (termasuk C-27 dan C-28) memakai sesi utuh.
+
+→ **C-33** (di bawah).
+
+### Temuan 4 - `k_low` 3,3 terlalu longgar
+
+Di SDK sungguhan, `k_low` 3,3 meloloskan 27,6% penyusup pada vonis pertamanya (bukti 150)
+dan 32,1% pada konfigurasi lama. Nilai itu dipilih di atas data berkembar dan satuan sesi
+utuh. → C-33.
+
+Reproduksi:
+```
+python tools/export_sessions.py            # + --afk untuk data AFK
+node tools/eval_sdk.mjs --live             # default yang dikirim
+node tools/eval_sdk.mjs                    # satuan sesi utuh (pembanding riset)
+```
+
+---
+
+## C-30 - KRITIS (privasi): kata sandi tersimpan sebagai teks biasa
+
+`capture.js` menyimpan `key: e.key`, yaitu **karakter asli**, termasuk di kolom sandi.
+Momen paling berbahaya justru saat login: sandi diketik, Enter ditekan, halaman
+berpindah, lalu `_bankTail()` menyimpan 200 event terakhir sebagai JSON **teks biasa di
+localStorage**. Sandi tertinggal di browser dan terbaca oleh skrip apa pun di origin itu.
+
+Satu-satunya fitur yang memakai identitas tombol adalah `keystroke_transition_entropy`,
+dan fitur itu hanya perlu tahu "sama atau beda". Karena itu setiap karakter diganti token
+urut-kemunculan (`k1`, `k2`, …) lewat peta yang **hanya hidup di memori halaman**.
+Pemetaannya injektif, jadi entropinya identik sampai bit terakhir (diuji), dan ke-28 fitur
+identik. Nama tombol khusus (Enter, Backspace, Shift) bukan rahasia dan dibiarkan. Yang
+tersisa untuk sandi hanyalah **pola** pengulangannya, bukan isinya.
+
+Di berkas yang sama ditemukan tiga cacat lain:
+- Ketikan, klik, fokus, dan tempel di **popup MFA milik BG** ikut terekam sebagai
+  perilaku. Frasa tetap yang diketik berulang itu mencemari fitur ketik jendela
+  berikutnya. Kini diabaikan lewat `[data-bg-mfa]`. Gerak mouse tetap direkam.
+- **Auto-repeat** (tombol ditahan) menimpa waktu tekan, sehingga waktu tahan terukur dari
+  pengulangan terakhir.
+- `keydown` yang hilang (misalnya fokus berpindah) meninggalkan **t0 basi** bermenit-menit
+  untuk `keyup` berikutnya.
+
+Uji: `core/privacy.test.mjs` 10/10.
+
+---
+
+## C-31 - siklus hidup jangka panjang: baseline teracuni, riwayat tanpa batas, latih ulang mati
+
+- **Pemotongan penyimpanan meracuni baseline.** Tanpa IndexedDB, `storage.js` menyimpan
+  `slice(-90)` dari SEMUA sesi, sehingga blok pendaftaran di depan terbuang. Sesudah
+  reload, 10 sesi apa pun yang kebetulan ada di depan (bisa sesi penyusup) menjadi
+  pendaftaran tanpa syarat. Kini blok pendaftaran (`enrollPrefix`) selalu dipertahankan.
+- **Blok pendaftaran diandaikan `slice(0, baseline)`.** Andaian ini salah begitu ada satu
+  sesi tak-layak di masa pendaftaran: vektor pendaftaran lalu bergulir keluar dari kolam.
+  Kini `_enrollPrefix()` menjadi ujung sesi layak ke-10.
+- **Riwayat tumbuh tanpa batas.** Satu entri ditambahkan setiap vonis, dan seluruh riwayat
+  diserialisasi ulang + di-HMAC setiap vonis. Kini: blok pendaftaran + `historyMax` (240).
+- **Latih ulang mati sesudah ~45 menit.** Jadwalnya `ukuran kolam % 6`. Begitu kolam penuh
+  (90), ukurannya macet: di 90 model dilatih ulang setiap jendela, di 88/89 **tidak pernah
+  lagi**, sehingga adaptasi drift pemilik mati diam-diam. Kini dihitung dari sesi layak
+  baru sejak latih ulang terakhir.
+- **Tujuh salinan `storage.set`**, dua di antaranya tidak menulis `challengeTemplate`:
+  satu tuduhan bot **menghapus template MFA pemilik** dari penyimpanan. Kini satu penulis,
+  `_persist()`. Jalur bot juga membuat memori dan penyimpanan sepakat soal `lastRisk`.
+
+Uji: `core/lifecycle.test.mjs` bagian A, B, C, G.
+
+---
+
+## C-32 - integrator tidak bisa melaporkan hasil step-up
+
+Vonis MEDIUM/HIGH menyuruh integrator "minta verifikasi", tetapi hasilnya tidak bisa
+dikembalikan ke pustaka. Bagi siapa pun yang memakai OTP/WebAuthn sendiri, lantai lengket
+tak pernah dibersihkan dan sesi pemilik yang terverifikasi tak pernah melatih model.
+Streak LOW juga tidak disimpan, sehingga kunjungan pendek tidak pernah turun dari MEDIUM.
+
+Diukur (`eval_sdk --live`) pada pemilik tanpa jalur verifikasi: **gesekan 61,3%,
+DIBLOKIR 25,7%**. Dengan jalur verifikasi: 16,4% dan 0%.
+
+Tambalan: `reportStepUp({passed})`, yang efeknya sama persis dengan MFA bawaan yang
+terverifikasi. `lowStreak` kini disimpan.
+
+**Konsekuensi yang wajib didokumentasikan:** BehaviorGuard **membutuhkan** jalur step-up.
+Tanpanya, lantai lengket dan blokir beruntun menjadi hukuman bagi pemilik sendiri.
+
+---
+
+## C-33 - vonis menunggu bukti cukup; `k_low` dipilih ulang; `assessNow()`
+
+Perubahan default, semuanya dipilih dengan `eval_sdk --live`:
+
+| knob | lama | baru | alasan |
+|---|---|---|---|
+| `session.minEventsAssess` | 30 | **150** | EER per pemilik 23,8% -> 12,3% (tabel C-29) |
+| `session.carryMaxAgeSec` | (= idleGapSec 30) | **900** | bukti yang belum cukup dikumpulkan walau pengguna diam > 30 dtk |
+| `k_low` | 3,3 | **1,75** | median pilihan tuner, 5 belahan (di bawah) |
+
+Jendela tetap berdetak setiap 30 detik. Yang berubah: vonis baru jatuh setelah 150 event
+terkumpul.
+
+**Pemilihan `k_low` (bukti 150, tuning di 8 subjek, lapor di 8 lainnya, 5 belahan):**
+tuner memilih 1,75 / 1,75 / 1,5 / 2,0 / 1,5. Rata-rata lapor: pemilik diminta verifikasi
+**16,6%** [12..19], penyusup lolos vonis pertama **8,9%** [4..14], ambil-alih tak
+ketahuan dalam 6 sesi 0,2%.
+
+**Hasil default yang dikirim (`node tools/eval_sdk.mjs --live`, 16 subjek):**
+
+| | lama (30 ev, k 3,3) | **baru** |
+|---|---:|---:|
+| pemilik diminta verifikasi | 18,6% | **16,4%** |
+| pemilik diblokir | 0% | **0%** |
+| penyusup lolos vonis pertama | 32,1% | **13,5%** |
+| seluruh sesi penyusup lolos tanpa gesekan | 14,0% | **9,5%** |
+| sesi penyusup tak pernah dinilai | 0% | 0,6% |
+| AUC / EER per pemilik | 0,818 / 24,3% | **0,929 / 12,0%** |
+| ambil-alih ketahuan di sesi pertama | 80,8% | **88,8%** |
+| ambil-alih tak ketahuan dalam 6 sesi | 2,9% | **0,0%** |
+
+**Ekor pending kini punya umur maksimum.** Dulu ekor kemarin bergabung dengan ketikan hari
+ini: vektornya campuran dua hari, dan jeda semalam terbaca sebagai "kembali dari absen"
+yang memicu MEDIUM di awal setiap kunjungan. Sebelum diperbaiki, 149 dari ~500 gesekan
+pemilik berasal dari sini.
+
+**Harga penundaan adalah latensi**, dan harga itu dibayar di tempat yang tepat lewat
+`assessNow()`. Penyusup yang masuk lalu mengganti email pemulihan dalam 20 detik bisa
+selesai sebelum vonis rutin pertama. Aksi sensitif harus memanggil `assessNow()`: vonis
+seketika, **tanpa efek samping**, dan **UNKNOWN berarti minta verifikasi** (gagal
+tertutup).
+
+`init({calibration:{k_low}})` kini tersedia. Dulu titik operasi hanya bisa digeser
+dengan menyunting `config.js`.
+
+Konformansi: golden dibuat ulang dengan `k_low` tercatat eksplisit. Hasilnya **227/227
+di kelima runtime** (Python, JS, Rust, Java, WASM).
+
+Uji: `core/lifecycle.test.mjs` bagian D, E, F (24/24 bersama C-31).
+
 ---
 
 ## Status verifikasi setelah tambalan

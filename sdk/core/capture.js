@@ -18,6 +18,29 @@ export function createCapture(onEvent){
     if(attached) return; attached=true;
     const opts={capture:true, passive:true};
     const downAt=new Map();
+    // C-30 PRIVASI: `key` DULU menyimpan KARAKTER ASLI yang diketik — termasuk di kolom
+    // kata sandi. Momen paling berbahaya justru login: ketik sandi -> Enter -> halaman
+    // pindah -> `_bankTail()` menyimpan 200 event terakhir sebagai JSON TEKS BIASA di
+    // localStorage. Sandi tertinggal di browser, terbaca skrip mana pun di origin itu.
+    // Satu-satunya fitur yang memakai identitas tombol adalah
+    // keystroke_transition_entropy, dan ia hanya butuh tahu "sama atau beda dengan
+    // tombol sebelumnya". Jadi tiap karakter diganti token urut-kemunculan (k1, k2, ..)
+    // lewat peta yang HANYA hidup di memori halaman ini dan tidak pernah disimpan.
+    // Pemetaan injektif -> hitungan transisi identik -> entropi identik persis. Nama
+    // tombol khusus (Backspace, Enter, Shift, ..) bukan rahasia dan dibiarkan.
+    // Yang tersisa untuk sandi hanyalah POLA pengulangan (mis. k1 k2 k1), bukan isinya.
+    const keyTok=new Map();
+    const tokenOf=k=>{
+      if(typeof k!=='string' || k.length!==1) return k;      // tombol bernama / kosong
+      let t=keyTok.get(k);
+      if(!t){ t='k'+(keyTok.size+1); keyTok.set(k,t); }
+      return t;
+    };
+    // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami — itu frasa tetap
+    // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
+    // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
+    // direkam: menggerakkan mouse ke popup adalah gerakan tangan yang wajar.
+    const fromBg=e=>{ try{ return !!(e && e.target && e.target.closest && e.target.closest('[data-bg-mfa]')); }catch{ return false; } };
     let lastScrollY=window.scrollY;
     // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
     // membacanya. Akibatnya di pemakaian nyata (bukan data riset):
@@ -44,12 +67,15 @@ export function createCapture(onEvent){
     };
     handlers={
       move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, velocity: withVelocity(e), page_url: location.href}),
-      click: e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}),
+      click: e=> { if(fromBg(e)) return; push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}); },
       scroll: e=> { const cur=window.scrollY; const delta=Math.abs(cur-lastScrollY); lastScrollY=cur; if(delta===0) return; push({event_type:'MOUSE_SCROLL', scroll_delta: delta, scroll_velocity: 0, page_url: location.href}); },
-      kd: e=> downAt.set(e.code, Date.now()),
-      ku: e=> { const t0=downAt.get(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:e.key, hold_time: hold, page_url: location.href}); },
-      focus: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
-      blur: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
+      // auto-repeat (tombol ditahan) menembakkan keydown berulang; yang dihitung tahan
+      // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
+      // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
+      kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}); },
+      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
+      blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
       // A3: form yang diisi password manager / autofill / tempel TIDAK menghasilkan
       // satu pun event keyboard, sehingga KEDELAPAN fitur keystroke jatuh ke nol
@@ -60,7 +86,7 @@ export function createCapture(onEvent){
       // orang ini mengetik" — dan model tidak bisa membedakannya sendiri.
       // Peristiwanya ditandai di sini; keputusannya (ABSTAIN pada blok keystroke)
       // ada di behaviorguard.js, sama seperti C-23 menandai idle lalu memutuskan.
-      paste: e=>{ try{
+      paste: e=>{ if(fromBg(e)) return; try{
         const n=(e.clipboardData && e.clipboardData.getData ? (e.clipboardData.getData('text')||'') : '').length;
         push({event_type:'PASTE', chars:n, page_url: location.href});
       }catch{ push({event_type:'PASTE', chars:0, page_url: location.href}); } },

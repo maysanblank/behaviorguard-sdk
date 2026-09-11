@@ -182,7 +182,7 @@ const W_SVM: f64 = 0.70;   // slot detektor-2 = Mahalanobis (bukan centroid) -> 
 const GATE_SVM: usize = 20;
 const Q_LOW: f64 = 0.10;
 const Q_MED: f64 = 0.033;
-const K_LOW: f64 = 3.3;        // kalibrasi parametrik: low = mean - K_LOW*std
+const K_LOW: f64 = 1.75;       // kalibrasi parametrik: low = mean - K_LOW*std (C-33: 3,3 -> 1,75)
 const K_MED_EXTRA: f64 = 2.0;  // pita MFA lebar
 const MAHA_SHRINK: f64 = 0.3;  // shrinkage diagonal
 const STD_FLOOR_EPS: f64 = 1e-9;

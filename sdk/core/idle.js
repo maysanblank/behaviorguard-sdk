@@ -63,6 +63,32 @@ export function groupByStream(events){
   return [...byTab.values()].sort((a,b)=>(a[0].timestamp||0)-(b[0].timestamp||0));
 }
 
+/**
+ * C-29: buang event yang IDENTIK PERSIS (jenis, milidetik, koordinat, tombol, tahan,
+ * gulir, halaman — semuanya sama). Dua gerakan tangan tidak mungkin identik sampai
+ * milidetik dan piksel; kembaran seperti itu selalu artefak pencatatan: pendengar
+ * terpasang dua kali, batch terkirim ulang, ekor `bg:pending` ikut terbaca dua kali.
+ *
+ * Terukur di basis data riset: 25-42% event tiap jenis adalah kembaran identik, tidak
+ * merata antar-sesi. Akibatnya (a) `checkIntegrity` menuduh 458 dari 653 sesi MANUSIA
+ * sebagai bot ("timestamp duplikat") -> BLOCK_SESSION; sesudah kembaran dibuang: 0.
+ * (b) fitur-cacah berlipat dua dan flight-time berisi nol di sebagian sesi saja, jadi
+ * dua sesi dari orang yang sama terlihat seperti dua orang. Kembaran tidak membawa
+ * informasi perilaku apa pun, jadi membuangnya tidak menghapus bukti — ia memulihkan
+ * pengukurannya. Urutan dipertahankan; tidak memutasi masukan.
+ */
+export function dropExactDuplicates(events){
+  if(!events || events.length<2) return events ? [...events] : [];
+  const seen=new Set(), out=[];
+  for(const e of events){
+    if(!e){ continue; }
+    const k=`${e.event_type}|${e.timestamp}|${e.x}|${e.y}|${e.key}|${e.hold_time}|${e.scroll_delta}|${e.page_url}|${e.velocity}|${e.tabId}`;
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(e);
+  }
+  return out;
+}
+
 /** Urutkan menaik menurut timestamp tanpa memutasi masukan. Akumulator
  *  `bg:pending` menggabung ekor dari banyak halaman, jadi urutan tidak dijamin. */
 function byTs(events){
@@ -173,14 +199,19 @@ export function classifyGap(gapMs, gapThresholdMs=GAP_MS_DEFAULT, awayThresholdM
  * `nowTs` disuntik (bukan Date.now() internal) supaya fungsi ini deterministik
  * dan bisa diuji.
  */
-export function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT){
+// C-33: `carryMaxAgeMs` memisahkan dua pertanyaan yang dulu disatukan di `gapMs`:
+// "kapan jeda tidak boleh diukur" (30 dtk) dan "berapa lama bukti yang belum cukup
+// boleh ditunggu". Dengan penundaan vonis sampai bukti cukup, ekor yang belum cukup
+// harus terus DIKUMPULKAN walau pengguna berhenti 30 dtk — kompresi C-28 sudah
+// menangani jedanya. Default = gapMs (perilaku lama persis).
+export function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT, carryMaxAgeMs=gapMs){
   const assess=[], dropped=[];
   let carry=null;
   segments.forEach((s,i)=>{
     if(s.events.length >= minEvents){ assess.push(s); return; }
     const isLast = i===segments.length-1;
     // ekor masih "hidup" bila event terakhirnya belum melewati ambang jeda
-    if(isLast && (nowTs - s.endTs) < gapMs) carry=s;
+    if(isLast && (nowTs - s.endTs) < carryMaxAgeMs) carry=s;
     else dropped.push(s);
   });
   return { assess, carry, dropped };

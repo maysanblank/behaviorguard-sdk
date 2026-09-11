@@ -49,7 +49,14 @@ const DEFAULTS = {
   calibrateThresholds: true,
   // kalibrasi pita risiko: 'parametric' (mean-k*std, efisien titik-operasi) default
   calibrationMode: 'parametric',
-  k_low: 3.3, k_med_extra: 2.0, // k_low=security-first; k_med_extra lebar -> HIGH jadi MFA, bukan block
+  // C-33: k_low 3,3 -> 1,75. Nilai 3,3 dipilih di atas data riset yang 25-42% eventnya
+  // KEMBAR (C-29) dan dengan satuan sesi utuh; di SDK sungguhan ia meloloskan 27,6%
+  // penyusup di vonis pertamanya. Dipilih ulang dengan SDK ini sendiri, mode live, bukti
+  // 150 event, tuning di 8 subjek & lapor di 8 lainnya, 5 belahan: tuner memilih
+  // 1,5-2,0 (median 1,75). Hasil lapor rerata: pemilik diminta verifikasi 16,6%
+  // [12..19], penyusup lolos vonis pertama 8,9% [4..14], diblokir 0%. Integrator bisa
+  // menggeser: init({calibration:{k_low}}) — kecil = ketat, besar = longgar.
+  k_low: 1.75, k_med_extra: 2.0, // k_med_extra lebar -> HIGH jadi step-up, bukan block
   q_low: 0.10, q_med: 0.033, // dipakai bila calibrationMode='quantile'
   convergence: { window: 6, cohortLowRate: 0.35, minSessions: 10 },
   iforest: { n_estimators: 100, max_samples: 256, seed: 42 },
@@ -76,6 +83,9 @@ const DEFAULTS = {
   // adaptif (lihat behaviorguard._rebuildModel) meluruh ke dasar 0.3 → korelasi penuh
   // kelas riset kembali (deteksi penyusup-mirip membaik) untuk pengguna yang terus pakai.
   progressiveMaxPool: 90,
+  // C-31: riwayat vonis yang disimpan = blok pendaftaran utuh + historyMax entri terakhir.
+  // Harus > progressiveMaxPool (kolam diambil dari sini) + jendela konvergensi.
+  historyMax: 240,
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
@@ -95,7 +105,16 @@ const DEFAULTS = {
   // evaluasi): FRR 18,4% -> 9,7%, FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968. Tanpa AFK
   // netral: FRR 11,0% -> 10,1%, AUC 0,961 -> 0,964. Dengan knob ini nyala, idleGapSec
   // hanya dipakai untuk akuntansi idle, ekor buffer, dan ABSTAIN. 0 = jalur C-23 lama.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, canonicalWindow: 0 },
+  //
+  // C-33: `minEventsAssess` 30 -> 150 dan `carryMaxAgeSec` 900. Vonis dulu jatuh tiap
+  // jendela 30 dtk (~30-100 event) — satuan yang TIDAK PERNAH diukur: semua angka lama
+  // memakai sesi riset utuh (~700 event). Diukur dengan SDK ini sendiri
+  // (tools/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
+  // pemilik: 30 ev 23,8% | 100 ev 14,2% | 150 ev 12,3% | 200 ev 10,7% (tapi 4,5% sesi
+  // penyusup tak pernah mendapat vonis). Kini jendela tetap berdetak tiap 30 dtk, tetapi
+  // bukti yang belum cukup DIKUMPULKAN (hingga 15 mnt) sampai 150 event. Untuk aksi
+  // sensitif sebelum bukti cukup: `assessNow()`.
+  session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.
@@ -470,7 +489,8 @@ function calibrateThresholds(baselineScores, q_low=null, q_med=null){
 }
 // Kalibrasi PARAMETRIK: low = mean - k_low*std skor baseline; MEDIUM lebih ketat.
 // Padanan PERSIS bg_core.py:calibrate_thresholds_parametric.
-function calibrateThresholdsParametric(baselineScores, k_low=3.3, k_med_extra=0.6){
+// Default parameter = DEFAULTS (C-33): dulu 3,3/0,6, beda dengan config (1,75/2,0).
+function calibrateThresholdsParametric(baselineScores, k_low=DEFAULTS.k_low, k_med_extra=DEFAULTS.k_med_extra){
   const n=baselineScores.length;
   if(n===0) return {low:-0.4, medium:-0.8};
   let m=0; for(const x of baselineScores) m+=x; m/=n;
@@ -719,6 +739,29 @@ function createCapture(onEvent){
     if(attached) return; attached=true;
     const opts={capture:true, passive:true};
     const downAt=new Map();
+    // C-30 PRIVASI: `key` DULU menyimpan KARAKTER ASLI yang diketik — termasuk di kolom
+    // kata sandi. Momen paling berbahaya justru login: ketik sandi -> Enter -> halaman
+    // pindah -> `_bankTail()` menyimpan 200 event terakhir sebagai JSON TEKS BIASA di
+    // localStorage. Sandi tertinggal di browser, terbaca skrip mana pun di origin itu.
+    // Satu-satunya fitur yang memakai identitas tombol adalah
+    // keystroke_transition_entropy, dan ia hanya butuh tahu "sama atau beda dengan
+    // tombol sebelumnya". Jadi tiap karakter diganti token urut-kemunculan (k1, k2, ..)
+    // lewat peta yang HANYA hidup di memori halaman ini dan tidak pernah disimpan.
+    // Pemetaan injektif -> hitungan transisi identik -> entropi identik persis. Nama
+    // tombol khusus (Backspace, Enter, Shift, ..) bukan rahasia dan dibiarkan.
+    // Yang tersisa untuk sandi hanyalah POLA pengulangan (mis. k1 k2 k1), bukan isinya.
+    const keyTok=new Map();
+    const tokenOf=k=>{
+      if(typeof k!=='string' || k.length!==1) return k;      // tombol bernama / kosong
+      let t=keyTok.get(k);
+      if(!t){ t='k'+(keyTok.size+1); keyTok.set(k,t); }
+      return t;
+    };
+    // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami — itu frasa tetap
+    // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
+    // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
+    // direkam: menggerakkan mouse ke popup adalah gerakan tangan yang wajar.
+    const fromBg=e=>{ try{ return !!(e && e.target && e.target.closest && e.target.closest('[data-bg-mfa]')); }catch{ return false; } };
     let lastScrollY=window.scrollY;
     // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
     // membacanya. Akibatnya di pemakaian nyata (bukan data riset):
@@ -745,12 +788,15 @@ function createCapture(onEvent){
     };
     handlers={
       move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, velocity: withVelocity(e), page_url: location.href}),
-      click: e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}),
+      click: e=> { if(fromBg(e)) return; push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}); },
       scroll: e=> { const cur=window.scrollY; const delta=Math.abs(cur-lastScrollY); lastScrollY=cur; if(delta===0) return; push({event_type:'MOUSE_SCROLL', scroll_delta: delta, scroll_velocity: 0, page_url: location.href}); },
-      kd: e=> downAt.set(e.code, Date.now()),
-      ku: e=> { const t0=downAt.get(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:e.key, hold_time: hold, page_url: location.href}); },
-      focus: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
-      blur: e=> { try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
+      // auto-repeat (tombol ditahan) menembakkan keydown berulang; yang dihitung tahan
+      // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
+      // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
+      kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}); },
+      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
+      blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
       // A3: form yang diisi password manager / autofill / tempel TIDAK menghasilkan
       // satu pun event keyboard, sehingga KEDELAPAN fitur keystroke jatuh ke nol
@@ -761,7 +807,7 @@ function createCapture(onEvent){
       // orang ini mengetik" — dan model tidak bisa membedakannya sendiri.
       // Peristiwanya ditandai di sini; keputusannya (ABSTAIN pada blok keystroke)
       // ada di behaviorguard.js, sama seperti C-23 menandai idle lalu memutuskan.
-      paste: e=>{ try{
+      paste: e=>{ if(fromBg(e)) return; try{
         const n=(e.clipboardData && e.clipboardData.getData ? (e.clipboardData.getData('text')||'') : '').length;
         push({event_type:'PASTE', chars:n, page_url: location.href});
       }catch{ push({event_type:'PASTE', chars:0, page_url: location.href}); } },
@@ -893,6 +939,32 @@ function groupByStream(events){
   return [...byTab.values()].sort((a,b)=>(a[0].timestamp||0)-(b[0].timestamp||0));
 }
 
+/**
+ * C-29: buang event yang IDENTIK PERSIS (jenis, milidetik, koordinat, tombol, tahan,
+ * gulir, halaman — semuanya sama). Dua gerakan tangan tidak mungkin identik sampai
+ * milidetik dan piksel; kembaran seperti itu selalu artefak pencatatan: pendengar
+ * terpasang dua kali, batch terkirim ulang, ekor `bg:pending` ikut terbaca dua kali.
+ *
+ * Terukur di basis data riset: 25-42% event tiap jenis adalah kembaran identik, tidak
+ * merata antar-sesi. Akibatnya (a) `checkIntegrity` menuduh 458 dari 653 sesi MANUSIA
+ * sebagai bot ("timestamp duplikat") -> BLOCK_SESSION; sesudah kembaran dibuang: 0.
+ * (b) fitur-cacah berlipat dua dan flight-time berisi nol di sebagian sesi saja, jadi
+ * dua sesi dari orang yang sama terlihat seperti dua orang. Kembaran tidak membawa
+ * informasi perilaku apa pun, jadi membuangnya tidak menghapus bukti — ia memulihkan
+ * pengukurannya. Urutan dipertahankan; tidak memutasi masukan.
+ */
+function dropExactDuplicates(events){
+  if(!events || events.length<2) return events ? [...events] : [];
+  const seen=new Set(), out=[];
+  for(const e of events){
+    if(!e){ continue; }
+    const k=`${e.event_type}|${e.timestamp}|${e.x}|${e.y}|${e.key}|${e.hold_time}|${e.scroll_delta}|${e.page_url}|${e.velocity}|${e.tabId}`;
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(e);
+  }
+  return out;
+}
+
 /** Urutkan menaik menurut timestamp tanpa memutasi masukan. Akumulator
  *  `bg:pending` menggabung ekor dari banyak halaman, jadi urutan tidak dijamin. */
 function byTs(events){
@@ -1003,19 +1075,24 @@ function classifyGap(gapMs, gapThresholdMs=GAP_MS_DEFAULT, awayThresholdMs=AWAY_
  * `nowTs` disuntik (bukan Date.now() internal) supaya fungsi ini deterministik
  * dan bisa diuji.
  */
-function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT){
+// C-33: `carryMaxAgeMs` memisahkan dua pertanyaan yang dulu disatukan di `gapMs`:
+// "kapan jeda tidak boleh diukur" (30 dtk) dan "berapa lama bukti yang belum cukup
+// boleh ditunggu". Dengan penundaan vonis sampai bukti cukup, ekor yang belum cukup
+// harus terus DIKUMPULKAN walau pengguna berhenti 30 dtk — kompresi C-28 sudah
+// menangani jedanya. Default = gapMs (perilaku lama persis).
+function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT, carryMaxAgeMs=gapMs){
   const assess=[], dropped=[];
   let carry=null;
   segments.forEach((s,i)=>{
     if(s.events.length >= minEvents){ assess.push(s); return; }
     const isLast = i===segments.length-1;
     // ekor masih "hidup" bila event terakhirnya belum melewati ambang jeda
-    if(isLast && (nowTs - s.endTs) < gapMs) carry=s;
+    if(isLast && (nowTs - s.endTs) < carryMaxAgeMs) carry=s;
     else dropped.push(s);
   });
   return { assess, carry, dropped };
 }
-return {GAP_MS_DEFAULT: GAP_MS_DEFAULT, AWAY_MS_DEFAULT: AWAY_MS_DEFAULT, groupByStream: groupByStream, segmentByIdle: segmentByIdle, compressIdle: compressIdle, idleAccounting: idleAccounting, classifyGap: classifyGap, splitForAssessment: splitForAssessment};
+return {GAP_MS_DEFAULT: GAP_MS_DEFAULT, AWAY_MS_DEFAULT: AWAY_MS_DEFAULT, groupByStream: groupByStream, dropExactDuplicates: dropExactDuplicates, segmentByIdle: segmentByIdle, compressIdle: compressIdle, idleAccounting: idleAccounting, classifyGap: classifyGap, splitForAssessment: splitForAssessment};
 })();
 
 /* ---- core/challenge.js ---- */
@@ -1700,7 +1777,15 @@ const storage={
         // Yang dibutuhkan model cuma `vector`; `feat` (28 pasangan nama-nilai) murni
         // untuk penjelasan. Membuangnya membuat jauh lebih banyak sesi muat.
         const slim=v.sessions.map(x=> x && x.feat ? {...x, feat:null} : x);
-        toSave={...v, sessions: slim.length>90 ? slim.slice(-90) : slim};
+        // C-31: DULU `slim.slice(-90)` — memotong 90 TERAKHIR, jadi blok pendaftaran di
+        // DEPAN ikut terbuang. Sesudah reload, 10 sesi apa pun yang kebetulan ada di
+        // depan (bisa sesi MEDIUM/HIGH, bisa sesi penyusup) diperlakukan sebagai
+        // pendaftaran tanpa syarat: peracunan baseline lewat pemotongan. Blok
+        // pendaftaran (`enrollPrefix`, dikirim orkestrator) selalu dipertahankan.
+        const pre=Math.min(slim.length, Number.isFinite(v.enrollPrefix) ? v.enrollPrefix : 10);
+        const tail=slim.slice(pre);
+        toSave={...v, sessions: tail.length>90 ? [...slim.slice(0,pre), ...tail.slice(-90)] : slim,
+                enrollPrefix: pre};
       }
       const sealedLocal=await seal(toSave,k);
       if(sealedLocal.length < MAX_LOCAL_BYTES) localStorage.setItem(k, sealedLocal);
@@ -1734,7 +1819,7 @@ const { Mahalanobis } = __M["core/mahalanobis.js"];
 const { Ensemble } = __M["core/ensemble.js"];
 const { toRisk, toAction, topFeatures, reasonsFrom, calibrateThresholds, calibrateThresholdsParametric } = __M["core/risk.js"];
 const { createCapture } = __M["core/capture.js"];
-const { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream, compressIdle } = __M["core/idle.js"];
+const { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream, compressIdle, dropExactDuplicates } = __M["core/idle.js"];
 const { storage } = __M["storage.js"];
 const { isConverged, cohortLowRate } = __M["core/lifecycle.js"];
 const { getOrCreateSecret, generateToken } = __M["core/token.js"];
@@ -1755,7 +1840,7 @@ const LEGACY_PENDING = 'bg:pending';
 
 class BehaviorGuard {
   constructor(){ this.cfg=structuredClone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
-  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa, session, idle, aggregateWindows, calibrationHoldout}={}){
+  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, mfa, session, idle, aggregateWindows, calibrationHoldout, calibration}={}){
     if(!userId) throw new Error('BehaviorGuard.init: userId wajib');
     this.userId=userId; this.onRisk=onRisk||(()=>{});
     // HYBRID cloud mode: baseline per tenant+userId hidup di VPS (lintas-device),
@@ -1778,11 +1863,23 @@ class BehaviorGuard {
     // C-24: ketiga knob invariansi panjang sesi. Default 0/1 = perilaku lama persis.
     if(Number.isFinite(aggregateWindows)) this.cfg.aggregateWindows=aggregateWindows;
     if(Number.isFinite(calibrationHoldout)) this.cfg.calibrationHoldout=calibrationHoldout;
+    // C-33: titik operasi (ketat vs longgar) dulu TIDAK bisa diatur integrator — k_low
+    // tidak ada di daftar opsi init(), jadi satu-satunya cara adalah menyunting config.js.
+    // Lebih kecil = lebih ketat (penyusup lebih jarang lolos, pemilik lebih sering
+    // diminta verifikasi). Tabel pertukarannya di README "Choosing an operating point".
+    if(calibration && typeof calibration==='object'){
+      if(Number.isFinite(calibration.k_low)) this.cfg.k_low=calibration.k_low;
+      if(Number.isFinite(calibration.k_med_extra)) this.cfg.k_med_extra=calibration.k_med_extra;
+    }
     // fingerprint + secret + token (HMAC)
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
     try{ this.secret=await getOrCreateSecret(userId); this.token=await generateToken({secret:this.secret, userId}); }catch{}
     const saved=await storage.get(ns(userId));
     if(saved){ this.sessions=saved.sessions||[]; this.stats=saved.stats||null; this.lastRisk=saved.lastRisk||'LOW'; this._highRun=saved.highRun||0; this.challengeTemplate=saved.challengeTemplate||null;
+      // C-32: streak LOW dulu TIDAK disimpan. Lantai lengket turun hanya setelah 3 LOW
+      // berturut dalam SATU muat-halaman, jadi pengguna yang kunjungannya pendek (1-2
+      // vonis) dan tak punya MFA bawaan tidak pernah turun dari MEDIUM, selamanya.
+      this._lowStreak=saved.lowStreak||0;
       // cek ganti device
       if(saved.fingerprint && saved.fingerprint!==this.fingerprint){
         console.warn('[BG] device fingerprint berubah - sesi dianggap berisiko');
@@ -1794,7 +1891,17 @@ class BehaviorGuard {
       // A4: buang sisa kunci global lama — pemiliknya tak bisa dipastikan, jadi
       // satu-satunya perlakuan yang aman adalah membuangnya, bukan menebak.
       try{ localStorage.removeItem(LEGACY_PENDING); }catch{}
-      const pending=JSON.parse(localStorage.getItem(nsPending(userId))||'null');
+      let pending=JSON.parse(localStorage.getItem(nsPending(userId))||'null');
+      // C-33: ekor pending dulu tidak punya umur maksimum. Ia dimaksudkan untuk pindah
+      // HALAMAN (detik), tapi ikut terbawa ke kunjungan BESOKNYA: ekor kemarin + ketikan
+      // hari ini jadi satu vektor campuran dua hari, dan jeda semalam di dalamnya
+      // terbaca sebagai "kembali dari absen" -> MEDIUM di awal tiap kunjungan.
+      // Terukur (eval_sdk --live): 149 dari ~500 gesekan pemilik berasal dari sini.
+      if(pending && pending.length){
+        const maxAge=(this.cfg.session.carryMaxAgeSec||this.cfg.idle.awaySec||300)*1000;
+        const last=pending.reduce((m,e)=> Math.max(m, (e&&e.timestamp)||0), 0);
+        if(Date.now()-last > maxAge){ pending=null; localStorage.removeItem(nsPending(userId)); }
+      }
       if(pending && pending.length){
         localStorage.removeItem(nsPending(userId));
         // pending adalah event mentah - simpan dulu, akan di-score di endSession berikutnya
@@ -1820,8 +1927,10 @@ class BehaviorGuard {
       if(this._pendingEvents && this._pendingEvents.length){
         const pending=this._pendingEvents; delete this._pendingEvents;
         if(pending.length >= this.cfg.session.minEventsAssess){
-          const chunk=pending.slice(0,200);
-          const sisa=pending.slice(200);
+          // C-33: chunk minimal sebesar ambang bukti, kalau tidak ia tak pernah dinilai
+          const CH=Math.max(200, this.cfg.session.minEventsAssess);
+          const chunk=pending.slice(0,CH);
+          const sisa=pending.slice(CH);
           // B1 fix: jangan require di ESM, pakai scoreExternalEvents langsung (extractF4 sudah diimpor)
           setTimeout(()=> this.scoreExternalEvents(chunk).catch(()=>{}), 100);
           try{ if(sisa.length) localStorage.setItem(nsPending(userId), JSON.stringify(sisa));
@@ -1936,15 +2045,48 @@ class BehaviorGuard {
       this.capture.drain();
     }catch{}
   }
+  // C-31: indeks tepat SESUDAH sesi layak ke-`baseline`, yaitu ujung blok pendaftaran.
+  // Dulu blok ini diandaikan = sessions.slice(0, baseline). Salah begitu ada satu sesi
+  // tak-layak di masa pendaftaran: sesi pendaftaran ke-10 jatuh ke bagian "LOW
+  // progresif", dan begitu kolam itu bergulir (maks 90) sesi pendaftaran asli ikut
+  // terbuang. Blok pendaftaran adalah jangkar model — ia tidak boleh bergulir.
+  _enrollPrefix(){
+    let c=0;
+    for(let i=0;i<this.sessions.length;i++){
+      if(this.sessions[i].eligible!==false && ++c===this.cfg.baseline) return i+1;
+    }
+    return this.sessions.length;
+  }
+  // C-31: riwayat sesi dulu tumbuh TANPA BATAS — satu entri tiap jendela 30 dtk, jadi
+  // ribuan per minggu — dan SELURUHNYA diserialisasi + di-HMAC ulang pada tiap vonis.
+  // Yang dibutuhkan model hanya blok pendaftaran + 90 LOW terakhir + 6 vonis terakhir
+  // (konvergensi). Disimpan: blok pendaftaran UTUH + `historyMax` entri terakhir;
+  // `feat` (murni penjelasan) dibuang dari entri yang lebih tua dari 20 terakhir.
+  _compactHistory(){
+    const keep=this.cfg.historyMax||240;
+    const pre=this._enrollPrefix();
+    if(this.sessions.length > pre+keep) this.sessions=[...this.sessions.slice(0,pre), ...this.sessions.slice(-keep)];
+    const cut=this.sessions.length-20;
+    for(let i=pre;i<cut;i++){ if(this.sessions[i].feat) this.sessions[i]={...this.sessions[i], feat:null}; }
+  }
+  // Satu-satunya penulis state ke storage (C-31: dulu 7 salinan, dua di antaranya lupa
+  // menulis challengeTemplate & highRun).
+  async _persist(){
+    this._compactHistory();
+    await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint,
+      lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate,
+      lowStreak:this._lowStreak||0, enrollPrefix:this._enrollPrefix()});
+  }
   _trainingVectors(){
     // K6 + T1: hanya sesi eligible yang masuk kolam (gagal gate tidak latih)
     const isEligible=s=> s.eligible!==false;
-    if(this.sessions.length <= this.cfg.baseline) return this.sessions.filter(isEligible).map(s=>s.vector);
-    const base=this.sessions.slice(0, this.cfg.baseline).filter(isEligible).map(s=>s.vector);
+    const pre=this._enrollPrefix();
+    if(this.sessions.length <= pre) return this.sessions.filter(isEligible).map(s=>s.vector);
+    const base=this.sessions.slice(0, pre).filter(isEligible).map(s=>s.vector);
     // TRUST-LOOP: sesi LOW normal ATAU sesi non-LOW yang LOLOS MFA (mfaVerified) boleh
     // masuk kolam. Sesi menyimpang yang belum terbukti pemilik -> TIDAK pernah melatih
     // (anti-peracunan baseline + adaptasi drift pemilik yang aman).
-    let lows=this.sessions.slice(this.cfg.baseline).filter(s=>(s.risk==='LOW' || s.mfaVerified) && isEligible(s)).map(s=>s.vector);
+    let lows=this.sessions.slice(pre).filter(s=>(s.risk==='LOW' || s.mfaVerified) && isEligible(s)).map(s=>s.vector);
     if(lows.length > this.cfg.progressiveMaxPool) lows=lows.slice(-this.cfg.progressiveMaxPool);
     const temporalIdx=new Set();
     F4.forEach((name,i)=>{ if(name.startsWith('temporal_')) temporalIdx.add(i); });
@@ -1966,6 +2108,7 @@ class BehaviorGuard {
   _rebuildModel(){
     const vecs=this._trainingVectors();
     if(!vecs.length) return;
+    this._newSinceRebuild=0;
     // C-24 (opt-in): sisihkan EKOR kolam khusus untuk mengkalibrasi ambang.
     // Versi lama mengkalibrasi dari skor vektor yang PERSIS dipakai memfit detektor.
     // Skor in-sample selalu optimistik — model memang dipas-paskan ke titik-titik itu —
@@ -2077,7 +2220,11 @@ class BehaviorGuard {
       if(integ.suspected){
         const evt={...M, level:'HIGH', score:-1.5, action:'BLOCK_SESSION', reasons:integ.reasons, topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, integrity:true};
         this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:-1.5, eligible:false});
-        await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:'HIGH'});
+        // C-31: dulu HANYA storage yang diberi lastRisk HIGH (memori tidak), dan
+        // challengeTemplate tidak ikut tertulis -> satu tuduhan bot menghapus template
+        // MFA pemilik dari penyimpanan. Kini memori & storage sama, dan state utuh.
+        this.lastRisk='HIGH'; this._lowStreak=0;
+        await this._persist();
         this._cloudLog(evt);
         try{ this.onRisk(evt); }catch{}
         return evt;
@@ -2090,7 +2237,7 @@ class BehaviorGuard {
       // vonis pertama sesudah pendaftaran selesai (bisa berhari-hari kemudian).
       this._awayReturn=null;
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'LOW', score:0, eligible});
-      await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:'LOW'});
+      await this._persist();
       let doneEnroll=false;
       if(this.sessions.filter(s=>s.eligible!==false).length >= this.cfg.baseline){ this._rebuildModel(); doneEnroll=true; }
       const enrollEvt={...M, level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'sesi tidak layak - tidak masuk kolam'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
@@ -2119,7 +2266,7 @@ class BehaviorGuard {
         reasons:['skor tidak finit - model/statistik rusak'], topFeatures:[], features: feat,
         thresholds: {...this.cfg.thresholds}, eligible:false, degraded:true};
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:null, eligible:false});
-      await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate});
+      await this._persist();
       this._cloudLog(badEvt);
       try{ this.onRisk(badEvt); }catch{}
       return badEvt;
@@ -2244,8 +2391,14 @@ class BehaviorGuard {
       this._rebuildModel();
       evt.gateReopened=true;
     }
-    const lowsCount=trainVecs.length - this.cfg.baseline;
-    const shouldRetrain = lowsCount>0 && lowsCount % this.cfg.retrainEvery === 0;
+    // C-31: jadwal latih ulang dulu `ukuran kolam % 6 === 0`. Kolam dibatasi 90 LOW, jadi
+    // begitu penuh (~90 jendela x 30 dtk = 45 menit pemakaian) ukurannya BERHENTI
+    // bergerak: di 90 (kelipatan 6) model dilatih ulang TIAP jendela, di 88/89 (sisa
+    // dedup) TIDAK PERNAH LAGI — adaptasi drift pemilik mati diam-diam. Yang benar
+    // menghitung sesi layak-latih BARU sejak latih ulang terakhir.
+    const joinsPool = eligible && (level==='LOW');
+    if(joinsPool) this._newSinceRebuild=(this._newSinceRebuild||0)+1;
+    const shouldRetrain = (this._newSinceRebuild||0) >= this.cfg.retrainEvery;
     if(shouldRetrain){
       const recent=this.sessions.slice(-this.cfg.convergence.window).map(s=>s.risk);
       let cohortRate=0; let hasCohort=false; let cohort=null;
@@ -2267,7 +2420,7 @@ class BehaviorGuard {
       evt.convergence='no-retrain'; evt.hasCohort=false;
       if(this.sessions.filter(s=>s.eligible!==false).length===this.cfg.baseline) this._rebuildModel();
     }
-    await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate});
+    await this._persist();
     // R2: HAPUS push own non-LOW ke bg:cohort - cohort harus seed dari luar (reproduce_db), bukan diri sendiri
     this._cloudLog(evt);                    // verdict -> VPS (dashboard per akun)
     if(shouldRetrain && level==='LOW') this._cloudPush(); // baseline tumbuh (hanya LOW) -> sinkron ke VPS
@@ -2314,21 +2467,89 @@ class BehaviorGuard {
       // Hanya VERIFIKASI sungguhan (res.verified) yang membuktikan identitas.
       // res.passed sendirian bisa berasal dari mode daftar -> tidak cukup.
       if(res.verified){
-        this._mfaPassedAt=now; this._highRun=0;
-        this.lastRisk='LOW'; this._lowStreak=0;   // C-3: bersihkan lantai lengket,
-                                                  // kalau tidak sesi berikutnya dipaksa HIGH terus
-        evt.action='MFA_PASSED'; evt.blocked=false; evt.mfaVerified=true;
-        // TRUST-LOOP: hanya sesi terverifikasi yang boleh mengajari model.
-        const last=this.sessions[this.sessions.length-1];
-        if(last){ last.mfaVerified=true; this._rebuildModel(); }
+        this._applyMfaVerified(evt, now);
       } else {
         evt.action = evt.blocked ? 'BLOCK_SESSION' : 'MFA_FAILED';
       }
-      await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate});
+      await this._persist();
     }catch(e){ evt.mfa={ shown:true, error:String(e&&e.message||e) }; }
     finally{ this._mfaBusy=false; }
   }
 
+  // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya tools/eval_sdk.mjs
+  // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini — bukan
+  // tiruan tangan yang lama-lama menyimpang (C-29).
+  _applyMfaVerified(evt={}, now=Date.now()){
+    this._mfaPassedAt=now; this._highRun=0;
+    this.lastRisk='LOW'; this._lowStreak=0;   // C-3: bersihkan lantai lengket,
+                                              // kalau tidak sesi berikutnya dipaksa HIGH terus
+    evt.action='MFA_PASSED'; evt.blocked=false; evt.mfaVerified=true;
+    // TRUST-LOOP: hanya sesi terverifikasi yang boleh mengajari model.
+    const last=this.sessions[this.sessions.length-1];
+    if(last){ last.mfaVerified=true; this._rebuildModel(); }
+  }
+  /**
+   * C-32: laporan hasil step-up MILIK INTEGRATOR (OTP, WebAuthn, email, telepon).
+   * Vonis MEDIUM/HIGH menyuruh integrator "minta verifikasi", tapi dulu tidak ada jalan
+   * untuk memberi tahu hasilnya ke pustaka. Akibatnya bagi integrator yang tidak memakai
+   * popup ritme bawaan: lantai lengket tak pernah dibersihkan, sesi pemilik yang lolos
+   * verifikasi tak pernah mengajari model, dan HIGH beruntun berakhir BLOCK untuk
+   * pemilik sendiri. Terukur (tools/eval_sdk.mjs, pemilik tanpa jalur verifikasi):
+   * gesekan 40,5%, DIBLOKIR 13,3%.
+   *   passed:true  -> efeknya sama persis dengan MFA bawaan yang terverifikasi.
+   *   passed:false -> tidak mengubah apa pun selain tercatat; hukuman tetap milik
+   *                   aturan vonis (HIGH beruntun), bukan milik laporan ini.
+   * HANYA panggil dari hasil verifikasi SISI SERVER yang sudah dicek. Skrip di halaman
+   * yang sama bisa memanggilnya juga — itu batas kepercayaan sisi-klien yang sama
+   * dengan seluruh pustaka ini (THREAT-MODEL.md).
+   */
+  async reportStepUp({ passed } = {}){
+    const evt={};
+    if(passed===true){ this._applyMfaVerified(evt); await this._persist(); }
+    else { this._stepUpFailures=(this._stepUpFailures||0)+1; }
+    return { applied: passed===true, lastRisk: this.lastRisk };
+  }
+  /**
+   * C-33: vonis SEKETIKA untuk aksi sensitif (ganti email/sandi, transfer, tambah
+   * perangkat). Vonis rutin kini menunggu bukti cukup (minEventsAssess), jadi penyusup
+   * yang masuk lalu langsung mengganti email pemulihan dalam 20 detik bisa selesai
+   * sebelum vonis pertama. Aksi seperti itu harus memanggil ini dan memperlakukan
+   * UNKNOWN sebagai "minta verifikasi" (gagal-TERTUTUP), bukan "aman".
+   *
+   * TANPA efek samping: tidak menguras buffer, tidak masuk kolam latih, tidak menggeser
+   * lantai lengket, tidak menaikkan hitungan HIGH. Bukti parsial (< minEventsAssess)
+   * lebih berisik, jadi ia lebih mudah salah-curiga — biaya yang wajar di momen yang
+   * memang pantas diverifikasi. Lantai lengket & absen yang belum terselesaikan ikut
+   * menaikkan vonisnya.
+   */
+  assessNow({ minEvents=30 }={}){
+    const S=this.cfg.session;
+    const base={ at: Date.now(), sensitive:true };
+    const eligibleCount=this.sessions.filter(s=>s.eligible!==false).length;
+    if(!this.model || eligibleCount < this.cfg.baseline){
+      return {...base, level:'UNKNOWN', action:'REQUIRE_STEPUP', enrollment:true,
+        reasons:['pendaftaran belum selesai - belum ada pembanding, verifikasi dengan cara lain']};
+    }
+    let events=dropExactDuplicates(this.capture ? this.capture.peek() : []);
+    if(S.idleCompressSec>0) events=compressIdle(events, S.idleCompressSec*1000);
+    const order={LOW:0,MEDIUM:1,HIGH:2};
+    const away=this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000;
+    if(events.length < minEvents){
+      return {...base, level:'UNKNOWN', action:'REQUIRE_STEPUP', evidence:{events:events.length, partial:true},
+        reasons:[`bukti belum cukup (${events.length} event) - perlakukan sebagai belum terverifikasi`]};
+    }
+    const feat=extractF4(events), vec=featuresToVector(feat);
+    const xstd=standardize(vec, this.stats);
+    const score=this.model.scoreOne(xstd);
+    let level=Number.isFinite(score) ? toRisk(score, this.cfg.thresholds) : 'HIGH';
+    const floor=this.lastRisk||'LOW';
+    if(order[floor] > order[level]) level=floor;
+    if(away && level==='LOW') level='MEDIUM';
+    const top=topFeatures(xstd, F4, 3);
+    return {...base, level, score, action: toAction(level), modelLevel: Number.isFinite(score)? toRisk(score, this.cfg.thresholds):'HIGH',
+      evidence:{ events:events.length, partial: events.length < S.minEventsAssess },
+      reasons:[...(away?['kembali setelah absen - verifikasi ulang']:[]), ...reasonsFrom(top)], topFeatures: top};
+  }
   // Pendaftaran template ritme HANYA di sesi tepercaya: vonis LOW, model sudah
   // terbentuk, dan belum pernah punya template. Ini pasangan dari C-2 — kalau
   // pendaftaran tidak pernah terjadi di sini, MFA tidak akan pernah tersedia.
@@ -2349,7 +2570,7 @@ class BehaviorGuard {
       if(res.enrolled && res.template){
         this.challengeTemplate=res.template;
         evt.mfa={ enrolled:true, verified:false };
-        await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate});
+        await this._persist();
       } else {
         evt.mfa={ enrolled:false, reason:res.reason||'dibatalkan' };
       }
@@ -2375,6 +2596,9 @@ class BehaviorGuard {
    * menghasilkan vonis tidak lagi diam-diam berlalu (lihat `_maybeAbstain`).
    */
   async _assessEvents(events, carryBack){
+    // C-29: kembaran identik adalah artefak pencatatan, bukan perilaku (lihat
+    // idle.js:dropExactDuplicates). Dibuang sebelum apa pun diukur atau diperiksa.
+    events=dropExactDuplicates(events||[]);
     // B1: pisahkan per tab DULU. Dua tab aktif bersamaan tidak punya jeda untuk
     // dipotong segmentasi idle, jadi tanpa langkah ini keduanya menyatu jadi satu
     // "sesi" yang tidak mewakili perilaku siapa pun.
@@ -2391,7 +2615,10 @@ class BehaviorGuard {
     const gapMs=(S.idleGapSec ?? 30)*1000;
     const acct=idleAccounting(events, gapMs);
     const segs=(S.idleCompressSec>0) ? this._compressedUnit(events, acct) : segmentByIdle(events, gapMs);
-    const {assess, carry, dropped}=splitForAssessment(segs, S.minEventsAssess, Date.now(), gapMs);
+    // C-33: dengan kompresi nyala, ekor yang belum mencapai minEventsAssess terus
+    // dikumpulkan sampai carryMaxAgeSec (bukan dibuang begitu diam 30 dtk).
+    const carryMs=(S.idleCompressSec>0 && S.carryMaxAgeSec>0) ? S.carryMaxAgeSec*1000 : gapMs;
+    const {assess, carry, dropped}=splitForAssessment(segs, S.minEventsAssess, Date.now(), gapMs, carryMs);
     if(carryBack && carry && this.capture){
       // ekor masih "hidup" (event terakhir belum melewati ambang jeda) -> kembalikan
       // ke depan buffer supaya terus tumbuh. Panjangnya < minEventsAssess, jadi
@@ -2535,7 +2762,7 @@ class BehaviorGuard {
   // challenge API
   async setChallenge(samples){ // samples: [{dwell, flight}]
     this.challengeTemplate=buildTemplate(samples);
-    await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate});
+    await this._persist();
   }
   async verifyChallenge(sample){
     if(!this.challengeTemplate) return {ok:false, reason:'no template'};
@@ -2552,7 +2779,7 @@ class BehaviorGuard {
   // tanpa skor lokal & tanpa mengosongkan buffer. Dipakai untuk dikirim ke backend.
   getVector(){
     if(!this.capture) return null;
-    let events=this.capture.peek();
+    let events=dropExactDuplicates(this.capture.peek());
     if(!events.length) return null;
     // C-28: vektor untuk backend harus melewati praproses yang SAMA dengan penilaian
     // lokal, kalau tidak backend menerima besaran yang berbeda dari yang dinilai di sini.
@@ -2585,6 +2812,8 @@ if(typeof window!=='undefined'){
     init: (opts)=> singleton.init(opts),
     endSession: ()=> singleton.endSession(),
     markStep: (name)=> singleton.markStep(name),
+    reportStepUp: (r)=> singleton.reportStepUp(r),
+    assessNow: (o)=> singleton.assessNow(o),
     getVector: ()=> singleton.getVector(),
     _instance: singleton,
     // untuk reproduce/tools
