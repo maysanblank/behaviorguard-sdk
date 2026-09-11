@@ -14,7 +14,7 @@ import { Mahalanobis } from './core/mahalanobis.js';
 import { Ensemble } from './core/ensemble.js';
 import { toRisk, toAction, topFeatures, reasonsFrom, calibrateThresholds, calibrateThresholdsParametric } from './core/risk.js';
 import { createCapture } from './core/capture.js';
-import { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream } from './core/idle.js';
+import { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream, compressIdle } from './core/idle.js';
 import { storage } from './storage.js';
 import { isConverged, cohortLowRate } from './core/lifecycle.js';
 import { getOrCreateSecret, generateToken } from './core/token.js';
@@ -670,13 +670,13 @@ class BehaviorGuard {
     const S=this.cfg.session;
     const gapMs=(S.idleGapSec ?? 30)*1000;
     const acct=idleAccounting(events, gapMs);
-    const segs=segmentByIdle(events, gapMs);
+    const segs=(S.idleCompressSec>0) ? this._compressedUnit(events, acct) : segmentByIdle(events, gapMs);
     const {assess, carry, dropped}=splitForAssessment(segs, S.minEventsAssess, Date.now(), gapMs);
     if(carryBack && carry && this.capture){
       // ekor masih "hidup" (event terakhir belum melewati ambang jeda) -> kembalikan
       // ke depan buffer supaya terus tumbuh. Panjangnya < minEventsAssess, jadi
       // spread di sini aman dari stack overflow.
-      try{ this.capture.buffer.unshift(...carry.events); }catch{}
+      try{ this.capture.buffer.unshift(...(carry.rawEvents||carry.events)); }catch{}
     }
     if(!assess.length) return this._maybeAbstain(events, acct, dropped);
     this._noAssessRuns=0; this._abstainEmitted=false;
@@ -686,9 +686,42 @@ class BehaviorGuard {
     // yang berubah-ubah terbaca sebagai identitas yang berubah. Menyamakan panjangnya
     // memperbaiki itu tanpa menyentuh satu baris pun rumus fitur di core/SPEC.md.
     for(const seg of assess){
-      for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, segs.length);
+      // acct.segments = jumlah rentetan AKTIF di batch. Di jalur segmen sama dengan
+      // segs.length; di jalur kompresi C-28 segs selalu 1, tapi telemetri tetap harus
+      // bilang ada berapa rentetan yang dinilai jadi satu.
+      for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, acct.segments);
     }
     return last;
+  }
+  /**
+   * C-28: seluruh aliran jadi SATU unit penilaian, jeda ≥ idleCompressSec
+   * dipendekkan (bukan dipotong). Held-out 5 belahan, AFK 2-20 mnt disuntik:
+   * FRR 18,4% -> 9,7% pada FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968 — sedangkan
+   * segmentasi C-23 memberi 18,8% / AUC 0,927. Memecah di jeda "away" ikut diuji dan
+   * membatalkan manfaatnya (FRR 18,5%): yang merusak adalah MEMENDEKKAN SESI, bukan
+   * jedanya. Lihat core/DRIFT.md C-28.
+   *
+   * Sisi KEAMANAN tidak hilang. Jeda terpanjang diukur dari timestamp ASLI sebelum
+   * dikompresi dan dibawa sebagai `gapBeforeMs`, jadi `_ingestVector` tetap menandai
+   * `resumedAfterAway`, mereset streak LOW, dan menaikkan LOW->MEDIUM bila absennya
+   * ≥ reverifyAfterSec — persis seperti jalur segmen. Yang berubah: satu batch yang
+   * melintasi absen menghasilkan SATU vonis, bukan dua.
+   *
+   * Bentuk keluarannya sama dengan segmentByIdle (array segmen) supaya
+   * splitForAssessment, carry-back ekor, dan ABSTAIN berjalan tanpa diubah.
+   */
+  _compressedUnit(events, acct){
+    if(!events || !events.length) return [];
+    const ev=compressIdle(events, this.cfg.session.idleCompressSec*1000);
+    const startTs=ev[0].timestamp||0, endTs=ev[ev.length-1].timestamp||startTs;
+    // endTs dipakai splitForAssessment untuk memutuskan ekor masih "hidup"; ukur dari
+    // waktu ASLI, bukan waktu hasil kompresi yang sudah digeser mundur.
+    const realEnd=events.reduce((m,e)=> Math.max(m, e.timestamp||0), 0);
+    // rawEvents: kalau unit ini ternyata ekor yang dikembalikan ke buffer, yang
+    // dikembalikan harus event ASLI — timestamp hasil kompresi akan merusak jendela
+    // berikutnya (jeda antara ekor dan event baru jadi terukur salah).
+    return [{ events:ev, rawEvents:events, startTs, endTs:realEnd, durationMs:endTs-startTs,
+              gapBeforeMs: acct.longestGapMs||0 }];
   }
   // C-24: [segmen] -> [jendela K event]. K=0 (default) mengembalikan segmen apa
   // adanya, jadi jalur lama tidak tersentuh. Sisa < K di ekor DIBUANG di sini —
@@ -799,8 +832,12 @@ class BehaviorGuard {
   // tanpa skor lokal & tanpa mengosongkan buffer. Dipakai untuk dikirim ke backend.
   getVector(){
     if(!this.capture) return null;
-    const events=this.capture.peek();
+    let events=this.capture.peek();
     if(!events.length) return null;
+    // C-28: vektor untuk backend harus melewati praproses yang SAMA dengan penilaian
+    // lokal, kalau tidak backend menerima besaran yang berbeda dari yang dinilai di sini.
+    const cs=this.cfg.session.idleCompressSec;
+    if(cs>0) events=compressIdle(events, cs*1000);
     const feat=extractF4(events);
     return { vector: featuresToVector(feat), features: feat, n: events.length };
   }

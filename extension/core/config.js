@@ -11,6 +11,13 @@
  * seluruhnya dari satu run yang sama.
  */
 export const DEFAULTS = {
+  // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
+  // KLAIM ITU DITARIK. Ia diukur lewat tools/reproduce_db.py, yang memakai sklearn
+  // OCSVM + bobot IF 0,70 — BUKAN Mahalanobis + IF 0,30 yang dikirim dari file ini.
+  // Di mesin yang benar, 10 lawan 16 (himpunan uji identik) memberi AUC 0,948 vs 0,946
+  // dan EER 11,6% vs 10,9% — selisihnya di dalam sebaran antar-belahan. Shrinkage
+  // adaptif C-22 memang sudah menangani n kecil, jadi menambah sesi tidak menambah apa
+  // apa. Tetap 10. Lihat core/DRIFT.md C-27.
   baseline: 10,               // sesi pendaftaran awal
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas
@@ -64,7 +71,23 @@ export const DEFAULTS = {
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, canonicalWindow: 0 },
+  //
+  // PERINGATAN HASIL (10 Sep 2026, 5 belahan 8/8, core/DRIFT.md):
+  // segmentasi ini adalah KOREKSI KEBENARAN PENGUKURAN yang sahih (durasi 731 -> 5,5
+  // dtk, interval klik 48.708 -> 710 ms), tapi ia TIDAK memperbaiki FRR/FAR — malah
+  // merugikan daya pisah: EER 10,7% -> 16,1%, rentang [14..19] tidak beririsan dengan
+  // kontrol [9..12]. Melonggarkan ambang tidak menolong (30/120/300 dtk: FRR 35,3% ->
+  // 39,9% -> 42,3%). JANGAN kutip segmentasi ini sebagai peningkatan akurasi.
+  // Nilai ini juga menyetir idleAccounting dan ABSTAIN, yang TIDAK ikut teradili di
+  // tolok ukur itu.
+  //
+  // C-28: `idleCompressSec` MENGGANTIKAN segmentasi di atas untuk jalur PENILAIAN.
+  // Tiap jeda ≥ 15 dtk dipendekkan jadi 15 dtk dan sesi dinilai utuh — tak ada event
+  // dibuang, sesi tak dipecah. Held-out 5 belahan (AFK 2-20 mnt disuntik ke sesi
+  // evaluasi): FRR 18,4% -> 9,7%, FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968. Tanpa AFK
+  // netral: FRR 11,0% -> 10,1%, AUC 0,961 -> 0,964. Dengan knob ini nyala, idleGapSec
+  // hanya dipakai untuk akuntansi idle, ekor buffer, dan ABSTAIN. 0 = jalur C-23 lama.
+  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.

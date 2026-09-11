@@ -79,8 +79,15 @@ export const DEFAULTS = {
   // kontrol [9..12]. Melonggarkan ambang tidak menolong (30/120/300 dtk: FRR 35,3% ->
   // 39,9% -> 42,3%). JANGAN kutip segmentasi ini sebagai peningkatan akurasi.
   // Nilai ini juga menyetir idleAccounting dan ABSTAIN, yang TIDAK ikut teradili di
-  // tolok ukur itu — memisahkannya jadi knob sendiri adalah pekerjaan berikutnya.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, canonicalWindow: 0 },
+  // tolok ukur itu.
+  //
+  // C-28: `idleCompressSec` MENGGANTIKAN segmentasi di atas untuk jalur PENILAIAN.
+  // Tiap jeda ≥ 15 dtk dipendekkan jadi 15 dtk dan sesi dinilai utuh — tak ada event
+  // dibuang, sesi tak dipecah. Held-out 5 belahan (AFK 2-20 mnt disuntik ke sesi
+  // evaluasi): FRR 18,4% -> 9,7%, FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968. Tanpa AFK
+  // netral: FRR 11,0% -> 10,1%, AUC 0,961 -> 0,964. Dengan knob ini nyala, idleGapSec
+  // hanya dipakai untuk akuntansi idle, ekor buffer, dan ABSTAIN. 0 = jalur C-23 lama.
+  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.

@@ -19,6 +19,13 @@ __M["core/config.js"] = (function(){
  * seluruhnya dari satu run yang sama.
  */
 const DEFAULTS = {
+  // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
+  // KLAIM ITU DITARIK. Ia diukur lewat tools/reproduce_db.py, yang memakai sklearn
+  // OCSVM + bobot IF 0,70 — BUKAN Mahalanobis + IF 0,30 yang dikirim dari file ini.
+  // Di mesin yang benar, 10 lawan 16 (himpunan uji identik) memberi AUC 0,948 vs 0,946
+  // dan EER 11,6% vs 10,9% — selisihnya di dalam sebaran antar-belahan. Shrinkage
+  // adaptif C-22 memang sudah menangani n kecil, jadi menambah sesi tidak menambah apa
+  // apa. Tetap 10. Lihat core/DRIFT.md C-27.
   baseline: 10,               // sesi pendaftaran awal
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas
@@ -72,7 +79,23 @@ const DEFAULTS = {
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.
-  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, canonicalWindow: 0 },
+  //
+  // PERINGATAN HASIL (10 Sep 2026, 5 belahan 8/8, core/DRIFT.md):
+  // segmentasi ini adalah KOREKSI KEBENARAN PENGUKURAN yang sahih (durasi 731 -> 5,5
+  // dtk, interval klik 48.708 -> 710 ms), tapi ia TIDAK memperbaiki FRR/FAR — malah
+  // merugikan daya pisah: EER 10,7% -> 16,1%, rentang [14..19] tidak beririsan dengan
+  // kontrol [9..12]. Melonggarkan ambang tidak menolong (30/120/300 dtk: FRR 35,3% ->
+  // 39,9% -> 42,3%). JANGAN kutip segmentasi ini sebagai peningkatan akurasi.
+  // Nilai ini juga menyetir idleAccounting dan ABSTAIN, yang TIDAK ikut teradili di
+  // tolok ukur itu.
+  //
+  // C-28: `idleCompressSec` MENGGANTIKAN segmentasi di atas untuk jalur PENILAIAN.
+  // Tiap jeda ≥ 15 dtk dipendekkan jadi 15 dtk dan sesi dinilai utuh — tak ada event
+  // dibuang, sesi tak dipecah. Held-out 5 belahan (AFK 2-20 mnt disuntik ke sesi
+  // evaluasi): FRR 18,4% -> 9,7%, FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968. Tanpa AFK
+  // netral: FRR 11,0% -> 10,1%, AUC 0,961 -> 0,964. Dengan knob ini nyala, idleGapSec
+  // hanya dipakai untuk akuntansi idle, ekor buffer, dan ABSTAIN. 0 = jalur C-23 lama.
+  session: { minEventsAssess: 30, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, canonicalWindow: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.
@@ -901,6 +924,34 @@ function segmentByIdle(events, gapMs=GAP_MS_DEFAULT){
   return segs;
 }
 
+/**
+ * C-28: PENDEKKAN tiap jeda ≥ gapMs jadi gapMs — jangan pecah sesinya.
+ *
+ * Segmentasi (di atas) memang membuang jeda dari pengukuran, tapi sekaligus
+ * memendekkan SESI: sembilan fitur-cacah ikut mengecil (C-24), dan held-out 5
+ * belahan menunjukkan ia merusak daya pisah. Kompresi hanya memendekkan WAKTU
+ * KOSONG. Tak ada event yang dibuang, jumlahnya tetap, urutannya tetap; tiap event
+ * sesudah jeda digeser mundur sebesar kelebihan jedanya. Jeda berpikir (< gapMs)
+ * tidak tersentuh sama sekali.
+ *
+ * Tidak memutasi masukan. Padanan Python: tools/idle_ablation.py:compress_idle.
+ * @returns {Array} event baru, urut waktu, timestamp sudah dikompresi
+ */
+function compressIdle(events, gapMs){
+  if(!events || !events.length) return [];
+  if(!(gapMs > 0)) return byTs(events);
+  const ev=byTs(events);
+  const out=new Array(ev.length);
+  let shift=0, prev=null;
+  for(let i=0;i<ev.length;i++){
+    const t=ev[i].timestamp||0;
+    if(prev!==null && t-prev >= gapMs) shift+=(t-prev)-gapMs;
+    prev=t;
+    out[i]={ ...ev[i], timestamp: t-shift };
+  }
+  return out;
+}
+
 function mkSeg(list, gapBeforeMs){
   const startTs=list[0].timestamp||0;
   const endTs=list[list.length-1].timestamp||startTs;
@@ -964,7 +1015,7 @@ function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT){
   });
   return { assess, carry, dropped };
 }
-return {GAP_MS_DEFAULT: GAP_MS_DEFAULT, AWAY_MS_DEFAULT: AWAY_MS_DEFAULT, groupByStream: groupByStream, segmentByIdle: segmentByIdle, idleAccounting: idleAccounting, classifyGap: classifyGap, splitForAssessment: splitForAssessment};
+return {GAP_MS_DEFAULT: GAP_MS_DEFAULT, AWAY_MS_DEFAULT: AWAY_MS_DEFAULT, groupByStream: groupByStream, segmentByIdle: segmentByIdle, compressIdle: compressIdle, idleAccounting: idleAccounting, classifyGap: classifyGap, splitForAssessment: splitForAssessment};
 })();
 
 /* ---- core/challenge.js ---- */
@@ -1683,7 +1734,7 @@ const { Mahalanobis } = __M["core/mahalanobis.js"];
 const { Ensemble } = __M["core/ensemble.js"];
 const { toRisk, toAction, topFeatures, reasonsFrom, calibrateThresholds, calibrateThresholdsParametric } = __M["core/risk.js"];
 const { createCapture } = __M["core/capture.js"];
-const { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream } = __M["core/idle.js"];
+const { segmentByIdle, idleAccounting, splitForAssessment, classifyGap, groupByStream, compressIdle } = __M["core/idle.js"];
 const { storage } = __M["storage.js"];
 const { isConverged, cohortLowRate } = __M["core/lifecycle.js"];
 const { getOrCreateSecret, generateToken } = __M["core/token.js"];
@@ -2339,13 +2390,13 @@ class BehaviorGuard {
     const S=this.cfg.session;
     const gapMs=(S.idleGapSec ?? 30)*1000;
     const acct=idleAccounting(events, gapMs);
-    const segs=segmentByIdle(events, gapMs);
+    const segs=(S.idleCompressSec>0) ? this._compressedUnit(events, acct) : segmentByIdle(events, gapMs);
     const {assess, carry, dropped}=splitForAssessment(segs, S.minEventsAssess, Date.now(), gapMs);
     if(carryBack && carry && this.capture){
       // ekor masih "hidup" (event terakhir belum melewati ambang jeda) -> kembalikan
       // ke depan buffer supaya terus tumbuh. Panjangnya < minEventsAssess, jadi
       // spread di sini aman dari stack overflow.
-      try{ this.capture.buffer.unshift(...carry.events); }catch{}
+      try{ this.capture.buffer.unshift(...(carry.rawEvents||carry.events)); }catch{}
     }
     if(!assess.length) return this._maybeAbstain(events, acct, dropped);
     this._noAssessRuns=0; this._abstainEmitted=false;
@@ -2355,9 +2406,42 @@ class BehaviorGuard {
     // yang berubah-ubah terbaca sebagai identitas yang berubah. Menyamakan panjangnya
     // memperbaiki itu tanpa menyentuh satu baris pun rumus fitur di core/SPEC.md.
     for(const seg of assess){
-      for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, segs.length);
+      // acct.segments = jumlah rentetan AKTIF di batch. Di jalur segmen sama dengan
+      // segs.length; di jalur kompresi C-28 segs selalu 1, tapi telemetri tetap harus
+      // bilang ada berapa rentetan yang dinilai jadi satu.
+      for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, acct.segments);
     }
     return last;
+  }
+  /**
+   * C-28: seluruh aliran jadi SATU unit penilaian, jeda ≥ idleCompressSec
+   * dipendekkan (bukan dipotong). Held-out 5 belahan, AFK 2-20 mnt disuntik:
+   * FRR 18,4% -> 9,7% pada FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968 — sedangkan
+   * segmentasi C-23 memberi 18,8% / AUC 0,927. Memecah di jeda "away" ikut diuji dan
+   * membatalkan manfaatnya (FRR 18,5%): yang merusak adalah MEMENDEKKAN SESI, bukan
+   * jedanya. Lihat core/DRIFT.md C-28.
+   *
+   * Sisi KEAMANAN tidak hilang. Jeda terpanjang diukur dari timestamp ASLI sebelum
+   * dikompresi dan dibawa sebagai `gapBeforeMs`, jadi `_ingestVector` tetap menandai
+   * `resumedAfterAway`, mereset streak LOW, dan menaikkan LOW->MEDIUM bila absennya
+   * ≥ reverifyAfterSec — persis seperti jalur segmen. Yang berubah: satu batch yang
+   * melintasi absen menghasilkan SATU vonis, bukan dua.
+   *
+   * Bentuk keluarannya sama dengan segmentByIdle (array segmen) supaya
+   * splitForAssessment, carry-back ekor, dan ABSTAIN berjalan tanpa diubah.
+   */
+  _compressedUnit(events, acct){
+    if(!events || !events.length) return [];
+    const ev=compressIdle(events, this.cfg.session.idleCompressSec*1000);
+    const startTs=ev[0].timestamp||0, endTs=ev[ev.length-1].timestamp||startTs;
+    // endTs dipakai splitForAssessment untuk memutuskan ekor masih "hidup"; ukur dari
+    // waktu ASLI, bukan waktu hasil kompresi yang sudah digeser mundur.
+    const realEnd=events.reduce((m,e)=> Math.max(m, e.timestamp||0), 0);
+    // rawEvents: kalau unit ini ternyata ekor yang dikembalikan ke buffer, yang
+    // dikembalikan harus event ASLI — timestamp hasil kompresi akan merusak jendela
+    // berikutnya (jeda antara ekor dan event baru jadi terukur salah).
+    return [{ events:ev, rawEvents:events, startTs, endTs:realEnd, durationMs:endTs-startTs,
+              gapBeforeMs: acct.longestGapMs||0 }];
   }
   // C-24: [segmen] -> [jendela K event]. K=0 (default) mengembalikan segmen apa
   // adanya, jadi jalur lama tidak tersentuh. Sisa < K di ekor DIBUANG di sini —
@@ -2468,8 +2552,12 @@ class BehaviorGuard {
   // tanpa skor lokal & tanpa mengosongkan buffer. Dipakai untuk dikirim ke backend.
   getVector(){
     if(!this.capture) return null;
-    const events=this.capture.peek();
+    let events=this.capture.peek();
     if(!events.length) return null;
+    // C-28: vektor untuk backend harus melewati praproses yang SAMA dengan penilaian
+    // lokal, kalau tidak backend menerima besaran yang berbeda dari yang dinilai di sini.
+    const cs=this.cfg.session.idleCompressSec;
+    if(cs>0) events=compressIdle(events, cs*1000);
     const feat=extractF4(events);
     return { vector: featuresToVector(feat), features: feat, n: events.length };
   }

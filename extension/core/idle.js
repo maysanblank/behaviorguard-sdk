@@ -94,6 +94,34 @@ export function segmentByIdle(events, gapMs=GAP_MS_DEFAULT){
   return segs;
 }
 
+/**
+ * C-28: PENDEKKAN tiap jeda ≥ gapMs jadi gapMs — jangan pecah sesinya.
+ *
+ * Segmentasi (di atas) memang membuang jeda dari pengukuran, tapi sekaligus
+ * memendekkan SESI: sembilan fitur-cacah ikut mengecil (C-24), dan held-out 5
+ * belahan menunjukkan ia merusak daya pisah. Kompresi hanya memendekkan WAKTU
+ * KOSONG. Tak ada event yang dibuang, jumlahnya tetap, urutannya tetap; tiap event
+ * sesudah jeda digeser mundur sebesar kelebihan jedanya. Jeda berpikir (< gapMs)
+ * tidak tersentuh sama sekali.
+ *
+ * Tidak memutasi masukan. Padanan Python: tools/idle_ablation.py:compress_idle.
+ * @returns {Array} event baru, urut waktu, timestamp sudah dikompresi
+ */
+export function compressIdle(events, gapMs){
+  if(!events || !events.length) return [];
+  if(!(gapMs > 0)) return byTs(events);
+  const ev=byTs(events);
+  const out=new Array(ev.length);
+  let shift=0, prev=null;
+  for(let i=0;i<ev.length;i++){
+    const t=ev[i].timestamp||0;
+    if(prev!==null && t-prev >= gapMs) shift+=(t-prev)-gapMs;
+    prev=t;
+    out[i]={ ...ev[i], timestamp: t-shift };
+  }
+  return out;
+}
+
 function mkSeg(list, gapBeforeMs){
   const startTs=list[0].timestamp||0;
   const endTs=list[list.length-1].timestamp||startTs;

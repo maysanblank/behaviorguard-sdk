@@ -119,6 +119,25 @@ def segment_by_idle(events, gap_ms=GAP_MS):
     return segs
 
 
+def compress_idle(events, gap_ms):
+    """Padanan Python dari sdk/core/idle.js:compressIdle (C-28).
+
+    Tiap jeda >= gap_ms DIPENDEKKAN jadi gap_ms; tidak ada event yang dibuang dan
+    sesi tidak dipecah. Beda dengan segment_by_idle: segmentasi memendekkan SESI
+    (fitur-cacah ikut mengecil, C-24), kompresi hanya memendekkan WAKTU KOSONG."""
+    ev = sorted(events, key=lambda e: e.get('timestamp') or 0)
+    out, shift, prev = [], 0, None
+    for e in ev:
+        t = e.get('timestamp') or 0
+        if prev is not None and t - prev >= gap_ms:
+            shift += (t - prev) - gap_ms
+        prev = t
+        e2 = dict(e)
+        e2['timestamp'] = t - shift
+        out.append(e2)
+    return out
+
+
 def vec_of(events):
     return bg.features_to_vector(bg.extract_features(events))
 

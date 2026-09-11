@@ -212,7 +212,7 @@ def roc(owner_scores, imp_scores):
         return best[2] if best else 100
     return dict(auc=auc, eer=eer, eer_thr=eer_thr, far_at_15=far_at(15), far_at_5=far_at(5), n=len(thr_list), thr_range=(min(all_thr), max(all_thr)), pts=pts)
 
-def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True, vec_source=None, calib_holdout=0.0, engine=None):
+def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, use_real_ocsvm=True, vec_source=None, calib_holdout=0.0, engine=None, max_pool=30):
     """vec_source: {uid: [(vektor, event_count), ...]} menggantikan tabel `features`.
 
     Ditambahkan untuk C-24. Tujuannya SATU: mengevaluasi representasi lain (mis.
@@ -240,7 +240,9 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             else:
                 dur=10.0  # skip dur check jika temporal tidak dipakai (F4_MINUS_TEMP)
             return (ec or 0)>=100 and dur>=5.0 and nz>=6
-        baseline=10; step=6; window=6; MAX_POOL=30
+        # max_pool: kolam maks (daftar + LOW). 30 = angka lama; SDK mengirim
+        # baseline + progressiveMaxPool = 10 + 90 (sdk/core/config.js, C-22). Lihat C-28.
+        baseline=10; step=6; window=6; MAX_POOL=max_pool
         pool=vecs[:baseline]
         def build(pool_vecs, qq):
             base_n=min(baseline, len(pool_vecs))
@@ -336,14 +338,21 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
             shuf_ids=list(other_ids); rng_sub.shuffle(shuf_ids)
             far_ids=set(shuf_ids[len(shuf_ids)//2:])
             q_far=','.join(str(x) for x in far_ids) if far_ids else qmarks
+            # C-28 (diagnostik, ADITIF): catat SIAPA penyusupnya, bukan cuma skornya.
+            # Tanpa ini runtun sesi penyusup tak bisa dipisah per orang, dan aturan
+            # keputusan berbasis 'k sesi berturut' jadi tak bisa diukur jujur --
+            # runtun bisa menyeberang antar-identitas dan FAR terlihat lebih baik
+            # dari yang sebenarnya. Urutan skor TIDAK diubah, jadi FAR/AUC identik.
             if vec_source is not None:
-                other_rows=[v for x in far_ids for v,_ in vec_source.get(x,[])]
+                other_groups=[(x,[v for v,_ in vec_source.get(x,[])]) for x in far_ids]
             else:
-                other_rows=c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall()
-            for r in other_rows:
+                other_groups=[(None, c.execute(f"SELECT {','.join('f.'+f for f in feature_cols)} FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q_far}) ORDER BY s.session_id").fetchall())]
+            for _imp_uid, _rows in other_groups:
+              for r in _rows:
                 sc_imp=ens(list(r)); imp_scores.append(sc_imp)
                 pu2=per_user.setdefault(uid, {'n':0,'bad':0,'nsess':0,'own':[],'imp':[],'thr':None})
                 pu2['imp'].append(sc_imp); pu2['thr']=thr['low']
+                pu2.setdefault('imp_by',{}).setdefault(_imp_uid,[]).append(sc_imp)
                 totalImp+=1
                 if to_risk(sc_imp, thr)=='LOW': impLow+=1
     return dict(owner=totalOwner, ownerNonLow=ownerNonLow, frr=ownerNonLow/totalOwner*100 if totalOwner else 0,

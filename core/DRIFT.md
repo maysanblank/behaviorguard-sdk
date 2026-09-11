@@ -1201,6 +1201,151 @@ Keduanya mengubah DEFINISI angka headline, jadi tidak diubah sepihak.
 
 ---
 
+## C-28 - AFK: pendekkan jedanya, jangan pecah sesinya
+
+Di mesin yang dikirim, AFK menaikkan FRR **11,0% -> 18,4%** dan segmentasi C-23 tidak
+menurunkannya (18,8%). Syaratnya satu: FRR harus turun **tanpa** menaikkan FAR.
+Menggeser ambang tidak dihitung sebagai perbaikan.
+
+### Delapan tuas yang gagal lebih dulu
+
+Semuanya di atas kondisi 2 (AFK, Mahalanobis + IF 0,30, 5 belahan). Tuas yang
+menggeser titik operasi dibandingkan **pada FAR yang disamakan**. Tanpa itu, penurunan
+FRR yang dibayar dengan FAR tampak seperti perbaikan.
+
+| Tuas | Hasil | Kenapa gugur |
+|---|---|---|
+| grid q dilebarkan ke 0,001 | FRR 18,0% pada FAR 9,5% | cuma tukar titik operasi |
+| z-norm skor | AUC 0,707 | merusak daya pisah |
+| kalibrasi LOO | netral sampai lebih buruk | sama dengan C-27 |
+| agregasi 2 / 3 sesi | AUC 0,704 / 0,735 | merusak daya pisah |
+| skor robust (median/MAD) | AUC 0,821 | merusak daya pisah |
+| pembeda kohort | AUC 0,715 | merusak daya pisah |
+| k-sesi-berturut, FAR disamakan | k=1 14,9% / k=2 15,8% / k=3 18,6% | k>1 tidak menolong |
+| ambang parametrik, FAR disamakan | mean-z·sd 17,0%, med-z·MAD 16,3% (vs 14,9%) | lebih buruk dari kuantil |
+
+Oracle ambang per-pengguna masih 5,6 poin di bawah, tapi celah itu tidak bisa dicapai
+oleh aturan apa pun yang tidak melihat jawabannya.
+
+**Pola yang menyatukan kelima kegagalan AUC:** skor penyusup punya ekor ekstrem yang
+panjang (agg1: rerata -22,5, sd 76,6), dan daya bedanya ada di ekor itu. Setiap tuas yang
+**menghaluskan** skor (rata-rata, z-norm, median, kohort) memotong ekornya, sehingga daya
+pisahnya ikut hilang. Ini menguji hipotesis C-26 yang dulu belum diuji, dan hasilnya
+mendukung hipotesis itu.
+
+### Diagnosis: yang rusak cuma enam fitur, dan semuanya dibagi waktu
+
+Ada 493 pasangan sesi (sama, dengan vs tanpa AFK). Pergeseran diukur dalam satuan sd
+baseline:
+
+| Fitur | Geser |
+|---|---:|
+| `mouse_click_interval_mean` | 1,31 sd |
+| `keystroke_typing_speed` | 1,24 sd |
+| `form_field_switch_rate` | 1,20 sd |
+| `keystroke_cross_field_cadence` | 0,79 sd |
+| `keystroke_flight_time_mean` | 0,67 sd |
+| `temporal_session_duration` | 0,58 sd |
+| 22 fitur lainnya | ≤ 0,06 sd |
+
+Perilakunya tidak berubah. Yang rusak adalah **penyebut waktunya**. Karena itu obatnya
+cukup di waktu, dan fitur lain tidak perlu diapa-apakan.
+
+### Tambalan: kompresi waktu diam
+
+`sdk/core/idle.js:compressIdle` memendekkan setiap jeda ≥ `session.idleCompressSec`
+(15 dtk) menjadi 15 dtk. Tidak ada event yang dibuang, dan sesi tetap dinilai utuh. Ini
+berbeda dari C-23. Segmentasi memendekkan **sesi**, sehingga sembilan fitur-cacah ikut
+mengecil (C-24). Kompresi hanya memendekkan **waktu kosongnya**. Rumus fitur di
+`core/SPEC.md` tidak disentuh, jadi hasilnya tetap 227/227.
+
+Diukur dengan 5 belahan 8/8 dan grid q `[0,01..0,20]` yang sama untuk semua lengan:
+
+| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---|---:|---:|---:|---:|---:|
+| 1. tanpa AFK (kontrol) | 11,0% | 11,2% | 0,961 | 9,8% | 5,0% |
+| 2. AFK, tanpa perbaikan | 18,4% | 9,2% | 0,952 | 11,1% | 7,6% |
+| 3. AFK + segmentasi C-23 | 18,8% | 13,9% | 0,927 | 14,3% | 13,6% |
+| **AFK + kompresi 15 dtk** | **9,7%** | **9,3%** | **0,968** | **8,9%** | **5,0%** |
+| AFK + kompresi 30 dtk | 11,9% | 8,4% | 0,967 | 8,6% | 5,3% |
+| AFK + kompresi 60 dtk | 12,7% | 8,9% | 0,963 | 9,6% | 6,4% |
+| tanpa AFK + kompresi 10 dtk | 9,8% | 10,9% | 0,964 | 9,6% | 5,0% |
+| tanpa AFK + kompresi 15 dtk | 10,1% | 11,7% | 0,964 | 10,0% | 5,8% |
+| tanpa AFK + kompresi 20 dtk | 10,5% | 10,7% | 0,964 | 10,1% | 5,1% |
+
+FRR turun 8,7 poin sementara FAR tetap (9,2% -> 9,3%). AUC dan EER ikut membaik, jadi
+ini bukan tukar titik operasi. Pada sesi tanpa AFK kompresi netral di semua ambang yang
+diuji: selisihnya masih di dalam sebaran antar-belahan, dan tidak ada ambang yang
+merugikan. Artinya jeda berpikir alami tidak ikut rusak.
+
+### Dua varian yang ikut diuji dan DITOLAK
+
+**Pisah di jeda "away".** Menggabungkan sebelum-dan-sesudah absen jadi satu vonis punya
+harga keamanan. Kalau yang kembali ke kursi orang lain, perilakunya tercampur dengan
+perilaku pemilik. Varian yang tetap memecah di jeda panjang lalu mengompresi tiap
+potongannya menghapus manfaatnya:
+
+| | FRR | FAR | AUC | EER |
+|---|---:|---:|---:|---:|
+| kompresi, sesi utuh | 9,7% | 9,3% | 0,968 | 8,9% |
+| kompresi + pisah @ 5 mnt | 18,5% | 12,2% | 0,934 | 12,8% |
+| kompresi + pisah @ 15 mnt | 19,3% | 10,8% | 0,933 | 14,4% |
+
+Jadi yang merusak adalah **memendekkan sesi**, bukan jedanya. Hasil ini sejalan dengan
+C-23 dan C-24. Sisi keamanannya tetap ditangani, tapi lewat jalur lain: jeda terpanjang
+diukur dari timestamp **asli** sebelum dikompresi, sehingga `resumedAfterAway`, reset
+streak LOW, dan kenaikan LOW->MEDIUM untuk absen ≥ `reverifyAfterSec` tetap jalan
+(`core/idle.live.test.mjs` bagian E).
+
+**Kolam latih lebih besar.** `reproduce_db.py` membatasi kolam di 30 vektor, sedangkan
+SDK mengirim `baseline + progressiveMaxPool` = 10 + 90. Ini selisih "yang diukur ≠ yang
+dikirim" yang sekelas dengan C-27, jadi diukur. Efeknya kecil sekali: tanpa AFK EER 9,8%
+-> 9,7%, AUC 0,961 -> 0,962. Dengan AFK + kompresi hasilnya 8,6% / 9,0% / 0,972 / 7,9%,
+juga di dalam sebaran. `run_fold(max_pool=...)` kini tersedia. Default-nya tetap 30
+supaya angka lama bisa direproduksi.
+
+### Kurva panjang pendaftaran: datar
+
+Klaim C-26 ("pendaftaran 10 terlalu pendek") sudah ditarik di C-27. Ia diuji ulang
+lebih lebar di mesin yang dikirim dengan himpunan uji tetap (sesi ≥ 20, `--eval-from 20`):
+
+| Pendaftaran | FRR | FAR | AUC | EER | FAR@FRR15 |
+|---:|---:|---:|---:|---:|---:|
+| 5 | 13,6% | 10,7% | 0,940 | 12,5% | 9,2% |
+| 10 | 14,1% | 13,0% | 0,941 | 12,8% | 9,9% |
+| 15 | 14,0% | 12,7% | 0,933 | 12,6% | 9,3% |
+| 20 | 14,0% | 13,1% | 0,935 | 13,4% | 10,7% |
+
+Datar dari 5 sampai 20. Menambah sesi pendaftaran **tidak** menurunkan FRR dasar ~10-11%.
+Ini konsisten dengan C-22/C-27: Mahalanobis + shrinkage adaptif sudah dirancang untuk n
+kecil.
+
+### Yang WAJIB dijujurkan
+
+- **AFK-nya sintetis.** Jeda 2-20 menit disuntikkan ke sesi evaluasi di satu titik.
+  Sebagian pemulihan memang sudah pasti terjadi oleh konstruksinya, karena yang disuntik
+  adalah waktu, dan waktu itulah yang dikompresi. Bukti bahwa manfaatnya bukan cuma
+  artefak: (a) pada data asli tanpa suntikan, kompresi netral sampai sedikit membaik;
+  (b) AUC/EER dengan AFK + kompresi **melampaui** kontrol tanpa AFK (0,968 vs 0,961).
+  Data AFK lapangan belum ada.
+- **Satu batch yang melintasi absen menghasilkan satu vonis.** Untuk absen 5-15 menit,
+  satu-satunya penanganan keamanan adalah reset streak. Di jalur live (jendela 30 dtk)
+  ini jarang terjadi karena ekor basi tidak dibawa ke jendela berikutnya. Di
+  `scoreExternalEvents` dengan batch panjang, hal ini bisa terjadi.
+- **FRR dasar ~10-11% pada sesi normal TIDAK tersentuh.** Tuas ambang, tuas agregasi,
+  dan panjang pendaftaran semuanya sudah habis. Yang tersisa harus dicari di
+  representasi (fitur apa yang dipakai), bukan di pengambilan keputusan.
+
+**Uji:** `core/compress.test.mjs` 22/22 (sifat dasar, 5 fitur berpenyebut waktu pulih,
+fitur-bentuk identik, fitur-cacah tidak mengecil). `core/idle.live.test.mjs` 33/33: A-D
+mengunci jalur C-23 lama lewat `idleCompressSec:0`, dan E mengunci jalur baru. Seluruh
+suite lama tetap hijau.
+
+Reproduksi:
+`python tools/canonical_holdout.py --only 1 2 7 8 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15 0.18 0.20`
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
@@ -1220,6 +1365,9 @@ Keduanya mengubah DEFINISI angka headline, jadi tidak diubah sepihak.
 | Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
 | Audit validitas pengukuran C-25 | `core/audit.test.mjs` | 32/32 SESUAI |
 | Validasi held-out C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIF untuk segmentasi C-23 |
+| Kompresi waktu diam C-28 | `core/compress.test.mjs` | 22/22 SESUAI |
+| Jalur penuh idle C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 SESUAI |
+| Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18,4% -> 9,7%, FAR tetap |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu

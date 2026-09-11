@@ -76,12 +76,14 @@ def load_raw(conn, uid):
     return out
 
 
-def build_source(raw_by_uid, mode, K, afk, gap_min, seed, gap_ms_override=0):
+def build_source(raw_by_uid, mode, K, afk, gap_min, seed, gap_ms_override=0, compress_ms=15_000):
     """{uid: [(vektor, event_count)]} menurut satu kondisi.
 
     mode: 'utuh'      satu vektor per sesi, apa adanya (perilaku sebelum C-23)
           'segmen'    C-23: dipecah di tiap jeda idle, satu vektor per segmen
           'kanonik'   C-24: segmen dipotong lagi jadi jendela K event
+          'kompres'   C-28: sesi utuh, tiap jeda >= compress_ms dipendekkan jadi
+                      compress_ms (DEFAULT yang dikirim sekarang)
     """
     src = {}
     for uid, sessions in raw_by_uid.items():
@@ -93,6 +95,9 @@ def build_source(raw_by_uid, mode, K, afk, gap_min, seed, gap_ms_override=0):
                 cut = abl.pick_cut(evs, rng)
                 evs = abl.inject_gap(evs, rng.choice(gap_min) * 60_000, cut)
             if mode == 'utuh':
+                vecs.append((abl.vec_of(evs), len(evs)))
+            elif mode == 'kompres':
+                evs = abl.compress_idle(evs, compress_ms)
                 vecs.append((abl.vec_of(evs), len(evs)))
             elif mode == 'segmen':
                 for seg in abl.segment_by_idle(evs, gap_ms_override or abl.GAP_MS):
@@ -154,6 +159,8 @@ def main():
                          'Memotong di 30 dtk juga memotong JEDA BERPIKIR biasa, dan sesi '
                          'yang lebih pendek membawa bukti lebih sedikit — ongkos yang '
                          'sama persis dengan yang menenggelamkan C-24.')
+    ap.add_argument('--compress-sec', type=float, default=15,
+                    help='C-28: ambang kompresi jeda (= sdk/core/config.js session.idleCompressSec)')
     ap.add_argument('--only', type=int, nargs='+', default=None,
                     help='jalankan hanya kondisi bernomor ini (hemat waktu)')
     args = ap.parse_args()
@@ -171,8 +178,8 @@ def main():
     print(f"DB: {db}")
     print(f"Protokol: reproduce_db.py — whitelist 16 subjek, belah 8/8 seed 42, "
           f"q dituning di FOLD-TUNE, dilaporkan di FOLD-REPORT")
-    print(f"Engine  : {'IF 100%' if args.ablation else 'W7 70/30'}, "
-          f"{'sklearn RealOCSVM' if rdb.SKLEARN else 'centroid JS'}")
+    print(f"Engine  : {'IF 100%' if args.ablation else 'IF 0,30 / slot-2 0,70'}, "
+          f"{'Mahalanobis (sama dgn SDK)' if rdb.ENGINE_DEFAULT == 'maha' else rdb.ENGINE_DEFAULT}")
     print(f"Kanonik : K={args.canonical} event | AFK: {args.gap_min} menit, "
           f"hanya ke sesi evaluasi\n")
 
@@ -189,6 +196,8 @@ def main():
         ("4. utuh + segmentasi C-23,  tanpa AFK",   'segmen',  False),  # ongkos C-23 sendiri
         (f"5. kanonik {K} (C-24),        tanpa AFK", 'kanonik', False),
         (f"6. kanonik {K} + segmentasi,  dgn AFK",   'kanonik', True),
+        ("7. utuh + kompresi C-28,     dgn AFK",     'kompres', True),   # <- DIKIRIM (C-28)
+        ("8. utuh + kompresi C-28,     tanpa AFK",   'kompres', False),  # ongkos C-28 sendiri
     ]
     if args.only:
         conds = [c for i, c in enumerate(conds, 1) if i in args.only]
@@ -201,7 +210,8 @@ def main():
         gms = 0
         if args.idle_gap_sec and mode == 'segmen':
             gms = float(label.split('@')[1].split()[0]) * 1000
-        src = build_source(raw, mode, K, afk, args.gap_min, args.seed, gms)
+        src = build_source(raw, mode, K, afk, args.gap_min, args.seed, gms,
+                           compress_ms=args.compress_sec * 1000)
         runs = []
         for sd in args.seeds:
             print(f"menjalankan: {label} | benih belahan {sd} ...", flush=True)
@@ -242,6 +252,8 @@ def main():
     print("  Baris 3 vs 1  = seberapa dekat C-23 mengembalikan keadaan ke sebelum ada idle.")
     print("  Baris 4 vs 1  = ongkos C-23 ketika idle TIDAK ada sama sekali (harus ~nol).")
     print("  Baris 5 vs 1  = ongkos murni kanonikalisasi C-24 (default MATI).")
+    print("  Baris 7 vs 2  = apakah kompresi C-28 (default NYALA) memperbaiki idle.")
+    print("  Baris 8 vs 1  = ongkos C-28 ketika idle TIDAK ada (harus ~nol).")
     print()
     print("  Perhatikan EER dan AUC lebih dulu: keduanya bebas titik-operasi. FRR/FAR")
     print("  bergantung pada q yang dituning per kondisi, jadi keduanya bisa saling tukar")
