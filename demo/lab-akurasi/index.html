@@ -310,13 +310,14 @@
           'sebelum sistem bisa menilai. Sesi-sesi ini sengaja tidak dihitung.';
     } else if (!ownr.length) {
       h = '<b>Profil siap.</b> Sekarang lakukan ±20 sesi lagi sebagai <b>pemilik</b>. ' +
-          'Harapan wajar: sekitar <b>1 dari 6</b> ditandai bukan-LOW.';
+          'Harapan wajar: sekitar <b>1 dari 7</b> ditandai bukan-LOW.';
     } else if (!imps.length) {
       h = '<b>Sudah ada ' + ownr.length + ' sesi pemilik.</b> Sekarang minta orang lain memakai ' +
           'komputermu, ganti label ke <b>Orang lain</b>, lalu jalankan ±15 sesi. ' +
           'Harapan wajar: sebagian besar ditandai MEDIUM/HIGH.';
     } else {
-      h = '<b>Pembanding riset (held-out, 653 sesi, 16 subjek):</b> FRR 16,1% · FAR 5,4%. ' +
+      h = '<b>Pembanding (pustaka ini sendiri, 653 sesi, 16 subjek, jendela 30 dtk):</b> ' +
+          'pemilik diminta verifikasi 14,5% · penyusup lolos vonis pertama 13,3%. ' +
           'Angkamu sendiri akan berbeda — satu orang, satu penyusup, jumlah sesi kecil. ' +
           'Yang penting <b>arahnya</b>: FRR rendah dan FAR jauh lebih rendah daripada 50%.';
     }

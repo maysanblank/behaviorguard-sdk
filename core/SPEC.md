@@ -56,7 +56,7 @@ Every element is a double-precision float (IEEE-754 binary64), and is always fin
 | `model2` / `mahalanobis.shrink` | `mahalanobis` / 0.3 | detector-2 and diagonal shrinkage (v1.2) |
 | `ensembleMinSamples` | IF 8 / SVM 20 / LSTM 24 | gate: below this the weight is zeroed |
 | `calibrationMode` | `parametric` | threshold calibration mode (v1.2) |
-| `k_low` / `k_med_extra` | 3.3 / 2.0 | parametric calibration: `low = mean − k·std` |
+| `k_low` / `k_med_extra` | 1.75 / 2.0 | parametric calibration: `low = mean − k·std` (v1.3.0; was 3.3) |
 | `q_low` / `q_med` | 0.10 / 0.033 | threshold quantiles (legacy `quantile` mode) |
 | `blockAfterConsecutiveHigh` | 2 | run rule: hard block only after N consecutive HIGH (SDK layer) |
 | `baseline` / `retrainEvery` | 10 / 6 | enrollment and retraining cadence |
@@ -134,8 +134,10 @@ The float operation order (outer-i / inner-j loops, full row normalization, elim
 **must be identical** across languages to stay bit-exact within 1e-9. The legacy formula
 remains in `ocsvm.js` for `model2='centroid'`. Background: the centroid collapses the pool
 to a single point → FAR 36%; Mahalanobis accounts for covariance → held-out FAR **5.4%**,
-FRR **16.1%**, AUC **0.942**, EER **11.9%** (parametric calibration; reproduce with
-`python tools/experiment.py --calib parametric`). See `DRIFT.md`.
+FRR **16.1%**, AUC **0.942**, EER **11.9%** in the offline research harness, which scored
+whole ~700-event sessions. The shipped library, measured in the 30-second windows it
+actually scores (`tools/eval_sdk.mjs --live`), is reported in the README. See `DRIFT.md`
+C-29.
 
 ### 5.5 Calibration and blending
 For each sub-model: mean and standard deviation of its baseline scores, then **S-2**
@@ -182,10 +184,11 @@ That layer is **outside** the golden file (which tests the stateless `to_action`
 An implementation is **conformant** only if it passes `core/golden.json` at a relative
 tolerance of **1e-9**:
 
-- **§8 feature extraction** — 4 feature cases × 28 elements = **112 vector checks**, from
-  the explicit raw events in `feature_cases`.
+- **§8 feature extraction** — 5 feature cases × 28 elements = **140 vector checks**, from
+  the explicit raw events in `feature_cases` (the fifth, `_fc_atan2_pi4_edges`, holds real
+  mouse moves that turn exactly on `pi/4`; v1.3.0).
 - **§2–§7 engine** — 3 cases, 16 probes = **115 verdict checks**, from `cases`.
-- **227 checks** in total.
+- **255 checks** in total.
 
 The golden file stores **explicit inputs** (not generators), so a port never has to
 reproduce any generator. Intermediate values are stored too (`stats_*`, `if_stats`,
@@ -194,12 +197,12 @@ reproduce any generator. Intermediate values are stored too (`stats_*`, `if_stat
 
 | Implementation | How to test | Status |
 |---|---|---|
-| Python `core/bg_core.py` | `python core/conformance.py` | **CONFORMANT** 227/227 |
-| JS `sdk/core/*.js` (browser) | open `core/conformance.html` over a local server | **CONFORMANT** 227/227 |
-| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **CONFORMANT** 227/227 |
-| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **CONFORMANT** 227/227 |
-| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **CONFORMANT** 227/227 |
-| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (or `ports/wasm/index.html`) | **CONFORMANT** 227/227 |
+| Python `core/bg_core.py` | `python core/conformance.py` | **CONFORMANT** 255/255 |
+| JS `sdk/core/*.js` (browser) | open `core/conformance.html` over a local server | **CONFORMANT** 255/255 |
+| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **CONFORMANT** 255/255 |
+| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **CONFORMANT** 255/255 |
+| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **CONFORMANT** 255/255 |
+| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (or `ports/wasm/index.html`) | **CONFORMANT** 255/255 |
 | A new port (Go/Swift/C#) | mirror the logic of `conformance.py`; see `ports/README.md` | — |
 
 All ports are **dependency-free** (standard library only, including a small hand-written

@@ -1,91 +1,101 @@
-# Panduan Demo Manual — 3 Situs, 3 Tenant (pk terpisah)
+# Panduan Demo Manual — 3 Situs, 3 Tenant
 
-Skema pilihanmu: 3 e-commerce polos, masing-masing tenant sendiri (pk beda), enroll manual.
+Skema: 3 e-commerce polos, masing-masing tenant sendiri, pendaftaran manual.
 
 ---
 
-## 0. Setup sekali (per situs)
+## 0. Setup sekali
 
-Daftar 3 tenant → dapat 3 pk:
+```bash
+python server/app.py          # biarkan jalan di localhost:5055
 ```
-python server/app.py          # biarkan jalan di VPS/localhost:5055
-```
+
+Daftar 3 tenant. **Catat `pk` DAN `sk`** — `sk` hanya tampil sekali:
 ```
 curl -X POST http://localhost:5055/tenant -H "Content-Type: application/json" -d "{\"name\":\"Toko A\"}"
 curl -X POST http://localhost:5055/tenant -H "Content-Type: application/json" -d "{\"name\":\"Toko B\"}"
 curl -X POST http://localhost:5055/tenant -H "Content-Type: application/json" -d "{\"name\":\"Toko C\"}"
 ```
-Tempel di tiap situs (pk sesuai tokonya, userId = akun yang login):
+
+Cetak token untuk akun demo (di produksi ini dikerjakan backend toko sesudah login):
+```
+python server/app.py mint pk_TOKO_INI sk_TOKO_INI AKUN_YANG_LOGIN 604800
+```
+
+Tempel di tiap situs:
 ```html
 <script src="/behaviorguard.js"
         data-user="AKUN_YANG_LOGIN"
         data-pk="pk_TOKO_INI"
-        data-endpoint="http://localhost:5055" defer></script>
+        data-endpoint="http://localhost:5055"
+        data-user-token="TOKEN_HASIL_MINT" defer></script>
 ```
 
----
-
-## 1. Berapa sesi? → 10-12 cukup (bukan wajib 30)
-
-- Sesi 1-10 = **enrollment** (selalu LOW, belum dinilai — ini normal, JANGAN dikira gagal).
-- Isi **12** biar ada buffer kalau ada sesi gagal gate. 30 boleh, cuma buang waktu.
-- **1 sesi = otomatis tiap 30 detik** selama tab aktif. Jadi 12 sesi ≈ 6 menit aktivitas/situs.
+Tanpa `data-user-token`, pustaka tetap jalan tapi murni di perangkat (tidak ada log ke
+dashboard, tidak ada baseline lintas perangkat).
 
 ---
 
-## 2. Aturan main tiap sesi (WAJIB, biar lolos gate)
+## 1. Berapa lama pendaftaran?
 
-Gate: **≥100 event, ≥5 detik, ≥6 fitur non-nol**. Kalau diem → sesi dibuang (tidak masuk baseline).
-Tiap jendela 30 detik lakukan campuran ini:
-
-- [ ] Gerakkan mouse muter-muter (jangan diem) — ini gampang tembus 100 event.
-- [ ] **Ketik di kotak search / form** (min 1-2 kata) — WAJIB, ini sumber fitur ketik (dwell/flight) yang jadi pembeda terkuat. Tanpa ngetik, deteksi cuma ngandelin mouse → lemah.
-- [ ] Scroll naik-turun.
-- [ ] Klik 1-2 produk.
-- [ ] Pindah 1 halaman (produk → keranjang / halaman lain).
-
-Jaga tab tetap **fokus** (pindah tab = sesi keburu ditutup).
-
-Cek progress: buka console (F12) → tiap sesi muncul log `enrollment N/10`. Atau lihat dashboard.
+- 10 langkah pertama = **pendaftaran** (selalu LOW, belum dinilai — normal, bukan gagal).
+- Tiap langkah butuh **± 150 kejadian** (gerak mouse, ketik, scroll, klik). Jendela tetap
+  berdetak tiap 30 detik; kalau belum 150, bukti dikumpulkan sampai cukup.
+- Perkiraan: 5–10 menit aktivitas nyata per situs.
 
 ---
 
-## 3. Cara tes deteksi (ini inti "ke-detect apa engga")
+## 2. Aturan main tiap langkah (biar lolos gate)
 
-Kamu butuh **2 peran**, bukan cuma pemilik:
+Gate: **≥ 100 event, ≥ 5 detik, ≥ 6 fitur non-nol, dan ketikan asli** (bukan tempel/autofill).
 
-**A. Pemilik (kamu, gaya normal)** — setelah 10 enrollment, lanjut beberapa sesi normal.
-   → Harusnya **mayoritas LOW**. Tapi wajar ~1 dari 3 naik MEDIUM (FRR ~18-35%) — itu bukan bug, jelaskan sbg lapisan step-up.
+- [ ] Gerakkan mouse (jangan diam).
+- [ ] **Ketik di kotak search / form** — WAJIB. Ritme ketik adalah pembeda terkuat, dan
+      langkah yang ketikannya ditempel tidak dihitung ke pendaftaran.
+- [ ] Scroll naik-turun, klik 1–2 produk, pindah halaman.
 
-**B. Penyusup (device/incognito LAIN, login akun sama, gaya beda)**:
-   1. Buka **incognito / browser lain** (storage kosong = simulasi HP penyusup).
-   2. Login akun yang sama di situs itu.
-   3. SDK auto-tarik baseline pemilik dari VPS (`hasModel=true` langsung).
-   4. Berperilaku **beda jelas**: ketik jauh lebih cepat/lambat, mouse kaku/lurus, ritme lain. Idealnya minta **orang lain** yang ngetik.
-   → Harusnya **HIGH → BLOCK_SESSION**.
-
-> ⚠️ **Jujur & penting:** engine di browser = centroid (bukan sklearn Python), **FAR ~36%**
-> → penyusup bisa lolos ~1 dari 3. JANGAN taruhan 1 sesi. Jalankan **3-5 sesi penyusup**,
-> laporkan rasio (mis. "4 dari 5 kena HIGH"). Ini malah lebih ilmiah daripada 1 sesi mujur.
+Cek progres: panel (`data-panel`) atau console menampilkan `enrollment N/10`, atau lihat
+dashboard.
 
 ---
 
-## 4. Ekspektasi hasil (biar nggak kaget di depan dosen)
+## 3. Cara tes deteksi
+
+**A. Pemilik (kamu, gaya normal)** — sesudah pendaftaran, lanjut beberapa langkah normal.
+   → Harusnya mayoritas LOW. Wajar sekitar 1 dari 7 vonis minta verifikasi (14,5% di
+   pengukuran); sesudah lolos verifikasi, MEDIUM tidak ditanya lagi 15 menit.
+
+**B. Penyusup (orang lain, gaya beda)**:
+   1. Buka **browser lain / incognito** (simulasi perangkat penyusup).
+   2. Pakai akun & token yang sama.
+   3. Pustaka menarik baseline pemilik dari server (perangkat baru, belum punya pendaftaran).
+   4. Minta **orang lain** yang memakai.
+   → Harusnya MEDIUM/HIGH, dan HIGH dua kali berturut = BLOCK_SESSION.
+
+> **Jujur:** di pengukuran, 13,3% penyusup lolos vonis pertamanya dan 9,2% lolos seluruh
+> sesinya; tidak ada penyusup yang lolos 6 sesi berturut. Jangan bertaruh pada satu sesi —
+> jalankan 3–5 sesi penyusup dan laporkan rasionya.
+
+---
+
+## 4. Ekspektasi hasil
 
 | Fase | Yang muncul | Normal? |
 |---|---|---|
-| Sesi 1-10 (enroll) | LOW semua, `convergence: enrollment` | ✅ ya, belum dinilai |
-| Pemilik pasca-enroll | Mayoritas LOW, sesekali MEDIUM | ✅ FRR ~1/3 |
-| Penyusup (device lain) | Mayoritas HIGH, kadang bocor LOW | ✅ FAR ~1/3 di engine JS |
+| Pendaftaran | LOW semua, `enrollment N/10` | ✅ belum dinilai |
+| Pemilik sesudah daftar | Mayoritas LOW, sesekali MEDIUM | ✅ ~1 dari 7 vonis |
+| Penyusup (perangkat lain) | Mayoritas MEDIUM/HIGH, kadang lolos LOW | ✅ ~1 dari 8 di vonis pertama |
+| Bukti belum cukup | `UNKNOWN` / `ABSTAIN` | ✅ bukan "aman" |
 
-Dashboard per tenant: `http://localhost:5055/dashboard?pk=pk_TOKO`
+Dashboard: buka `http://localhost:5055/dashboard`, tempel **`sk`** toko itu (bukan `pk`).
 
 ---
 
-## 5. Checklist kesiapan sebelum demo
-- [ ] 3 situs punya kotak search / form input (ada yang bisa diketik).
-- [ ] VPS jalan & 3 pk terdaftar.
-- [ ] Tag terpasang dengan pk+userId+endpoint benar (cek Network: ada POST /log).
-- [ ] Sudah latihan sekali: enroll 12 → 1 sesi pemilik LOW → 1 sesi penyusup HIGH.
-- [ ] Siapkan device/incognito ke-2 untuk peran penyusup.
-- [ ] Siapkan kalimat limitasi: "FAR/FRR engine JS lebih tinggi dari angka Python; ini step-up, bukan kunci absolut; mimicry belum diuji."
+## 5. Checklist sebelum demo
+- [ ] 3 situs punya kotak search / form input.
+- [ ] Server jalan, 3 tenant terdaftar, `pk` + `sk` tercatat.
+- [ ] Tag terpasang dengan `pk` + `userId` + `endpoint` + token (cek Network: ada POST /log 200).
+- [ ] Sudah latihan: daftar → 1 langkah pemilik LOW → 1 sesi penyusup MEDIUM/HIGH.
+- [ ] Perangkat/incognito kedua untuk peran penyusup.
+- [ ] Kalimat limitasi: "lapisan verifikasi tambahan, bukan kunci absolut; ~1 dari 8
+      penyusup lolos pemeriksaan pertama; peniruan terarah belum diuji."

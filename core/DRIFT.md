@@ -1562,12 +1562,177 @@ Uji: `core/lifecycle.test.mjs` bagian D, E, F (24/24 bersama C-31).
 
 ---
 
+## C-34 - SPEC 1.3: `direction_changes` berbeda antar-bahasa di sudut tepat pi/4
+
+Pada sudut **tepat** pi/4, `atan2` berbeda 1-2 ulp antar-implementasi libm, dan itu
+membalik hitungan belok di SATU bahasa saja: 5 dari 192 sesi nyata, padahal semua
+golden lulus (tidak ada golden yang jatuh tepat di tepi). Kini dibandingkan dengan
+`pi/4 + 1e-9` di kelima runtime, dan kasus golden baru `_fc_atan2_pi4_edges` dibangun
+dari pasangan gerakan nyata itu. Golden 227 -> **255** pemeriksaan. Ke-28 fitur identik
+JS vs Python pada 653 sesi.
+
+## C-35 - rekam-ulang
+
+Perilaku korban yang terekam (XSS, ekstensi jahat, malware perekam) lalu diputar dengan
+waktu digeser menghasilkan vektor yang identik dengan sesi lama, dan model menilainya LOW
+karena memang itu perilaku pemiliknya. Manusia tidak pernah mengulang dirinya sedekat itu:
+jarak RMS terstandar ke sesi pemilik terdekat minimum 0,289 di data riset. Sesi dengan
+jarak < `replayEps` 0,05 (tanpa fitur temporal) divonis HIGH dan tidak pernah melatih.
+Uji: `core/lifecycle.test.mjs` H (termasuk jitter waktu +-2 ms).
+
+## C-36 - pembaruan browser terbaca sebagai ganti perangkat
+
+Sidik perangkat memuat nomor versi UA, jadi pembaruan otomatis Chrome setiap bulan
+menaikkan SEMUA pengguna ke MEDIUM sekali. `normalizeUA` membuang nomor versi; sidik
+versi lama (`fpv` < 2) tidak dibandingkan supaya pembaruan pustaka ini sendiri tidak
+mencurigai semua orang.
+
+## C-37 - popup pendaftaran MFA muncul di tiap vonis LOW
+
+Menutup popup pendaftaran kini menundanya 24 jam (`mfa.enrollSnoozeMs`, tersimpan lintas
+muat-halaman). Aturan integritas "event kembar" dibuat relatif: `dup > max(5, 0,05 n)`.
+
+## C-38 - init ulang mewarisi pengguna sebelumnya
+
+Logout A -> login B di tab yang sama (atau SPA ganti rute yang memanggil `init()` lagi):
+bila B belum punya data tersimpan, B dinilai dengan MODEL A, sesinya melatih kolam A, dan
+verifikasinya dicocokkan dengan TEMPLATE RITME A. Kini `_resetUserState()` dipakai `init`
+dan `clear`, capture lama dilepas, dan konfigurasi init sebelumnya tidak terbawa.
+
+## C-39 - server: `pk` di halaman membuka semuanya
+
+Dulu siapa pun yang membaca `pk` dari kode halaman bisa membaca template perilaku akun
+mana pun, **menimpanya** (peracunan: vektor penyerang dijadikan baseline korban),
+memalsukan vonis, dan lewat `/tenants` tanpa auth mengumpulkan `pk` semua tenant. Kini
+tenant punya `pk` (publik) + `sk` (rahasia). Baseline/log wajib token pengguna
+`b64url(userId).exp.hex(HMAC-SHA256(sk, pk|userId|exp))` yang dicetak server integrator;
+`userId` diambil dari token. API dashboard wajib `sk`; `/tenants` hanya admin
+(`BG_ADMIN_TOKEN`). Vektor NaN/inf ditolak. Klien hanya mengadopsi baseline server di
+perangkat BARU. Uji: `server/test_app.py`.
+
+## C-40 - auto-boot menguras buffer sebelum SDK sempat menyimpan ekor
+
+`dist/behaviorguard.js` memasang `pagehide -> endSession()` SEBELUM pendengar SDK sendiri
+(init menunggu fingerprint dulu). Penilaian async-nya tak sempat selesai karena halaman
+mati, lalu `_bankTail` milik SDK mendapati buffer kosong: bukti halaman terakhir hilang.
+Pendengar itu dihapus; auto-boot kini meneruskan `session/idle/calibration/userToken`.
+
+## C-41 - dashboard: stored XSS; loader; ekstensi
+
+- **Dashboard** menampilkan `userId`, `reasons`, `fp`, `ip` lewat `innerHTML` tanpa escape.
+  Satu token pengguna sah cukup untuk menanam `<img onerror=...>` yang jalan di browser
+  OPERATOR (yang memegang `sk`). Dashboard juga masih login pakai `pk`, jadi tidak jalan
+  dengan server C-39. Kini: operator memasukkan `sk` (disimpan di sessionStorage tab itu,
+  dikirim lewat header, tidak pernah lewat URL); semua nilai di-escape, level dibatasi
+  daftar putih, angka dipaksa `Number`; `/dashboard` dikirim dengan **CSP ber-nonce**
+  sebagai lapisan kedua. Server menyaring `/log` di sumbernya (level daftar putih, action
+  `^[A-Z_]{1,32}$`, reasons 6 x 160, nama fitur `^[a-z0-9_]{1,40}$`, jam klien yang ngawur
+  diganti jam server) dan `X-Forwarded-For` hanya dipercaya dengan `BG_TRUST_PROXY=1`.
+  Juga: `.login{display:grid}` mengalahkan atribut `hidden`, jadi form login tak pernah
+  bisa ditutup (drawer punya cacat yang sama) - kini `[hidden]{display:none!important}`.
+  Uji: `server/test_app.py` 35/35; diverifikasi di browser: payload tampil sebagai teks.
+- **Loader** `loader/bg-loader.js` punya cacat C-40 yang sama (`pagehide`/`beforeunload`
+  -> `endSession`). Dihapus; loader kini meneruskan opsi yang sama dengan auto-boot.
+- **Bundle meminta `/storage.js` milik situs.** `token.js` memuat penyimpanan lewat
+  `import('../storage.js')`; di bundle satu berkas jalur itu relatif ke HALAMAN, jadi tiap
+  muat halaman menghasilkan 404 di tab Network integrator dan rahasia token dibuat acak ulang.
+  Profil tidak terdampak (segelnya memakai kunci lain). Kini `storage` dioper pemanggil;
+  diverifikasi di browser: bundle hanya meminta dirinya sendiri.
+- **Ekstensi** versi lama menyimpan KARAKTER yang diketik di situs mana pun ke
+  `chrome.storage.local` dan memakai mesin salinan-tangan yang basi. Sudah ditulis ulang
+  memakai capture & orkestrator bersama, tapi ekstensi **bukan lagi bagian produk** (yang
+  dikirim adalah pustaka) dan dijadwalkan dihapus dari repo.
+
+## C-42 - mencari penurunan FRR & FAR yang berlaku di dunia nyata (sebagian besar NEGATIF)
+
+Dipasang `eval_sdk --dump-vec` (vektor persis yang dinilai SDK, ke temp OS) untuk menyaring
+ide cepat, lalu setiap kandidat diukur ulang dengan SDK sungguhan (`eval_sdk --live`).
+
+| ide | hasil | keputusan |
+|---|---|---|
+| normalisasi kohort (skor = mirip-pemilik dikurangi mirip-populasi), leave-2-out | AUC +0,008..0,012 di tiruan | **ditolak**: butuh statistik populasi; fitur seperti jumlah halaman/klik bergantung pada SITUS, jadi statistik 16 relawan di situs riset tidak berlaku di situs lain |
+| bobot fitur Fisher dari populasi | AUC +0,011 | ditolak, alasan sama |
+| model dua kelas pemilik-vs-populasi (LogReg, LDA) | AUC +0,010 / -0,054 | ditolak, alasan sama + butuh data orang lain di perangkat |
+| perataan skor jendela berurutan dalam satu kunjungan | pemilik 16,4% -> 16,4%, penyusup seluruh-sesi 9,5% -> 10,8% | **ditolak dan kodenya dihapus** |
+| jendela geser `contextEvents` | lihat bawah | **opt-in**, default mati |
+
+**Kenapa perataan tidak menolong** - temuan paling berguna dari babak ini: gesekan pemilik
+**rata di semua posisi jendela** dalam kunjungan (model != LOW 15,5% / 13,8% / 14,3% /
+10,4% / 19,6% untuk jendela ke-1..5+). Pemilik tidak ditolak karena satu jendela sial;
+ia ditolak pada HARI ketika perilakunya memang berbeda, dan pada hari itu semua
+jendelanya berbeda. Itu bukan derau yang bisa dirata-rata; itu tugas step-up.
+
+**Jendela geser** (`session.contextEvents` = N): vonis pertama kunjungan tetap jatuh di 150
+event BARU; vonis berikutnya menilai event baru + event yang baru dinilai, sampai N total.
+Konteks hanya di memori tab dan dibuang setelah jeda >= `idle.awaySec`. Dua cacat
+ditemukan dan diperbaiki saat mengukurnya:
+- aturan "bukti ketikan dialihkan" membaca konteks, jadi SATU tempel mencemari 2-3 vonis
+  berikutnya dan subjek pengguna password manager tak pernah selesai mendaftar (subjek 19
+  hilang dari hasil di N >= 375). Kini hanya event baru yang diperiksa;
+- harness menyalin konteks pemilik ke klon penyusup (dibersihkan; penyusup berkredensial
+  curian datang lewat kunjungan baru).
+
+Hasil (dengan masa berlaku C-43 nyala, 16 subjek):
+
+| | default | N = 450 |
+|---|---:|---:|
+| pemilik diminta verifikasi | 14,5% | 14,5% |
+| penyusup lolos vonis pertama | 13,3% | **10,1%** |
+| penyusup lolos seluruh sesi | 9,2% | **8,2%** |
+| AUC / EER per pemilik | 0,927 / 12,3% | 0,935 / 10,7% |
+| ambil-alih tak ketahuan dalam 6 sesi | **0 / 240** | 3 / 240 |
+
+Ketiga pasangan yang tak ketahuan adalah **penyusup yang sama** (subjek 22) di tiga akun:
+gaya orang ini, bila dirata-rata dalam jendela besar, mirip ketiganya; tanpa jendela geser
+sesekali satu jendelanya tertangkap. Sebagian keuntungan AUC juga berasal dari 9 fitur
+hitungan yang membesar bersama panjang jendela (jendela pertama kunjungan jadi "tampak
+aneh" bagi penyusup MAUPUN pemilik). Karena itu N tetap **opt-in** untuk integrator yang
+lebih takut penyusup-sesi-pertama daripada ambil-alih lambat.
+
+## C-43 - pemilik ditanya ulang 30 detik sesudah lolos OTP
+
+Sesudah `reportStepUp({passed:true})` jendela berikutnya bisa langsung MEDIUM lagi, dan
+jalur itu tidak punya jeda sama sekali (popup bawaan hanya 15 detik). Karena gesekan pemilik
+menumpuk per HARI (C-42), pemilik yang sedang "beda" diminta OTP tiap 30 detik.
+
+`mfa.graceSec` (default **900**, sejajar batas idle PCI DSS 8.2.8, pola "sudo mode"):
+selama itu sesudah verifikasi TERBUKTI, MEDIUM tidak meminta verifikasi ulang
+(`level` LOW, `modelLevel` tetap MEDIUM, `stepUpGrace` diisi). Batasnya:
+- hanya verifikasi sungguhan yang membukanya - penyusup berkredensial curian tak punya
+  faktor kedua;
+- HIGH tetap meminta verifikasi; rekam-ulang dan "kembali setelah absen" tidak pernah;
+- absen >= `idle.awaySec` mencabutnya, juga muat-halaman sesudah jeda sepanjang itu, juga
+  ganti sidik perangkat;
+- jendela yang diredam **tidak melatih** model (anti-peracunan).
+
+| `eval_sdk --live`, 16 subjek | sebelum | **graceSec 900** |
+|---|---:|---:|
+| pemilik diminta verifikasi | 16,4% | **14,5%** |
+| belahan tuning / lapor | 15,4% / 17,6% | **13,2% / 16,1%** |
+| penyusup lolos vonis pertama | 13,5% | **13,3%** |
+| penyusup lolos seluruh sesi | 9,5% | **9,2%** |
+| ambil-alih ketahuan di sesi-1 | 88,8% | **89,6%** |
+| ambil-alih tak ketahuan dalam 6 sesi | 0% | **0%** |
+| data AFK: pemilik diminta verifikasi | 23,8% | **22,7%** |
+
+Tidak satu pun angka keamanan memburuk; yang membaik sedikit karena jendela yang diredam
+tidak lagi masuk kolam sebagai "terverifikasi". 300 / 900 / 1800 detik memberi hasil
+hampir sama; 900 dipilih karena sejajar standar. Sisa gesekan di data AFK (22,7% vs model
+16,7%) adalah aturan "kembali setelah absen >= 15 menit -> verifikasi ulang" yang memang
+disengaja. Catatan terbuka yang sudah ada sebelumnya (SDK di HEAD memberi angka sama): di
+data AFK 2,8% sesi penyusup tak pernah dinilai (0,6% tanpa AFK) - aksi sensitif wajib
+`assessNow()`.
+
+Uji: `core/lifecycle.test.mjs` J (10 pemeriksaan) dan K (5 pemeriksaan jendela geser).
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
 |---|---|---|
-| Mesin Python vs golden | `python core/conformance.py` | 227/227 SESUAI |
-| Mesin JS vs golden | `core/conformance.html` | 227/227 SESUAI |
+| Mesin Python vs golden | `python core/conformance.py` | 255/255 SESUAI (SPEC 1.3) |
+| Mesin JS vs golden | `node core/conformance.node.mjs` | 255/255 SESUAI |
 | Regresi step-up C-1 + drift tempo C-20 | `core/challenge.test.html` / `.mjs` | 23/23 SESUAI |
 | FRR/FAR MFA sebelum vs sesudah C-20 | simulasi jitter Gauss (frasa 18 char) | FRR 63.6%→~2%, FAR ~0% |
 | Storage C-10 (browser) | `storage.del` pada store kosong | tidak melempar, 0 error |
@@ -1575,7 +1740,7 @@ Uji: `core/lifecycle.test.mjs` bagian D, E, F (24/24 bersama C-31).
 | Simulator serangan C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
 | Heuristik integrity C-16 | `core/integrity.test.html` / `.mjs` | 10/10 SESUAI |
 | Jalur live penuh C-16..C-18 | halaman nyata + event DOM | enrollment 10/10, vonis LOW/MEDIUM benar, persisten setelah reload |
-| Sinkron sdk↔extension | `tools/sync_core.ps1` | identik, exit 0 |
+| Sinkron sdk↔extension (ekstensi dijadwalkan dihapus, C-41) | `tools/sync_core.ps1` | identik, exit 0 |
 | Segmentasi idle C-23 | `core/idle.test.mjs` / `.html` | 33/33 SESUAI |
 | Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
 | Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
@@ -1584,7 +1749,11 @@ Uji: `core/lifecycle.test.mjs` bagian D, E, F (24/24 bersama C-31).
 | Kompresi waktu diam C-28 | `core/compress.test.mjs` | 22/22 SESUAI |
 | Jalur penuh idle C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 SESUAI |
 | Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18,4% -> 9,7%, FAR tetap |
+| Privasi capture C-30 | `node core/privacy.test.mjs` | 10/10 SESUAI |
+| Siklus hidup C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 SESUAI |
+| Server auth + sanitasi log C-39, C-41 | `python server/test_app.py` | 35/35 SESUAI |
+| SDK yang dikirim, jendela 30 dtk (C-43) | `node tools/eval_sdk.mjs --live` | pemilik 14,5%, penyusup vonis-1 13,3%, ambil-alih tak ketahuan 0% |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
-conformance dijalankan ulang di kedua sisi dan tetap 227/227.
+conformance dijalankan ulang di kedua sisi dan tetap 227/227 (kini 255/255 sejak SPEC 1.3, C-34).

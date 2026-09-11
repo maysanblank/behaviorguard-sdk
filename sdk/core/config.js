@@ -1,14 +1,18 @@
 /**
- * config.js - default terbaik hasil validasi prequential 653 sesi / 16 subjek
- * Tahap 1: base10 + retrain/6 | Tahap 2: F4 28 fitur | Tahap 3: detektor-2 Mahalanobis
- * HASIL held-out (8 subjek tak terlihat) untuk konfigurasi INI PERSIS
- * (maha shrink .3, IF .30/maha .70, kalibrasi parametrik k_low 3.3 k_med_extra 2.0):
- *   FRR 16.1%  FAR 5.4%  AUC 0.942  EER 11.9%  FAR@FRR15% 7.7%  konvergen 3/8
- * Reproduksi: `python tools/experiment.py --calib parametric` -> baris "maha s.3 3/7".
- * Model lama (centroid W7, kuantil): FRR 17.7% FAR 36.2% AUC 0.860 EER 21.0%.
- * KOREKSI 2026-09-04: baris ini dulu menulis "AUC 0.956 EER 9.7%" — itu diambil dari
- * run KUANTIL, bukan parametrik, jadi tercampur dua titik operasi. Angka di atas
- * seluruhnya dari satu run yang sama.
+ * config.js - default SDK yang DIKIRIM.
+ *
+ * Angka resmi diukur dengan SDK ini sendiri (`node tools/eval_sdk.mjs --live`: 653 sesi,
+ * 16 subjek, jendela 30 dtk persis setInterval browser, step-up dijawab lewat API publik):
+ *   pemilik diminta verifikasi 14,5%   diblokir 0%
+ *   penyusup lolos vonis pertama 13,3%   lolos seluruh sesinya 9,2%
+ *   ambil-alih ketahuan di sesi pertama 89,6%   tak ketahuan dalam 6 sesi 0%
+ *   AUC / EER per pemilik 0,927 / 12,3%
+ * Titik operasi lain (k_low) dan mode ketat (session.contextEvents): README "Choosing an
+ * operating point" dan core/DRIFT.md C-42, C-43.
+ *
+ * Angka lama di berkas ini (FRR 16,1% / FAR 5,4%, lalu 16,4% / 13,5%) TIDAK berlaku lagi:
+ * yang pertama diukur harness Python atas sesi riset utuh (bukan jendela 30 dtk yang
+ * dinilai SDK, lihat C-29), yang kedua sebelum masa berlaku step-up (C-43).
  */
 export const DEFAULTS = {
   // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
@@ -68,6 +72,11 @@ export const DEFAULTS = {
     timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
     enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
     enrollSnoozeMs: 86400000,        // C-37: ditutup/diabaikan -> jangan tawarkan lagi 24 jam
+    // C-43: sesudah verifikasi TERBUKTI (MFA bawaan / reportStepUp passed), MEDIUM tidak
+    // meminta verifikasi ulang selama graceSec; HIGH tetap; absen >= idle.awaySec
+    // mencabutnya. eval_sdk --live: pemilik diminta verifikasi 16,4% -> 14,5%, penyusup
+    // lolos vonis pertama 13,5% -> 13,3%, ambil-alih tak ketahuan tetap 0%. 0 = mati.
+    graceSec: 900,
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
@@ -110,7 +119,14 @@ export const DEFAULTS = {
   // penyusup tak pernah mendapat vonis). Kini jendela tetap berdetak tiap 30 dtk, tetapi
   // bukti yang belum cukup DIKUMPULKAN (hingga 15 mnt) sampai 150 event. Untuk aksi
   // sensitif sebelum bukti cukup: `assessNow()`.
-  session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0 },
+  //
+  // C-42: `contextEvents` (0 = mati) = MODE KETAT opt-in. Vonis pertama kunjungan tetap di
+  // 150 event baru; vonis berikutnya menilai event baru + event yang baru dinilai, sampai
+  // N total (hanya tab ini, dibuang setelah absen). Terukur dengan graceSec 900, N=450:
+  // penyusup lolos vonis pertama 13,3% -> 10,1%, seluruh sesi 9,2% -> 8,2%, pemilik
+  // 14,5% -> 14,5% — TAPI satu dari 15 penyusup lolos 6 sesi berturut di 3 akun (0 -> 3
+  // dari 240 pasangan). Karena itu tidak dijadikan default. Lihat core/DRIFT.md C-42.
+  session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0, contextEvents: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
   //    tidak boleh dibawa menyeberang — streak LOW direset, sesi diukur dari nol.

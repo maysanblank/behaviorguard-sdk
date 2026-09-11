@@ -1,8 +1,8 @@
 # BehaviorGuard — Pasang di Website Mana Pun (1 tag)
 
-`dist/behaviorguard.js` = **satu file classic-script** (16 modul dibundel jadi 1).
-Nol `type=module`, nol sub-file `core/*.js`, nol path absolut `/sdk/`. Host di mana saja
-(CDN / GitHub Pages / jsDelivr / folder mana pun), colok satu `<script>`. Selesai.
+`dist/behaviorguard.js` = **satu file classic-script** (semua modul dibundel jadi 1).
+Tanpa `type=module`, tanpa sub-file, tanpa path absolut. Host di mana saja (CDN, GitHub
+Pages, folder situs), colok satu `<script>`. Selesai.
 
 ## Regenerasi bundle (tiap kali edit `sdk/`)
 ```
@@ -11,71 +11,89 @@ python tools/bundle.py     # atau: npm run bundle
 
 ## Cara pasang — pilih SATU
 
-### 1. Paling gampang: data-attribute + event DOM (tanpa callback global)
+### 1. Paling gampang: data-attribute + event DOM
 ```html
-<script src="https://cdn-kamu.com/behaviorguard.js" data-user="andi@example.com" defer></script>
+<script src="https://cdn-kamu.com/behaviorguard.js" data-user="andi@contoh.id" defer></script>
 <script>
   addEventListener('behaviorguard:risk', e => {
-    if (e.detail.level === 'HIGH') showMFA();   // e.detail = {level,score,action,reasons,topFeatures}
+    // e.detail = {level, score, action, reasons, topFeatures, ...}
+    if (e.detail.level === 'HIGH') tahanTransaksi();
   });
 </script>
 ```
 
-### 2. Callback bernama (kompatibel gaya loader lama)
+### 2. Callback bernama
 ```html
-<script src="https://cdn-kamu.com/behaviorguard.js" data-user="andi@example.com" data-callback="onRisk" defer></script>
-<script>function onRisk(e){ if(e.level==='HIGH') showMFA(); }</script>
+<script src="https://cdn-kamu.com/behaviorguard.js" data-user="andi@contoh.id" data-callback="onRisk" defer></script>
+<script>function onRisk(e){ if(e.level==='HIGH') tahanTransaksi(); }</script>
 ```
 
-### 3. Objek config (gaya Google Analytics — taruh SEBELUM tag)
+### 3. Objek config (taruh SEBELUM tag)
 ```html
-<script>window.BehaviorGuardConfig = { userId:"andi@example.com", onRisk:e=>{ /* ... */ } };</script>
+<script>window.BehaviorGuardConfig = { userId:"andi@contoh.id", onRisk:e=>{ /* ... */ } };</script>
 <script src="https://cdn-kamu.com/behaviorguard.js" defer></script>
 ```
 
-Semua auto-capture (mouse/ketik/scroll/navigasi) + auto-skor tiap 30 dtk + saat halaman ditutup.
-Default = konfig final tervalidasi (F4 28 fitur, W7 70/30, base10 retrain6). Tanpa setel apa pun.
+Semua otomatis: penangkapan mouse/ketik/scroll/navigasi, penilaian tiap 30 detik (vonis
+jatuh begitu 150 event terkumpul), penyimpanan ekor bukti saat pindah halaman, dan popup
+verifikasi ritme ketik bawaan. Huruf yang diketik tidak pernah disimpan.
 
-## Setel lanjut (opsional, lewat objek config)
-`window.BehaviorGuardConfig = { userId, weights, baseline, retrainEvery, thresholds }`
+## Punya OTP / WebAuthn sendiri?
+```html
+<script>window.BehaviorGuardConfig = { userId:"andi@contoh.id", mfa:{ enabled:false } };</script>
+<script src="https://cdn-kamu.com/behaviorguard.js" defer></script>
+<script>
+  addEventListener('behaviorguard:risk', async e => {
+    if (e.detail.action === 'REQUIRE_MFA' || e.detail.action === 'REQUIRE_STEPUP') {
+      const lolos = await jalankanOtpSaya();          // diverifikasi di SERVER Anda
+      BehaviorGuard.reportStepUp({ passed: lolos });  // WAJIB: tanpa ini pemilik bisa terblokir
+    }
+  });
+</script>
+```
+Sesudah pemilik lolos, vonis MEDIUM tidak bertanya lagi selama 15 menit (HIGH tetap).
+
+## Sebelum aksi sensitif (ganti email/sandi, transfer, tambah perangkat)
+```js
+const v = BehaviorGuard.assessNow();
+if (v.level !== 'LOW') mintaVerifikasi();   // UNKNOWN = bukti belum cukup -> tetap verifikasi
+```
+
+## Setel lanjut (opsional)
+```js
+window.BehaviorGuardConfig = {
+  userId: "andi@contoh.id",
+  calibration: { k_low: 1.75 },   // makin kecil makin ketat (tabel di README)
+  mfa: { enabled: true, phrase: "frasa situs anda", graceSec: 900 },
+};
+```
 
 ## Catatan deploy
-- **MIME:** host cukup kirim `.js` biasa (classic script tak rewel soal MIME seperti modul).
-- **Cross-origin:** aman lintas-domain; tak perlu CORS khusus untuk classic `<script>`.
-- **CSP:** kalau situs target punya Content-Security-Policy ketat, izinkan origin host di `script-src`.
-- **Data mentah tak keluar perangkat** (on-device; IndexedDB→localStorage→memory).
-
-## Situs pihak ketiga yang TIDAK kamu kontrol
-Kalau kamu tak bisa menyunting HTML situs, pakai `extension/` (MV3) — bukan tag ini.
+- **MIME / cross-origin:** classic script biasa; tidak perlu CORS khusus.
+- **CSP:** izinkan origin host di `script-src`; popup bawaan & `data-panel` memakai style
+  inline (`style-src 'unsafe-inline'`), atau matikan keduanya.
+- **Data mentah tidak keluar perangkat** (IndexedDB -> localStorage -> memori).
 
 ---
 
-## Mode HYBRID — deteksi ATO LINTAS-DEVICE (butuh VPS)
+## Mode server (opsional) — baseline lintas perangkat
 
-**Tanpa VPS** (mode default): baseline cuma tersimpan di device → hanya nangkap "device
-sama, perilaku beda". **ATO asli (penyerang di laptop/HP-nya sendiri) TIDAK kedeteksi**,
-karena device penyerang localStorage-nya kosong → SDK malah enroll ulang perilaku penyerang.
-
-**Dengan VPS** (hybrid): baseline akun (per `userId`) hidup di server. Siapa pun login
-sebagai `andi@tokonya.com` di device mana pun → SDK **tarik baseline Andi dari VPS** →
-perilaku penyerang dibandingkan ke baseline pemilik → skor **HIGH**. Verdict `{pk,userId,
-level}` mengalir ke VPS buat dashboard per akun.
+Tanpa server, baseline hanya ada di perangkat itu: penyerang di laptopnya sendiri mulai dari
+nol dan tidak punya pembanding. Dengan server, perangkat BARU menarik baseline akun dari
+server, jadi penyerang langsung dibandingkan dengan pemilik asli.
 
 ```html
 <script src="https://cdn-kamu.com/behaviorguard.js"
-        data-user="andi@tokonya.com"
+        data-user="andi@contoh.id"
         data-pk="pk_xxx"
-        data-endpoint="https://api.kamu.com" defer></script>
+        data-endpoint="https://bg.contoh.id"
+        data-user-token="<dicetak backend Anda sesudah login>" defer></script>
 ```
 
-Atau via config object:
-```html
-<script>window.BehaviorGuardConfig={ userId:"andi@tokonya.com", pk:"pk_xxx", endpoint:"https://api.kamu.com" };</script>
-<script src="https://cdn-kamu.com/behaviorguard.js" defer></script>
-```
+`pk` publik dan **tidak membuka apa pun sendirian**. Token pengguna
+(`HMAC-SHA256(sk, pk|userId|exp)`, berumur pendek) wajib, dan dicetak server Anda dengan
+`sk` yang tidak pernah masuk ke halaman. Tanpa token, pustaka berjalan murni di perangkat.
 
-**Yang KELUAR device:** vektor fitur teragregasi (28 angka/sesi) + verdict (level/score).
-**Event mentah (timing ketik & koordinat mouse) TIDAK pernah dikirim** — tetap on-device.
-Klaim privasi skripsi yg jujur: *"fitur teragregasi keluar, keystroke/mouse mentah tidak."*
-
-Backend contoh siap-pakai ada di `server/` (lihat `server/README.md`).
+**Yang keluar perangkat:** 28 angka fitur per jendela + vonis. Event mentah dan huruf
+ketikan tidak pernah dikirim. Setup server, contoh cetak token (Node), dan dashboard:
+`server/README.md`.

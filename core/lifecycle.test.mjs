@@ -10,6 +10,11 @@
  *  E. reportStepUp: integrator bisa membersihkan lantai & melatih sesi terverifikasi.
  *  F. assessNow: seketika, tanpa efek samping, gagal-tertutup saat bukti kurang.
  *  G. Jalur bot tidak lagi menghapus template MFA dari penyimpanan.
+ *  H-I. Rekam-ulang, sidik perangkat, init ulang (C-35..C-38).
+ *  J. Masa berlaku step-up (C-43): hanya sesudah verifikasi terbukti, hanya MEDIUM,
+ *     dicabut oleh absen / kedaluwarsa, tidak melatih model.
+ *  K. Jendela geser opt-in (C-42): vonis pertama tanpa konteks, konteks dibuang
+ *     sesudah absen, tempel di konteks tidak mencemari vonis berikutnya.
  *
  * Jalankan: node core/lifecycle.test.mjs
  */
@@ -227,8 +232,82 @@ const feedOne = async (g, evs) => { NOW = Math.max(NOW, evs[evs.length - 1].time
   check('I: penundaan popup pendaftaran MFA tersimpan lintas muat-halaman', g2._mfaEnrollSnoozeUntil === NOW + 3600_000);
 }
 
+// ---------------------------------------------------------------- J (C-43) masa berlaku step-up
+{
+  const g = await guard('uji-grace@contoh.id', { session: { minEventsAssess: 30 } });
+  check('J: default graceSec = 900 (15 menit)', g.cfg.mfa.graceSec === 900);
+  let t = NOW;
+  for (let i = 0; i < 12; i++) { await feedOne(g, burst(t, 160)); t += 20 * 60_000; }
+  // skor model dikendalikan supaya vonisnya pasti (yang diuji aturannya, bukan modelnya)
+  const th = () => g.cfg.thresholds;
+  // reportStepUp melatih ulang (model baru), jadi skor dipaksa ulang tiap jendela
+  let cur = 'LOW';
+  const apply = () => { const lv = cur; g.model.scoreOne = () => lv === 'MEDIUM' ? (th().low + th().medium) / 2 : lv === 'HIGH' ? th().medium - 1 : th().low + 1; };
+  const force = lv => { cur = lv; apply(); };
+  const win = async () => { apply(); const e = await feedOne(g, burst(t, 160)); t = NOW + 30_000; return e; };
+  force('MEDIUM');
+  const e0 = await win();
+  check('J: tanpa verifikasi, MEDIUM tetap meminta verifikasi', e0.level === 'MEDIUM' && !e0.stepUpGrace, e0.level);
+  await g.reportStepUp({ passed: true });
+  const pool = g._trainingVectors().length;
+  const e1 = await win();
+  check('J: sesudah verifikasi lolos, MEDIUM berikutnya tidak ditanya ulang', e1.level === 'LOW' && e1.modelLevel === 'MEDIUM' && e1.stepUpGrace, `${e1.level}/${e1.modelLevel}`);
+  check('J: jendela yang diredam TIDAK melatih model', g._trainingVectors().length === pool && e1.eligible === false);
+  force('HIGH');
+  const e2 = await win();
+  check('J: HIGH dalam masa berlaku tetap meminta verifikasi', e2.level === 'HIGH' && !e2.stepUpGrace, e2.level);
+  await g.reportStepUp({ passed: true });
+  // muat-halaman 1 menit kemudian: masa berlaku ikut; 10 menit diam: dicabut
+  NOW += 60_000;
+  const g2 = await guard('uji-grace@contoh.id', { session: { minEventsAssess: 30 } });
+  check('J: masa berlaku melintasi muat-halaman singkat (situs multi-halaman)', !!g2._mfaPassedAt);
+  NOW += 10 * 60_000;
+  const g3 = await guard('uji-grace@contoh.id', { session: { minEventsAssess: 30 } });
+  check('J: muat-halaman sesudah diam >= awaySec mencabut masa berlaku', !g3._mfaPassedAt);
+  // absen di TENGAH jendela (kursi mungkin berganti orang) mencabutnya
+  await g.reportStepUp({ passed: true });
+  force('MEDIUM');
+  const a = burst(t, 80), b = burst(a[a.length - 1].timestamp + 6 * 60_000, 80);
+  NOW = b[b.length - 1].timestamp + 1000;
+  apply();
+  const e3 = await g.scoreExternalEvents([...a, ...b]);
+  check('J: absen 6 menit di tengah mencabut masa berlaku -> MEDIUM ditanya', e3.level === 'MEDIUM' && !e3.stepUpGrace, e3.level);
+  // kedaluwarsa
+  await g.reportStepUp({ passed: true });
+  NOW += 16 * 60_000; t = NOW;
+  const e4 = await win();
+  check('J: lewat 15 menit, MEDIUM kembali meminta verifikasi', e4.level === 'MEDIUM', e4.level);
+  // penyusup tanpa verifikasi di perangkat lain: tak pernah mendapat keringanan
+  const imp = await guard('uji-grace-lain@contoh.id', { session: { minEventsAssess: 30 } });
+  check('J: pengguna yang belum pernah lolos verifikasi tidak punya masa berlaku', !imp._mfaPassedAt);
+}
+
+// ---------------------------------------------------------------- K (C-42) jendela geser opt-in
+{
+  const mk = async (uid, ce) => {
+    const g = await guard(uid, { session: { minEventsAssess: 150, contextEvents: ce } });
+    const buf = [];
+    g.capture = { buffer: buf, drain() { const c = buf.slice(); buf.length = 0; return c; }, peek() { return buf.slice(); } };
+    return g;
+  };
+  check('K: default contextEvents = 0 (mati)', (await guard('uji-ctx0@contoh.id')).cfg.session.contextEvents === 0);
+  const g = await mk('uji-ctx@contoh.id', 300);
+  const seen = []; g.onRisk = e => { if (!e.abstain) seen.push(e); };
+  const step = async evs => { g.capture.buffer.push(...evs); NOW = evs[evs.length - 1].timestamp + 1000; await g.endSession(); };
+  let t = NOW;
+  const w1 = burst(t, 170); w1[5] = { event_type: 'PASTE', timestamp: w1[5].timestamp };
+  await step(w1);
+  await step(burst(NOW, 170));
+  check('K: vonis pertama kunjungan tanpa konteks (penyusup diperiksa secepat dulu)', seen[0] && seen[0].contextEvents === 0);
+  check('K: vonis kedua = event baru + konteks, maksimal 300', seen[1] && seen[1].contextEvents === 130, seen[1] && seen[1].contextEvents);
+  check('K: tempel di konteks tidak menandai vonis berikutnya sebagai bukti sebagian',
+    seen[0].keystrokeBypassed === true && seen[1].keystrokeBypassed === false);
+  await step(burst(NOW + 6 * 60_000, 170));
+  check('K: sesudah absen >= awaySec konteks dibuang (tidak meminjam perilaku pemilik)', seen[2] && seen[2].contextEvents === 0, seen[2] && seen[2].contextEvents);
+}
+
 const failed = results.filter(r => !r.ok);
-console.log(`\nSIKLUS HIDUP & API INTEGRATOR (C-31..C-33)\n` +
+console.log(`\nSIKLUS HIDUP & API INTEGRATOR (C-31..C-33, C-42, C-43)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
   `\n\n  lulus ${results.length - failed.length} / ${results.length}\n  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`);
 if (failed.length) process.exit(1);

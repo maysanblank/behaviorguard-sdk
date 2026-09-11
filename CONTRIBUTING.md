@@ -4,13 +4,18 @@ Thanks for looking. Issues, ports and attacks on the tool are all welcome.
 
 ## Ground rules
 
-**`sdk/` is the single source of truth.** `extension/` and `dist/` are generated from it.
-Never edit `extension/core/*` or `dist/*` by hand — CI fails if they diverge.
+**`sdk/` is the single source of truth.** `dist/` is generated from it. Never edit
+`dist/*` by hand.
 
 ```bash
-powershell -File tools/sync_core.ps1    # sdk/ -> extension/
 python tools/bundle.py                  # sdk/ -> dist/
 ```
+
+**Measure the library, not an imitation of it.** Any change that can move a verdict must be
+measured with `node tools/eval_sdk.mjs --live` (it drives the shipped code over the research
+sessions, exported locally with `python tools/export_sessions.py`; the export holds human
+behavioral data and must never be committed). Report owner friction, impostor first-verdict
+and whole-session pass, and takeover detection — before and after.
 
 **The spec outranks the code.** If `core/SPEC.md` and an implementation disagree, the spec
 is right and the code is the bug. Changing engine behavior means changing the spec,

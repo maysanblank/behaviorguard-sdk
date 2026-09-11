@@ -79,8 +79,36 @@ check('detail akun dengan pk -> DITOLAK', c.get('/api/account?u=andi@contoh.id',
 check('daftar semua tenant tanpa token admin -> DITOLAK', c.get('/tenants').status_code == 403)
 check('daftar semua tenant dengan pk -> DITOLAK', c.get('/tenants', headers=H()).status_code == 403)
 check('daftar tenant dengan token admin', c.get('/tenants', headers={'Authorization': 'Bearer admin-uji'}).status_code == 200)
-html = c.get('/dashboard?pk=' + pk).get_data(as_text=True)
+resp = c.get('/dashboard?pk=' + pk)
+html = resp.get_data(as_text=True)
 check('halaman dashboard tidak menyisipkan kunci apa pun ke HTML', pk not in html and sk not in html)
+
+# --- C-41: log adalah kiriman klien; dashboard dibuka operator
+csp = resp.headers.get('Content-Security-Policy', '')
+import re as _re
+m = _re.search(r"'nonce-([^']+)'", csp)
+check('dashboard dikirim dengan CSP ber-nonce (tanpa unsafe-inline untuk skrip)',
+      m and f'nonce="{m.group(1)}"' in html and "script-src 'nonce-" in csp and "'unsafe-inline'" not in csp.split('script-src')[1].split(';')[0])
+check('nonce berbeda di tiap permintaan', m and m.group(1) not in c.get('/dashboard').headers.get('Content-Security-Policy', ''))
+check('dashboard tidak memakai pk / daftar tenant publik', '__PK__' not in html and '/tenants' not in html and 'Bearer "+state.sk' in html)
+XSS = '<img src=x onerror=alert(1)>'
+r = c.post('/log', json={'level': 'HIGH', 'score': 1, 'action': '<b>X</b>', 'reasons': [XSS] * 20,
+                         'topFeatures': [{'name': XSS, 'z': 9}, {'name': 'key_hold_mean', 'z': 2.5}],
+                         'convergence': 'c' * 500, 'fp': 'f' * 900, 'sessions': 'banyak', 'ts': 1},
+           headers=H(tok_a))
+check('log dengan isi berbahaya tetap diterima (disaring, bukan dibuang)', r.status_code == 200, r.status_code)
+row = srv.sqlite3.connect(os.environ['BG_DB']).execute(
+    'SELECT action, reasons, top_features, convergence, fp, sessions, ts FROM logs ORDER BY id DESC LIMIT 1').fetchone()
+reasons = json.loads(row[1])
+check('action di luar pola A-Z_ dibuang', row[0] is None, row[0])
+check('reasons dibatasi 6 butir x 160 karakter', len(reasons) == 6 and all(len(x) <= 160 for x in reasons))
+check('nama fitur di luar pola dibuang, fitur sah disimpan', json.loads(row[2]) == [{'name': 'key_hold_mean', 'z': 2.5}], row[2])
+check('convergence/fp dipotong, sessions non-angka dibuang', len(row[3]) == 64 and len(row[4]) == 128 and row[5] is None)
+check('jam klien yang ngawur diganti jam server', abs(row[6] - time.time()) < 60, row[6])
+check('level di luar daftar -> DITOLAK', c.post('/log', json={'level': '<script>'}, headers=H(tok_a)).status_code == 400)
+r = c.post('/log', json={'level': 'LOW'}, headers={**H(tok_a), 'X-Forwarded-For': '6.6.6.6'})
+ip = srv.sqlite3.connect(os.environ['BG_DB']).execute('SELECT ip FROM logs ORDER BY id DESC LIMIT 1').fetchone()[0]
+check('X-Forwarded-For palsu tidak dipercaya tanpa BG_TRUST_PROXY', ip != '6.6.6.6', ip)
 
 failed = [r for r in results if not r[1]]
 print('\nSERVER - AUTENTIKASI (C-39)')

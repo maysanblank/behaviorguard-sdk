@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
+riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
+lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
+`node tools/eval_sdk.mjs --live` (README "Results").
+
 reproduce_db.py — REPRODUKSI JUJUR A1+A3 (tanpa ubah base10/retrain6/F4/W7/window6/gate20)
 A1: sumber kebenaran 653/16 (SUBJECT_IDS), guard 653, FAR lintas 15 subjek lain (tanpa RANDOM)
 A3: held-out 8/8 seed 42 — tune threshold via EER di FOLD-TUNE, lapor di FOLD-REPORT (headline)

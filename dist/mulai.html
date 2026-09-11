@@ -142,15 +142,17 @@
 <pre><button class="copy">salin</button>&lt;script&gt;
   window.BehaviorGuardConfig = {
     userId: SESI.email,
-    pk: "pk_xxx",                       // kunci tenant
-    endpoint: "https://api.tokomu.com"  // server-mu (contoh backend ada di /server)
+    pk: "pk_xxx",                       // kunci tenant (publik, tidak membuka apa pun sendirian)
+    endpoint: "https://api.tokomu.com", // server-mu (contoh backend ada di /server)
+    userToken: SESI.bgToken             // dicetak backend-mu sesudah login (lihat server/README.md)
   };
 &lt;/script&gt;
 &lt;script src="js/behaviorguard.js" defer&gt;&lt;/script&gt;</pre>
     <h3>Setelan lain</h3>
-    <p class="muted">Lewat objek config: <code class="inl">weights</code>, <code class="inl">baseline</code>,
-      <code class="inl">retrainEvery</code>, <code class="inl">thresholds</code>. Default sudah dikalibrasi;
-      biasanya tak perlu disentuh.</p>
+    <p class="muted">Satu-satunya knob yang perlu dikenal: <code class="inl">calibration: { k_low: 1.75 }</code> —
+      makin kecil makin ketat (penyusup lebih jarang lolos, pemilik lebih sering diminta verifikasi).
+      Tabel pertukarannya ada di README. Punya OTP sendiri? <code class="inl">mfa: { enabled: false }</code>
+      lalu laporkan hasilnya dengan <code class="inl">BehaviorGuard.reportStepUp({passed:true})</code>.</p>
   </div>
 
   <!-- JUJUR -->
@@ -158,13 +160,15 @@
     <h2>Yang perlu kamu tahu (jujur)</h2>
     <table>
       <tr><td><b>Butuh enrollment</b></td><td>Vonis stabil muncul setelah ± 10 sesi pemakaian nyata
-        (≥ 30 kejadian &amp; ≥ 5 detik per sesi). Sesi pertama pasti <span class="lv low">LOW</span>.</td></tr>
+        (tiap langkah butuh ± 150 kejadian nyata; ketikan yang ditempel/autofill tidak dihitung). Selama itu vonis selalu <span class="lv low">LOW</span>.</td></tr>
       <tr><td><b>Privasi</b></td><td>Event mentah (koordinat mouse &amp; timing ketik) <b>tidak pernah keluar
         perangkat</b>. Mode HYBRID hanya mengirim 28 angka fitur teragregasi + vonis.</td></tr>
       <tr><td><b>Ponsel</b></td><td>Sinyal lebih lemah — 10 dari 28 fitur adalah fitur mouse; penangkap
         sentuh belum tersedia.</td></tr>
-      <tr><td><b>Situs pihak-ketiga</b></td><td>Kalau kamu tak bisa menyunting HTML situs, pakai versi
-        ekstensi (<code class="inl">extension/</code>), bukan tag ini.</td></tr>
+      <tr><td><b>Aksi sensitif</b></td><td>Sebelum ganti email/sandi atau transfer, panggil
+        <code class="inl">BehaviorGuard.assessNow()</code>; hasil <b>UNKNOWN</b> berarti bukti belum cukup — tetap minta verifikasi.</td></tr>
+      <tr><td><b>OTP sendiri</b></td><td>Kalau memakai OTP/WebAuthn sendiri, laporkan hasilnya dengan
+        <code class="inl">BehaviorGuard.reportStepUp({passed:true})</code>. Tanpa itu pemilik yang sudah lolos bisa tetap terblokir.</td></tr>
     </table>
     <div class="note">Butuh mengubah SDK lalu membundel ulang berkas ini?
       Jalankan <code class="inl">python tools/bundle.py</code> di repo SDK.</div>

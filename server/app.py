@@ -32,7 +32,7 @@ Endpoint:
 
 Cetak token untuk uji lokal:  python server/app.py mint <pk> <sk> <userId> [ttl_detik]
 """
-import os, json, time, secrets, sqlite3, hmac, hashlib, base64, sys, math
+import os, re, json, time, secrets, sqlite3, hmac, hashlib, base64, sys, math
 from flask import Flask, request, jsonify, g, Response
 
 DB = os.environ.get("BG_DB") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg_server.db")
@@ -228,31 +228,77 @@ def log():
     b = request.get_json(silent=True) or {}
     if b.get("userId") not in (None, uid):
         return jsonify(error="userId tidak cocok dengan token"), 403
-    b["userId"] = uid
-    ts = b.get("ts") or time.time()
-    if ts and ts > 1e11:  # klien kirim Date.now() (milidetik) -> normalkan ke detik
-        ts = ts / 1000.0
+    c = clean_log(b)
+    if c is None:
+        return jsonify(error="level tidak dikenal"), 400
     db().execute(
         "INSERT INTO logs(pk,user_id,level,score,action,reasons,ts,ip,top_features,convergence,eligible,sessions,fp) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            pk,
-            b.get("userId"),
-            b.get("level"),
-            b.get("score"),
-            b.get("action"),
-            json.dumps(b.get("reasons") or []),
-            ts,
-            request.headers.get("X-Forwarded-For", request.remote_addr),
-            json.dumps(b.get("topFeatures") or []),
-            b.get("convergence"),
-            1 if b.get("eligible") else 0,
-            b.get("sessions"),
-            b.get("fp"),
-        ),
+        (pk, uid, c["level"], c["score"], c["action"], json.dumps(c["reasons"]), c["ts"], client_ip(),
+         json.dumps(c["topFeatures"]), c["convergence"], c["eligible"], c["sessions"], c["fp"]),
     )
     db().commit()
     return jsonify(ok=True)
+
+
+# ---- C-41: log adalah KIRIMAN KLIEN. Dulu disimpan apa adanya lalu dirender dashboard
+# lewat innerHTML: satu token pengguna sah cukup untuk menanam skrip di browser operator.
+# Dashboard kini meng-escape; ini lapisan kedua (bentuk & panjang dibatasi di sumber).
+LEVELS = {"LOW", "MEDIUM", "HIGH", "UNKNOWN"}
+_ACTION = re.compile(r"^[A-Z_]{1,32}$")
+_FNAME = re.compile(r"^[a-z0-9_]{1,40}$")
+_PRINTABLE = re.compile(r"[^\x20-\x7e\u00a0-\ufffd]")
+
+
+def _fin(x, lo, hi):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+        return None
+    return float(min(hi, max(lo, x)))
+
+
+def _txt(x, n):
+    if not isinstance(x, str):
+        return None
+    return _PRINTABLE.sub("", x)[:n] or None
+
+
+def clean_log(b):
+    level = b.get("level")
+    if level not in LEVELS:
+        return None
+    action = b.get("action") if isinstance(b.get("action"), str) and _ACTION.match(b.get("action")) else None
+    reasons = [r for r in (_txt(x, 160) for x in (b.get("reasons") or [])[:6]) if r] \
+        if isinstance(b.get("reasons"), list) else []
+    tf = []
+    for f in (b.get("topFeatures") or [])[:5] if isinstance(b.get("topFeatures"), list) else []:
+        if isinstance(f, dict) and isinstance(f.get("name"), str) and _FNAME.match(f["name"]):
+            z = _fin(f.get("z"), -1e6, 1e6)
+            tf.append({"name": f["name"], "z": 0.0 if z is None else z})
+    now = time.time()
+    ts = _fin(b.get("ts"), 0, 1e14)
+    if ts and ts > 1e11:        # klien mengirim Date.now() (milidetik)
+        ts /= 1000.0
+    if not ts or abs(ts - now) > 86400:   # jam klien tak dipercaya untuk urutan dashboard
+        ts = now
+    s = b.get("sessions")
+    return {
+        "level": level, "score": _fin(b.get("score"), -1e6, 1e6), "action": action,
+        "reasons": reasons, "topFeatures": tf, "ts": ts,
+        "convergence": _txt(b.get("convergence"), 64),
+        "eligible": 1 if b.get("eligible") is True else 0,
+        "sessions": int(s) if isinstance(s, int) and not isinstance(s, bool) and 0 <= s <= 10**6 else None,
+        "fp": _txt(b.get("fp"), 128),
+    }
+
+
+def client_ip():
+    """X-Forwarded-For bisa diisi siapa pun. Hanya dipercaya di balik proxy yang
+    menimpanya (BG_TRUST_PROXY=1), dan hanya entri pertama."""
+    if os.environ.get("BG_TRUST_PROXY") == "1":
+        xff = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if xff:
+            return xff[:64]
+    return (request.remote_addr or "")[:64]
 
 
 def _norm_ts(t):
@@ -366,10 +412,22 @@ def api_account():
 def dashboard():
     # Halaman statis; operator memasukkan sk-nya di halaman (disimpan di sessionStorage tab
     # itu saja). Kunci tidak pernah lewat URL - URL tercatat di log server & riwayat.
+    # C-41: CSP ber-nonce. Satu-satunya skrip yang boleh jalan adalah milik halaman ini;
+    # handler inline sisipan (<img onerror=...>) diblokir browser walau escape terlewat.
     tpl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
     with open(tpl, encoding="utf-8") as f:
         html = f.read()
-    return Response(html, mimetype="text/html")
+    nonce = secrets.token_urlsafe(16)
+    html = html.replace("<script>", f'<script nonce="{nonce}">')
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Content-Security-Policy"] = (
+        f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; "
+        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.get("/")

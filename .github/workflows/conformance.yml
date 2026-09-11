@@ -1,7 +1,7 @@
 name: conformance
 
 # Membuktikan "satu otak, banyak bahasa": tiap runtime wajib lulus core/golden.json
-# yang SAMA (227 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
+# yang SAMA (255 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
 
 on:
   push:

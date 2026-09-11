@@ -1,206 +1,237 @@
-# BehaviorGuard SDK - On-Device ATO Plug-and-Play
+# BehaviorGuard
 
-> SDK defensif: mengenali pemilik vs penyusup dari mouse + ritme ketik + navigasi, **semuanya di perangkat**, tanpa backend wajib.
+**Mendeteksi pengambilalihan akun dari cara seseorang menggerakkan mouse, mengetik, dan
+berpindah halaman — seluruhnya di perangkat pengguna, lengkap dengan verifikasi tambahan
+(step-up). Satu tag script. Tanpa backend.**
 
-Integrasi **≤3 baris**, zero-config waras, deterministik (input sama → skor sama persis).
-
-Config default = **temuan final tervalidasi (in-sample 653)**: `baseline10 - retrain/6 - F4 28 fitur - W7 70/30` -> **held-out FRR 35.1% (87/248) FAR 0.9% (12/1304) conv 0/8 (q=0.10 EERgap)**; **in-sample FRR 31.6% FAR 2.6% conv 2/16 (optimistik)** - headline = held-out, 16/16 hanya in-sample lama ditinggalkan.
-
----
-
-## Struktur (yang kamu minta tunjukkan dulu)
-
-```
-BEHAVIORGUARD-SDK/
-├── sdk/
-│   ├── behaviorguard.js          # entry 3-baris
-│   ├── storage.js                # IndexedDB → localStorage → memory (tidak pernah crash)
-│   └── core/
-│       ├── config.js             # DEFAULTS F4/W7/threshold
-│       ├── features.js           # 28 fitur F4 dari event mentah
-│       ├── capture.js            # auto-capture pointer/key/scroll/focus
-│       ├── standardize.js        # z-score vs baseline pemilik
-│       ├── isolation_forest.js   # IF 70% tepat (bukan mock)
-│       ├── ocsvm.js              # OC-SVM RBF 30% aproksimasi (jujur: arah)
-│       ├── ensemble.js           # 70/30 mix + kalibrasi skala
-│       ├── risk.js               # LOW/MEDIUM/HIGH + topFeatures/reasons
-│       └── lifecycle.js          # base10 retrain6 + guard dua-sisi
-├── loader/bg-loader.js           # drop-in <script> 1 tag
-├── extension/                    # MV3 untuk situs pihak ketiga
-│   ├── manifest.json
-│   ├── content.js
-│   └── background.js
-├── demo/
-│   ├── situs-polos/index.html    # NOL baris BG (bukti polos)
-│   └── pemantau/index.html       # mencolok dari luar + konsol hidup
-│       └── bridge.js
-└── tools/reproduce_simple.py     # bukti kriteria terima (deterministik)
-```
+> English version: [README.md](README.md)
 
 ---
 
-## Cara Pakai (detail, plug-and-play keras)
+## Masalahnya
 
-### Opsi A - Drop-in 1 tag (paling mudah, untuk situs mana pun)
+Login itu **pemeriksaan di pintu**, bukan **penjaga di dalam**. Password, OTP, sidik
+perangkat — semuanya diperiksa sekali saat masuk. Sesudah itu semua dipercaya.
+
+Justru di situ celahnya. Password bocor, cookie sesi dicuri, ekstensi browser jahat,
+penipuan remote-access, laptop yang ditinggal terbuka: hasilnya sama — sesi yang **sudah
+lolos pintu** tapi kini dipakai orang lain.
+
+**BehaviorGuard membuat sesi itu terus diperiksa.** Ia mempelajari cara *pemilik akun ini*
+memakai komputer — dinamika mouse, ritme ketikan, pola navigasi — lalu menilai ulang sesi
+setiap 30 detik. Kalau perilakunya berhenti mirip pemilik, ia meminta verifikasi: tantangan
+ritme-ketik bawaan, atau OTP/WebAuthn milik situs Anda.
+
+Data interaksi mentah tidak pernah keluar dari browser. Huruf yang diketik tidak pernah
+disimpan, bahkan di perangkat itu sendiri.
+
+---
+
+## Pasang dalam 30 detik
 
 ```html
-<script src="/sdk/behaviorguard.js" type="module"></script>
-<script type="module">
-  import bg from "/sdk/behaviorguard.js";
-  await bg.init({
-    userId: "andi@example.com",
-    onRisk: evt => {
-      // evt = {level, score, action, reasons, topFeatures}
-      if(evt.level==="HIGH") triggerMFA(evt);
-      if(evt.level==="MEDIUM") showReAuth(evt);
-    }
+<script src="dist/behaviorguard.js" data-user="andi@contoh.id" defer></script>
+<script>
+  addEventListener('behaviorguard:risk', e => {
+    // e.detail = { level, score, action, reasons, topFeatures, ... }
+    if (e.detail.level === 'HIGH') kunciCheckout();
   });
-  // otomatis capture; panggil saat checkout / sebelum unload:
-  // await bg.endSession()
 </script>
 ```
 
-**Atau loader 1 baris:**
+Itu seluruh integrasinya. Penangkapan event, penilaian, pendaftaran, latih ulang, dan popup
+verifikasi berjalan sendiri.
 
-```html
-<script src="/loader/bg-loader.js" data-user="andi@example.com" data-callback="onRisk"></script>
-<script>function onRisk(e){ if(e.level==="HIGH") mfa(); }</script>
-```
-
-**Selesai. Tanpa ubah kode aplikasi.** Capture DOM (mousemove, click, keydown, scroll, focus/blur, cart) jalan otomatis. Session diakhiri tiap 30 detik + saat `endSession()`.
-
-### Opsi B - MV3 Extension (untuk situs pihak ketiga eksternal)
-
-1. `chrome://extensions` → Developer mode → Load unpacked → pilih `extension/`
-2. Buka situs target → content.js suntik capture tanpa ubah situs → background relay skor on-device → badge/bubble.
-
-### Opsi C - Manual (tunable, tetap zero-config kalau kosong)
+**Sudah punya OTP / WebAuthn?** Matikan popup bawaan dan laporkan hasil verifikasi Anda:
 
 ```js
-await bg.init({
-  userId,
-  onRisk,
-  weights: {isolation_forest:0.70, svm:0.30}, // dinormalkan otomatis
-  baseline: 10,          // default 10
-  retrainEvery: 6,       // default 6
-  thresholds: {low:-0.4, medium:-0.8} // LOW>-0.4, MEDIUM(-0.8,-0.4], HIGH<=-0.8
-});
+window.BehaviorGuardConfig = { mfa: { enabled: false } };
+// ...saat vonis MEDIUM/HIGH, jalankan OTP Anda, lalu:
+BehaviorGuard.reportStepUp({ passed: true });
 ```
 
-Semua default sudah terbaik (F4/W7). Ubah hanya jika riset.
+**Sebelum aksi sensitif** (ganti email/sandi, transfer, tambah perangkat), minta vonis saat
+itu juga:
+
+```js
+const v = BehaviorGuard.assessNow();
+if (v.level !== 'LOW') mintaVerifikasi();   // UNKNOWN = bukti belum cukup -> tetap minta verifikasi
+```
+
+Panduan lengkap (modul ES, objek konfigurasi, server opsional):
+[docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang berbahasa Indonesia:
+[dist/PASANG.md](dist/PASANG.md).
 
 ---
 
-## Pipeline per Sesi
+## Yang terlihat
 
 ```
-capture event (pointer/keydown-up/scroll/focus/blur/submit/cart)
- → agregasi jadi 28 fitur F4 (features.js)
- → standardisasi z-score vs baseline pemilik (standardize.js)
- → skor IF 70% + SVM 30% → z-score skor vs baseline → campur 70/30 (ensemble.js)
- → peta ke pita risiko + reasons topFeatures (risk.js) → callback onRisk
+sesi 1-10      pendaftaran     belum ada vonis - model sedang mengenal pemilik
+sesi 11+       LOW             ALLOW_SESSION
+               MEDIUM          REQUIRE_MFA       -> minta verifikasi
+               HIGH            REQUIRE_STEPUP    -> minta verifikasi
+               HIGH 2x         BLOCK_SESSION     -> berturut-turut, bukan sekadar hari yang beda
+               UNKNOWN         ABSTAIN           -> bukti belum cukup (TIDAK berarti aman)
 ```
 
-Lifecycle: 10 sesi pertama = enrollment (belum skor). Tiap 6 sesi LOW berikutnya retrain growing window (anti-poisoning: hanya LOW yang melatih) + guard dua-sisi (`window 6 LOW` **dan** `cohortLowRate ≤0.35`) agar tak over/under-latih. Prequential: sesi ke-N dinilai model yang belum lihat sesi ke-N.
+Satu vonis butuh 150 event bukti. Sesudah pemilik lolos verifikasi, vonis MEDIUM tidak
+bertanya lagi selama 15 menit (HIGH tetap bertanya, dan meninggalkan kursi 5 menit
+membatalkannya).
 
 ---
 
-## Demo 2-Bagian
+## Hasil
 
-**Jalankan:**
+Diukur pada **653 sesi dari 16 relawan** dengan menjalankan **pustaka yang dikirim itu
+sendiri** (`node tools/eval_sdk.mjs --live`): tiap sesi riset diputar ulang lewat jalur
+asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di browser. Tiap sesi
+riset = satu kunjungan (muat halaman, status dibaca ulang dari penyimpanan). Pemilik
+menjawab verifikasi lewat API publik `reportStepUp`. Penyusup = 15 relawan lain, masing-masing
+datang lewat kunjungan baru ke akun pemilik.
+
+| Pemilik | |
+| --- | --- |
+| Vonis yang meminta pemilik verifikasi | **14,5%** |
+| Pemilik diblokir | **0%** |
+
+| Penyusup (password curian, perangkat sendiri) | |
+| --- | --- |
+| Lolos vonis pertama tanpa gangguan | **13,3%** |
+| Lolos **seluruh** sesinya tanpa gangguan | **9,2%** |
+| Tidak pernah dinilai (sesinya terlalu pendek) | 0,6% |
+
+| Ambil-alih (penyusup terus memakai akun, 6 sesi) | |
+| --- | --- |
+| Ketahuan di sesi pertama | **89,6%** |
+| Ketahuan dalam 3 sesi | 98,3% |
+| Tidak pernah ketahuan dalam 6 sesi | **0%** |
+
+Daya pisah tanpa ambang, per pemilik: AUC **0,927**, EER **12,3%**.
+
+### Memilih titik operasi
+
+Satu knob: `init({ calibration: { k_low } })`. Makin kecil makin ketat.
+
+| `k_low` | pemilik diminta verifikasi | penyusup lolos vonis-1 | penyusup lolos seluruh sesi | ambil-alih tak ketahuan |
+| --- | ---: | ---: | ---: | ---: |
+| 1,25 | 19,3% | 8,5% | 5,4% | 0% |
+| 1,5 | 16,5% | 11,1% | 7,4% | 0% |
+| **1,75 (default)** | **14,5%** | **13,3%** | **9,2%** | **0%** |
+| 2,0 | 13,0% | 15,6% | 11,2% | 0,4% |
+| 2,5 | 10,9% | 19,8% | 15,4% | 1,7% |
+
+Default dipilih di 8 subjek dan diperiksa di 8 subjek lain (5 belahan acak), bukan
+dipas-paskan ke tabel ini.
+
+**Mode ketat (opt-in):** `session: { contextEvents: 450 }` — vonis berikutnya dalam satu
+kunjungan ikut memakai bukti yang baru dinilai. Penyusup lolos vonis pertama 10,1% dan
+seluruh sesi 8,2% dengan gesekan pemilik yang sama, tapi satu penyusup (dari 15) lolos 6
+sesi di 3 akun, jadi tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42.
+
+### Membaca angka ini dengan jujur
+
+- **Sekitar 1 dari 8 penyusup lolos pemeriksaan pertama.** Ini lapisan verifikasi tambahan,
+  bukan gembok. HIGH artinya "suruh buktikan", bukan bukti penipuan. Aksi sensitif wajib
+  `assessNow()`.
+- **Penyusupnya 15 pengguna biasa, bukan penyerang yang sengaja meniru korban.** Peniruan
+  terarah **belum diuji** — lihat [THREAT-MODEL.md](THREAT-MODEL.md).
+- **Gesekan pemilik bukan derau acak.** Ia rata di semua jendela dalam satu kunjungan:
+  pemilik ditandai pada *hari* ketika perilakunya memang beda, di semua jendela hari itu.
+  Itu tidak bisa dirata-rata; itulah tugas verifikasi tambahan — dan karena itu lolos
+  verifikasi kini memberi 15 menit tenang.
+- **16 relawan itu sampel kecil.** Di populasi dan situs lain angka bisa bergeser beberapa
+  poin.
+- **Angka lama di repo ini mengukur mesin lain.** FRR 16,1% / FAR 5,4% berasal dari harness
+  Python yang menilai sesi riset utuh (~700 event), satuan yang tak pernah dinilai pustaka;
+  FRR 35,1% / FAR 0,9% berasal dari One-Class SVM scikit-learn yang tidak dikirim. Tabel di
+  atas adalah pengukuran pertama atas pustaka yang benar-benar dipakai
+  ([core/DRIFT.md](core/DRIFT.md) C-27, C-29).
+
+---
+
+## Satu otak, lima bahasa
+
+| Runtime | Jangkauan | Konformansi |
+| --- | --- | --- |
+| JavaScript | browser, Node, edge | 255/255 |
+| Python | server, data, ML | 255/255 |
+| Rust | sistem, CLI, embedded | 255/255 |
+| Java | JVM, **Android**, Kotlin | 255/255 |
+| WASM | host WASM mana pun | 255/255 |
+
+Algoritmanya ditulis sebagai spesifikasi yang lepas dari bahasa ([core/SPEC.md](core/SPEC.md)
+v1.3.0), dan setiap implementasi dicek terhadap [core/golden.json](core/golden.json) yang
+sama: 255 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
+
+---
+
+## Coba demonya
 
 ```bash
-# tanpa node, cukup buka file:
-# 1) Situs polos:
-start demo/situs-polos/index.html
-# 2) Pemantau (mencolok dari luar):
-start demo/pemantau/index.html
-# atau serve:
 python -m http.server 8080
-# → http://localhost:8080/demo/pemantau/
 ```
 
-**Cara demo:**
-
-1. Buka `pemantau/index.html` → iframe kiri adalah situs polos (cek View Source: NOL kata BehaviorGuard).
-2. Di iframe: gerakkan mouse, ketik di alamat/catatan, klik produk (10-12 sesi enrollment dulu).
-3. Klik `End Session & Skor` di pemantau → lihat grafik skor per sesi, log tabel, topFitur menyimpang.
-4. Enrollment 10 → model siap → sesi berikutnya mulai dinilai LOW/MEDIUM/HIGH dari luar tanpa ubah situs.
-
-**Bukti polos (fungsional):** `demo/situs-polos/index.html` tidak mengimpor `sdk/behaviorguard.js` sama sekali (cek Network tab, 0 import SDK). Teks di header bukan bukti grep - yang benar: 0 eksekusi SDK.
-
----
-
-## Reproduksi & Bukti Kriteria Terima
+Buka <http://localhost:8080/demo/pemantau/>. Panel kiri adalah toko biasa **tanpa satu baris
+kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor langsung.
+Panduan lengkap: [demo/CARA-DEMO-PLUG-AND-PLAY.md](demo/CARA-DEMO-PLUG-AND-PLAY.md).
 
 ```bash
-# ILUSTRASI RUMUS (sintetis, sirkular - nol bukti model, hanya phi()):
-python tools/reproduce_simple.py
-
-# BUKTI JUJUR atas DB asli (baca vektor F4 dari behavior_detection.db):
-python tools/reproduce_db.py
-# → guard 653 OK; headline held-out 35.1% (87/248) FAR 0.9% (12/1304) conv 0/8 (q=0.10 EERgap)
+python core/conformance.py         # mesin vs golden.json            -> 255/255
+node   core/lifecycle.test.mjs     # siklus hidup & API integrator   -> 49/49
+node   core/privacy.test.mjs       # huruf ketikan tidak tersimpan   -> 10/10
+python server/test_app.py          # server opsional: auth, XSS      -> 35/35
+node   tools/eval_sdk.mjs --live   # ukur pustaka yang dikirim (butuh ekspor data riset lokal)
 ```
-
-**Hasil ilustrasi (deterministik, seed 42) - JANGAN pakai untuk klaim validasi:**
-
-```
-FINAL F4-W7 base10/retrain6  Ekspektasi FRR 15.2% / FAR 12.1% (target 15.2/12.1) - sirkular: 0.63/-1.57 dipilih agar phi()=target
-ABLATION IF 100% FAR 27.4% → 2.3x - juga sintetis
-```
-
-**Hasil reproduce_db.py (DB asli, guard 653, held-out 8/8, q=0.10 EERgap, engine sklearn RealOCSVM):**
-`FRR 35.1% (87/248) FAR 0.9% (12/1304) conv 0/8` - headline held-out; `in-sample 31.6% FAR 2.6% conv 2/16 (optimistik)`; `ROC AUC 0.922 EER 12.6% FAR@FRR15% 8.5% n=1554` - window6/gate20 tetap.
-Engine centroid JS: `FRR 17.7% FAR 36.2% conv 4/8` - gap engine: Real 0.9% vs centroid 36.2% (F4 terbaik hanya di Real, terbalik di centroid).
-
-- **Determinisme** → dua run identik = angka identik (seed 42, mulberry32, ORDER BY session_id) - terbukti.
-- **Konvergensi** → `window 6 LOW + cohortLowRate ≤0.35`; held-out `0/8`, in-sample `2/16` (bukan 16/16 lama).
-- **Ablation** → buang SVM → FAR naik ~2x di ilustrasi; di DB asli cek via `reproduce_db.py` dengan `--ablation`.
-- **On-device** → `sdk/storage.js` caps 1.8MB + fallback IndexedDB→localStorage→memory, tidak pernah crash di private window. `capture.js` throttled 50ms + cap 2000 event.
 
 ---
 
-## 28 Fitur F4 (nama persis)
+## Cara kerja singkat
 
 ```
-mouse_velocity_mean, mouse_velocity_std, mouse_velocity_max,
-mouse_acceleration_std, mouse_curvature_mean, mouse_direction_changes,
-mouse_pause_count, mouse_click_interval_mean, cursor_idle_ratio,
-cross_mouse_keyboard_coordination, keystroke_dwell_time_mean,
-keystroke_dwell_time_std, keystroke_flight_time_mean,
-keystroke_transition_entropy, keystroke_typing_speed,
-keystroke_cross_field_cadence, keystroke_burst_count,
-temporal_time_of_day_score, temporal_session_duration,
-temporal_activity_bursts, nav_page_transition_pattern, nav_scroll_depth_mean,
-nav_page_count, nav_step_transition_count, form_focus_count, form_blur_count,
-form_field_switch_rate, cart_action_count
+event DOM -> buang kembar -> pendekkan jeda idle -> kumpulkan 150 event
+         -> 28 fitur -> z-score vs pemilik -> IF 0,30 + Mahalanobis 0,70
+         -> ambang per pemilik (mean - k*std) -> LOW / MEDIUM / HIGH + alasan
+         -> cek rekam-ulang, lantai lengket, aturan HIGH berturut, absen, masa berlaku
+         -> verifikasi (ritme ketik bawaan, atau OTP Anda lewat reportStepUp)
 ```
 
-Ekstrak di `sdk/core/features.js:extractF4`.
+- **Pendaftaran** — 10 sesi layak pertama menjadi jangkar profil pemilik dan tidak pernah
+  tergeser.
+- **Hanya belajar dari yang tepercaya** — hanya jendela LOW atau yang lolos verifikasi yang
+  boleh melatih model, supaya penyusup tidak bisa pelan-pelan "mengajari" sistem.
+- **AFK** — jeda >= 15 detik dipendekkan, bukan dipotong. Absen 5 menit mereset
+  kepercayaan; 15 menit meminta verifikasi ulang (serangan jam makan siang).
+- **Rekam-ulang** — sesi yang hampir identik dengan sesi tersimpan divonis HIGH.
+
+Detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## Batas Kejujuran (tulis apa adanya)
+## Privasi
 
-- **SVM aproksimasi → arah, bukan rasio presisi.** `sdk/core/ocsvm.js` pakai centroid RBF `exp(-γ||x-μ||²)` dengan `γ=1/n_features` (bukan 0.5 saturasi), bukan QP libSVM penuh. Yang kokoh adalah **arah** (+30% SVM membelah FAR 24→12), bukan angka desimal ketiga.
-- **FAR ~12% = penyusup masih bisa lolos.** Ini **lapisan step-up**, bukan kunci absolut. `HIGH→BLOCK_SESSION` (atau REQUIRE_MFA sesuai kebijakan), `MEDIUM→REQUIRE_MFA`. Jangan klaim blok total.
-- **FAR diukur pakai 15 subjek lain sebagai pengganti penyusup** (9.795 penilaian lintas-subjek). **Peniruan terarah (adversarial mimicry)** - penyerang sengaja meniru ritme korban - **belum diuji**, adalah ancaman terbuka / future work.
-- **Hyperparameter dipilih di data yang sama** (653 sesi), jadi angka absolut sedikit optimistik; yang kokoh adalah **arah & urutan berjenjang**: kunci sesi (`base10/retrain6`) → pilih fitur (`F4`) → setel bobot (`W7`). Reproduksi di data baru akan geser ±beberapa poin.
-- **Ilustrasi vs reproduksi:** `reproduce_simple.py` adalah ilustrasi sirkular (0.63/-1.57 reverse-engineered); bukti validasi ada di `reproduce_db.py`.
+Event mentah tidak pernah keluar perangkat, dan huruf yang diketik tidak pernah disimpan.
+Profil disimpan lokal (IndexedDB -> localStorage -> memori). Tidak ada telemetri.
+
+Server opsional ([server/README.md](server/README.md)) hanya menerima **28 angka fitur per
+jendela** + vonis, dan hanya aktif kalau Anda memberi kunci publik, endpoint, **dan** token
+pengguna berumur pendek yang dicetak backend Anda sendiri.
 
 ---
 
-## Troubleshooting
+## Dokumentasi
 
-| Gejala | Solusi |
-|---|---|
-| Skor selalu LOW | Belum 10 sesi enrollment - isi dulu |
-| Storage kosong (private) | Otomatis fallback memory, tidak crash |
-| Extension tidak capture | Pastikan `host_permissions <all_urls>` & reload |
-| Threshold terlalu galak/longgar | Tuning `thresholds:{low,medium}` di `config.js` |
+| Dokumen | Isi |
+| --- | --- |
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | Semua cara integrasi dan konfigurasi |
+| [dist/PASANG.md](dist/PASANG.md) | Panduan pasang satu tag (Indonesia) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, peta modul, keputusan desain |
+| [THREAT-MODEL.md](THREAT-MODEL.md) | Batas kepercayaan, serangan yang belum tertutup |
+| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-43: tiap cacat, buktinya, dan ujinya |
+| [core/SPEC.id.md](core/SPEC.id.md) | Spesifikasi mesin |
 
 ---
 
 ## Lisensi
 
-Riset/skripsi - on-device, privasi (data mentah tak keluar perangkat).
+MIT — lihat [LICENSE](LICENSE).

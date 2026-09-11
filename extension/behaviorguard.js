@@ -86,7 +86,7 @@ class BehaviorGuard {
     }
     // fingerprint + secret + token (HMAC)
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
-    try{ this.secret=await getOrCreateSecret(userId); this.token=await generateToken({secret:this.secret, userId}); }catch{}
+    try{ this.secret=await getOrCreateSecret(userId, storage); this.token=await generateToken({secret:this.secret, userId}); }catch{}
     const saved=await storage.get(ns(userId));
     if(saved){ this.sessions=saved.sessions||[]; this.stats=saved.stats||null; this.lastRisk=saved.lastRisk||'LOW'; this._highRun=saved.highRun||0; this.challengeTemplate=saved.challengeTemplate||null;
       // C-32: streak LOW dulu TIDAK disimpan. Lantai lengket turun hanya setelah 3 LOW
@@ -94,11 +94,16 @@ class BehaviorGuard {
       // vonis) dan tak punya MFA bawaan tidak pernah turun dari MEDIUM, selamanya.
       this._lowStreak=saved.lowStreak||0;
       this._mfaEnrollSnoozeUntil=saved.mfaEnrollSnoozeUntil||0;
+      // C-43: masa berlaku step-up melintasi muat-halaman (situs multi-halaman memuat
+      // ulang tiap klik) tapi TIDAK melintasi absen: jeda >= awaySec sejak vonis terakhir
+      // yang tersimpan mencabutnya.
+      const awayMs=((this.cfg.idle && this.cfg.idle.awaySec) || 300)*1000;
+      this._mfaPassedAt=(saved.mfaPassedAt && saved.lastActiveAt && Date.now()-saved.lastActiveAt < awayMs) ? saved.mfaPassedAt : null;
       // cek ganti device. C-36: sidik versi lama (dengan nomor versi UA) tidak dibandingkan
       // — kalau dibandingkan, SEMUA pengguna lama dicurigai sekali sesudah pembaruan ini.
       if(saved.fingerprint && saved.fpv===FP_VERSION && saved.fingerprint!==this.fingerprint){
         console.warn('[BG] device fingerprint berubah - sesi dianggap berisiko');
-        this.lastRisk='MEDIUM';
+        this.lastRisk='MEDIUM'; this._mfaPassedAt=null;
       }
     }
     // R4: jika ada ekor yang kesimpen pas beforeunload sebelumnya, pulihkan ke buffer
@@ -291,7 +296,7 @@ class BehaviorGuard {
     await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, fpv:FP_VERSION,
       lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate,
       lowStreak:this._lowStreak||0, enrollPrefix:this._enrollPrefix(),
-      mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0});
+      mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0, mfaPassedAt:this._mfaPassedAt||null, lastActiveAt:Date.now()});
   }
   // C-35: sesi tersimpan terdekat dalam ruang terstandar, tanpa fitur temporal.
   _nearestPastSession(xstd){
@@ -587,6 +592,28 @@ class BehaviorGuard {
       level='MEDIUM'; reverifyAfterAway=true;
       if(order[level]>order[this.lastRisk]){ this.lastRisk=level; this._lowStreak=0; }
     }
+    // C-43: MASA BERLAKU STEP-UP ("sudo mode"). Gesekan pemilik tidak tersebar acak: ia
+    // menumpuk di hari-hari ketika perilakunya memang berbeda, dan pada hari itu SEMUA
+    // jendela berbeda (model != LOW 14-15% di jendela ke-1, ke-2, ke-3... kunjungan).
+    // Dulu pemilik yang baru lolos OTP ditanya LAGI 30 detik kemudian, dan lagi. Kini,
+    // selama graceSec sesudah verifikasi TERBUKTI (MFA bawaan terverifikasi atau
+    // reportStepUp({passed:true})), MEDIUM tidak meminta verifikasi ulang.
+    // Batasnya, supaya penyusup tidak ikut menikmati:
+    //  - hanya hasil verifikasi sungguhan yang membukanya; penyusup berkredensial curian
+    //    tak punya faktor kedua, jadi tak pernah mendapatkannya;
+    //  - HIGH tetap meminta verifikasi (orangnya jelas berbeda), rekam-ulang tak pernah;
+    //  - absen >= idle.awaySec mencabutnya (kursi mungkin berganti orang), begitu juga
+    //    muat-halaman sesudah jeda sepanjang itu (lihat init);
+    //  - jendela yang diredam TIDAK melatih model (bukan LOW model, bukan terverifikasi).
+    const graceMs=((this.cfg.mfa && this.cfg.mfa.graceSec) || 0)*1000;
+    if(awayInfo) this._mfaPassedAt=null;
+    let stepUpGrace=null;
+    if(graceMs>0 && level==='MEDIUM' && !M.replay && !reverifyAfterAway && this._mfaPassedAt
+       && Date.now()-this._mfaPassedAt < graceMs){
+      stepUpGrace={ verifiedAgoSec: Math.round((Date.now()-this._mfaPassedAt)/1000), wasLevel: level };
+      level='LOW'; this.lastRisk='LOW';
+      eligible=false;
+    }
     // A3: bukti sebagian tidak boleh jadi DASAR KEPERCAYAAN. Vonisnya tidak dinaikkan
     // — memaksa step-up tiap kali orang memakai password manager itu hukuman untuk
     // kebiasaan yang justru aman. Yang dicabut adalah kemampuannya MEMBANGUN
@@ -601,6 +628,7 @@ class BehaviorGuard {
     if(M.keystrokeBypassed) reasons=['bukti keystroke dialihkan (autofill/tempel) - blok ritme ketik tidak dinilai', ...reasons];
     if(M.replay) reasons=[`perilaku identik dengan sesi lama (jarak ${M.replay.distance.toFixed(4)}) - kemungkinan rekam-ulang`, ...reasons];
     if(reverifyAfterAway) reasons=[`kembali setelah absen ${Math.round(awayInfo.awayMs/60000)} menit (${awayInfo.reason}) - verifikasi ulang`, ...reasons];
+    if(stepUpGrace) reasons=[`model: MEDIUM, tidak ditanya ulang - terverifikasi ${Math.round(stepUpGrace.verifiedAgoSec/60)} menit lalu`, ...reasons];
     if(level==='HIGH' && this.challengeTemplate){
       action='REQUIRE_CHALLENGE'; reasons=[...reasons, 'challenge: ketik kata kunci + ritme'];
     }
@@ -612,7 +640,7 @@ class BehaviorGuard {
     let blocked=false;
     if(level==='HIGH' && this._highRun>=blockAfter){ action='BLOCK_SESSION'; blocked=true; }
     const evt={...M, level, score, action, blocked, consecutiveHigh: this._highRun, reasons, topFeatures: top, features: feat, thresholds: {...usedThresholds}, eligible, modelLevel, modelScore, stickyFloor,
-      resumedAfterAway: awayInfo, reverifyAfterAway,
+      resumedAfterAway: awayInfo, reverifyAfterAway, stepUpGrace,
       // topFeatures/features berasal dari jendela TERAKHIR; skornya dari rata-rata M.
       aggregated: aggMembers ? {windows: aggMembers.length} : null,
       partialEvidence: M.keystrokeBypassed ? 'keystroke' : null};
@@ -890,13 +918,40 @@ class BehaviorGuard {
     // Cacahan mentah (9 dari 28 fitur) membesar bersama panjang sesi, jadi panjang
     // yang berubah-ubah terbaca sebagai identitas yang berubah. Menyamakan panjangnya
     // memperbaiki itu tanpa menyentuh satu baris pun rumus fitur di core/SPEC.md.
-    for(const seg of assess){
+    for(const seg0 of assess){
+      const seg=this._withContext(seg0);
       // acct.segments = jumlah rentetan AKTIF di batch. Di jalur segmen sama dengan
       // segs.length; di jalur kompresi C-28 segs selalu 1, tapi telemetri tetap harus
       // bilang ada berapa rentetan yang dinilai jadi satu.
       for(const win of this._canonicalize(seg)) last=await this._assessSegment(win, acct, acct.segments);
     }
     return last;
+  }
+  /**
+   * C-42: JENDELA GESER. Vonis pertama sebuah kunjungan tetap jatuh begitu 150 event
+   * BARU terkumpul — penyusup diperiksa secepat sebelumnya. Vonis berikutnya menilai
+   * event baru DITAMBAH event yang baru saja dinilai, sampai `contextEvents` total, jadi
+   * pemilik yang terus bekerja dinilai dengan bukti ~2x lebih banyak (EER per pemilik
+   * turun tajam dengan ukuran bukti, tabel C-29) tanpa menunda vonis pertama.
+   *
+   * Konteks HANYA dari kunjungan ini (memori, tidak disimpan) dan DIBUANG bila ada jeda
+   * >= idle.awaySec antara konteks dan event baru: orang yang duduk di kursi pemilik
+   * yang pergi tidak boleh meminjam perilaku pemilik untuk mengencerkan vonisnya.
+   * Syarat 150 event baru tetap diperiksa pada event BARU saja (splitForAssessment).
+   */
+  _withContext(seg){
+    const CE=this.cfg.session.contextEvents|0;
+    const raw=seg.rawEvents;
+    if(CE<=0 || !raw || !raw.length || !(this.cfg.session.idleCompressSec>0)) return seg;
+    const prev=this._ctx||[];
+    const awayMs=(this.cfg.idle && this.cfg.idle.awaySec ? this.cfg.idle.awaySec : 300)*1000;
+    const fresh=prev.length && ((raw[0].timestamp||0)-(prev[prev.length-1].timestamp||0)) < awayMs;
+    const room=Math.max(0, CE-raw.length);
+    const combined= (fresh && room>0) ? prev.slice(-room).concat(raw) : raw;
+    this._ctx=combined.slice(-CE);
+    if(combined===raw) return seg;
+    const u=this._compressedUnit(combined, {longestGapMs: seg.gapBeforeMs||0});
+    return {...u[0], gapBeforeMs: seg.gapBeforeMs||0, context: combined.length-raw.length};
   }
   /**
    * C-28: seluruh aliran jadi SATU unit penilaian, jeda ≥ idleCompressSec
@@ -956,9 +1011,13 @@ class BehaviorGuard {
     // dari sesi menelusuri biasa: sesi baca-baca juga nol keystroke, tapi ia nol pada
     // baseline-nya juga, jadi tidak menyesatkan. Yang menyesatkan adalah form yang
     // TERSENTUH tapi tidak diketik — autofill, password manager, atau tempel.
-    const nKey=events.reduce((n,e)=> n+(e.event_type==='KEYSTROKE'?1:0), 0);
-    const nPaste=events.reduce((n,e)=> n+(e.event_type==='PASTE'?1:0), 0);
-    const nFocus=events.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS'?1:0), 0);
+    // C-42: hanya event BARU yang diperiksa. Dengan jendela geser, satu tempel di konteks
+    // dulu mencemari 2-3 vonis berikutnya (pengguna password manager tak pernah selesai
+    // mendaftar); konteks sudah dinilai di vonis sebelumnya.
+    const fresh=seg.context ? events.slice(seg.context) : events;
+    const nKey=fresh.reduce((n,e)=> n+(e.event_type==='KEYSTROKE'?1:0), 0);
+    const nPaste=fresh.reduce((n,e)=> n+(e.event_type==='PASTE'?1:0), 0);
+    const nFocus=fresh.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS'?1:0), 0);
     const keystrokeBypassed = nPaste>0 || (nFocus>0 && nKey===0);
     // Sesi yang blok keystroke-nya dialihkan TIDAK PERNAH melatih: kedelapan fiturnya
     // nol secara STRUKTURAL — karena memang tidak ada yang diketik — bukan karena
@@ -966,7 +1025,7 @@ class BehaviorGuard {
     // "tidak pernah mengetik", dan itu justru MELEBARKAN jalan bagi penyusup yang
     // memakai autofill untuk menghapus jejak ritmenya.
     const passesGate = !keystrokeBypassed && events.length>=S.minEventsTrain && durationSec>=S.minDurationSec && nonZero>=S.minNonZeroFeatures;
-    const meta={ keystrokeBypassed, idle: {
+    const meta={ keystrokeBypassed, contextEvents: seg.context||0, idle: {
       activeSec: durationSec,
       gapBeforeMs: seg.gapBeforeMs,
       gapClass: classifyGap(seg.gapBeforeMs, gapMs, this.cfg.idle.awaySec*1000),
@@ -1058,7 +1117,7 @@ class BehaviorGuard {
     this._noAssessRuns=0; this._abstainEmitted=false;
     this._aggBuf=[]; this._aggThresholds=null;   // C-24: bukti separuh terkumpul milik pengguna lama
     this._newSinceRebuild=0; this._mfaEnrollSnoozeUntil=0; this._stepUpFailures=0;
-    this._pendingEvents=null;
+    this._pendingEvents=null; this._ctx=[];
   }
   async clear(){
     // C-7: dulu challengeTemplate/_highRun/_mfaPassedAt tetap hidup di memori

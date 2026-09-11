@@ -1,7 +1,7 @@
 # Quickstart
 
-Every way to integrate BehaviorGuard, from a single tag to a browser extension, plus the
-full configuration surface.
+Every way to integrate BehaviorGuard, from a single tag to the ES module and the optional
+server, plus the full configuration surface.
 
 There is no build step, no package to install, and no service to sign up for. The library
 is one file with zero dependencies.
@@ -76,7 +76,7 @@ addEventListener('behaviorguard:risk', e => handle(e.detail));
 
 ```js
 {
-  level: 'HIGH',                  // LOW | MEDIUM | HIGH
+  level: 'HIGH',                  // LOW | MEDIUM | HIGH | UNKNOWN (not enough evidence)
   score: -4.21,                   // ensemble score; more negative = more anomalous
   action: 'REQUIRE_STEPUP',       // see the table below
   blocked: false,
@@ -88,13 +88,18 @@ addEventListener('behaviorguard:risk', e => handle(e.detail));
   modelLevel: 'HIGH',             // raw model verdict, before smoothing
   modelScore: -4.21,
   stickyFloor: false,             // true if the level was raised by the sticky floor
-  mfa: { shown: true, verified: true }   // present when a step-up ran
+  stepUpGrace: null,              // set when a MEDIUM was not re-asked after a recent step-up
+  reverifyAfterAway: false,       // true if raised because the user came back after >= 15 min
+  replay: null,                   // set when this window copies a stored one (recorded behavior)
+  partialEvidence: null,          // 'keystroke' when typing was pasted/autofilled
+  mfa: { shown: true, verified: true }   // present when the built-in step-up ran
 }
 ```
 
 | `action` | Meaning | Suggested response |
 | --- | --- | --- |
 | `ALLOW_SESSION` | Looks like the owner | Nothing |
+| `ABSTAIN` | `UNKNOWN` — not enough evidence yet | **Not** "safe": verify before sensitive actions |
 | `REQUIRE_MFA` | `MEDIUM` — mildly unusual | Re-auth before sensitive actions |
 | `REQUIRE_STEPUP` | `HIGH` — clearly unusual | Re-auth now; hold risky operations |
 | `BLOCK_SESSION` | Sustained `HIGH`, or integrity/rate-limit trip | End the session server-side |
@@ -109,14 +114,16 @@ opens devtools — see [THREAT-MODEL.md](../THREAT-MODEL.md).
 ## 3. What to expect on a fresh user
 
 ```
-sessions 1-10     enrollment. level is always LOW, score 0, no step-up.
+windows 1-10      enrollment. level is always LOW, score 0, no step-up.
                   reasons says: "enrollment 3/10"
-session 11        first real verdict
+window 11         first real verdict
 ```
 
-A session closes every 30 seconds, when the tab is hidden, and on page unload. So a user
-reaches session 11 after roughly five minutes of genuine interaction — not five minutes of
-an idle tab, because sessions with fewer than 30 events are discarded.
+The window ticks every 30 seconds and when the tab is hidden, but a verdict (or an
+enrollment step) needs **150 events** of evidence; fewer are carried forward for up to 15
+minutes instead of being thrown away. So enrollment takes roughly ten short bursts of real
+interaction — not ten minutes of an idle tab. Windows whose typing was pasted or autofilled
+do not count toward enrollment.
 
 If verdicts stay `LOW` forever, the user has not finished enrollment yet. Check
 `evt.reasons` — it tells you the count.
@@ -153,8 +160,29 @@ Pasting is blocked, modified keypresses are ignored, and a sample whose keystrok
 not match the field is rejected before verification runs. Three failed attempts end the
 challenge as failed.
 
-To handle step-up yourself, set `mfa.enabled = false` and act on `REQUIRE_MFA` /
-`REQUIRE_STEPUP` in your own flow.
+### Using your own step-up (OTP, WebAuthn, email link)
+
+Set `mfa.enabled = false`, act on `REQUIRE_MFA` / `REQUIRE_STEPUP`, and **report the
+result back**:
+
+```js
+window.BehaviorGuardConfig = { userId: 'andi@example.com', mfa: { enabled: false } };
+
+addEventListener('behaviorguard:risk', async e => {
+  if (e.detail.action === 'REQUIRE_MFA' || e.detail.action === 'REQUIRE_STEPUP') {
+    const ok = await runMyOtpFlow();              // verified on YOUR server
+    BehaviorGuard.reportStepUp({ passed: ok });
+  }
+});
+```
+
+Without this call the library never learns the owner proved themselves: the sticky floor is
+never cleared, the owner's drifted behavior never trains the model, and consecutive `HIGH`s
+end in `BLOCK_SESSION` for the owner — 25.7% of owner windows in our measurement, versus 0%
+with it.
+
+After a passed step-up, `MEDIUM` verdicts are not re-asked for `mfa.graceSec` (900 s). `HIGH`
+still is, and 5 minutes away cancels the grace.
 
 ---
 
@@ -173,10 +201,11 @@ For explicit control over the session lifecycle:
     },
   });
 
-  // close a session at a meaningful moment instead of waiting for the timer
-  document.querySelector('#checkout').addEventListener('click', async () => {
-    const verdict = await bg.endSession();
-    if (verdict && verdict.level !== 'LOW') holdOrder(verdict);
+  // before a sensitive action: judge NOW, no side effects, fail closed
+  document.querySelector('#change-email').addEventListener('click', () => {
+    const v = bg.assessNow();
+    if (v.level !== 'LOW') return requireStepUp(v);   // UNKNOWN included
+    submitEmailChange();
   });
 </script>
 ```
@@ -185,8 +214,11 @@ Useful methods:
 
 | Method | Purpose |
 | --- | --- |
-| `bg.init(opts)` | Start. Required before anything else. |
-| `bg.endSession()` | Close and score the current session now. Returns the verdict or `null`. |
+| `bg.init(opts)` | Start. Required before anything else. Calling it again (logout A, login B) starts B from zero. |
+| `bg.assessNow()` | Verdict right now for a sensitive action. No side effects; `UNKNOWN` + `REQUIRE_STEPUP` when evidence is short. |
+| `bg.reportStepUp({passed})` | Report your own step-up result. `passed:true` clears the verdict and lets the window train. |
+| `bg.setUserToken(t)` | Refresh the short-lived user token for the optional server. |
+| `bg.endSession()` | Score whatever evidence is buffered now (at least 150 events). Returns the verdict or `null`. |
 | `bg.getVector()` | Current 28-float vector without closing the session. |
 | `bg.getState()` | Sessions, config, thresholds — for dashboards and debugging. |
 | `bg.scoreVector(vec)` | Score a vector with no side effects. For evaluation. |
@@ -203,72 +235,81 @@ window.BehaviorGuardConfig = {
   userId: 'andi@example.com',       // REQUIRED
   onRisk: evt => {},
 
-  baseline: 10,                     // enrollment sessions before scoring starts
-  retrainEvery: 6,                  // retrain cadence, in owner sessions
-  weights: { isolation_forest: 0.30, svm: 0.70 },   // auto-normalized
-  thresholds: { low: -0.4, medium: -0.8 },          // overridden by calibration
+  calibration: { k_low: 1.75 },     // THE operating-point knob: smaller = stricter
 
   mfa: { enabled: true, phrase: '...', rounds: 3,
-         triggerOn: ['MEDIUM','HIGH'], cooldownMs: 15000 },
+         triggerOn: ['MEDIUM','HIGH'], cooldownMs: 15000,
+         graceSec: 900 },           // no re-ask of MEDIUM for 15 min after a passed step-up
+
+  session: { minEventsAssess: 150,  // evidence per verdict
+             carryMaxAgeSec: 900,   // how long short evidence is collected
+             idleCompressSec: 15,   // idle gaps are shortened to this
+             contextEvents: 0 },    // strict mode: e.g. 450 (see README)
+  idle: { awaySec: 300,             // absence that resets trust
+          reverifyAfterSec: 900 },  // absence that forces re-verification
+
+  baseline: 10,                     // enrollment windows before scoring starts
+  retrainEvery: 6,                  // retrain after N new trusted windows
+  weights: { isolation_forest: 0.30, svm: 0.70 },   // auto-normalized
 
   panel: false,                     // mount the built-in live status panel
 
-  pk: null,                         // hybrid mode: publishable key
-  endpoint: null,                   // hybrid mode: your server base URL
+  pk: null,                         // optional server: public key
+  endpoint: null,                   // optional server: base URL
+  userToken: null,                  // optional server: token minted by YOUR backend
 };
 ```
 
-**The defaults are the validated configuration.** Change `weights`, `baseline` or
-`retrainEvery` only if you are running your own evaluation — the shipped values come from a
-held-out sweep and are the ones the published numbers describe.
+**The defaults are the measured configuration.** Move `calibration.k_low` to trade owner
+friction against impostor passes (the README has the table). Change the rest only if you
+run your own evaluation with `tools/eval_sdk.mjs` — the published numbers describe the
+defaults.
 
-`thresholds` is normally not worth setting: bands are recalibrated per user from their own
-baseline score distribution, which is strictly better than a global constant.
+Thresholds are recalibrated per user from their own baseline score distribution; do not set
+them globally.
 
 ---
 
-## 7. Browser extension (sites you do not control)
+## 7. Sensitive actions
 
-To monitor a third-party site, load `extension/` as an unpacked MV3 extension:
+Routine verdicts wait for 150 events, so an attacker who logs in and changes the recovery
+email in 20 seconds can finish before the first one. Gate every sensitive action — change
+email, password or phone, add a device or payee, payout — on an immediate verdict:
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. **Load unpacked** → select the `extension/` folder
-4. Open the target site
-
-`content.js` captures interaction without modifying the page; scoring stays on-device and
-the verdict surfaces in the extension badge and popup.
-
-`extension/` is generated from `sdk/` by `tools/sync_core.ps1` and CI fails if the two
-diverge — so do not edit `extension/core/*` directly. Edit `sdk/`, then run:
-
-```bash
-npm run sync-core     # or: powershell -File tools/sync_core.ps1
+```js
+const v = BehaviorGuard.assessNow();       // or bg.assessNow() in the ES-module form
+if (v.level === 'LOW') proceed();
+else requireStepUp();                      // MEDIUM, HIGH, and UNKNOWN (too little evidence)
 ```
 
+`assessNow()` does not drain the buffer, train, move the sticky floor or count toward the
+block rule. During enrollment it returns `UNKNOWN` — there is nothing to compare against yet.
+
 ---
 
-## 8. Hybrid mode (optional, cross-device baselines)
+## 8. Optional server (cross-device baselines, operator dashboard)
 
-By default a baseline is per-device: a user on a new laptop starts enrollment again. Hybrid
-mode stores the account baseline on **your** server so it follows the user — which also
-means an attacker on a fresh device is scored against the real owner's baseline immediately.
+By default a baseline is per-device: a user on a new laptop starts enrollment again. The
+optional server stores the account baseline on **your** server so a new device adopts it,
+and logs verdicts for an operator dashboard.
 
 ```html
 <script src="/dist/behaviorguard.js"
         data-user="andi@example.com"
         data-pk="pk_your_tenant_key"
         data-endpoint="https://risk.yourcompany.com"
+        data-user-token="<minted by your backend after login>"
         defer></script>
 ```
 
-Only 28-float feature vectors are transmitted. Raw events never are.
+The public `pk` opens nothing by itself. Every account call needs the short-lived user
+token, `HMAC-SHA256(sk, pk|userId|exp)`, minted by your backend with the tenant secret `sk`
+after a real login; refresh it with `BehaviorGuard.setUserToken()`. Without a token the
+library stays fully on-device. Only 28-number feature vectors and verdicts are transmitted,
+and a device that already has its own enrollment never adopts a server baseline.
 
-> **Read [THREAT-MODEL.md](../THREAT-MODEL.md) §4.7 before enabling this.** The publishable
-> key is visible in your page source. Your server **must** authenticate the user
-> independently — with a session cookie or bearer token tied to the real account — and must
-> never treat that key as authorization. The bundled `server/` is a demo reference, not a
-> hardened service.
+Setup, the Node minting snippet and the dashboard: [server/README.md](../server/README.md).
+Residual risks: [THREAT-MODEL.md](../THREAT-MODEL.md) §4.7.
 
 ---
 
@@ -304,23 +345,24 @@ requests unless you enable hybrid mode. If you use the built-in step-up prompt o
 | Symptom | Cause and fix |
 | --- | --- |
 | Verdict is always `LOW` | Enrollment is not finished. Check `evt.reasons` for the count. |
-| No verdicts at all | `data-user` missing, or fewer than 30 events per session. |
-| `evt.eligible === false` | Session failed the quality gate (<100 events, <5 s, <6 non-zero features). It is scored but never trains. |
+| No verdicts at all | `data-user` missing, or fewer than 150 events of evidence yet (`UNKNOWN`/`ABSTAIN`). |
+| `evt.eligible === false` | Window failed the quality gate (<100 events, <5 s, <6 non-zero features, or pasted/autofilled typing), was a replay, or was a graced `MEDIUM`. It is scored but never trains. |
 | Step-up never appears | Its template is enrolled during a `LOW` session first; also check `mfa.enabled`. |
 | Step-up rejects the real owner | Rhythm drifted (new keyboard, injury). Clear the template with `bg.clear()` and re-enroll. |
 | Storage empty in private mode | Expected. The library falls back to memory and does not crash. |
-| Extension not capturing | Check `host_permissions` in `manifest.json`, then reload the extension. |
-| Too many / too few `HIGH` verdicts | Tune `k_low` in `sdk/core/config.js`. Higher = more permissive. |
+| Owner asked again right after passing your OTP | You are not calling `reportStepUp({passed:true})`. |
+| Too many / too few step-ups | `init({calibration:{k_low}})`. Higher = more permissive; see the README table. |
 
 ---
 
 ## 11. Verifying your install
 
 ```bash
-python core/conformance.py       # engine matches the spec        -> 227/227
-node   core/challenge.test.mjs   # step-up layer is fail-closed   -> 20/20
+python core/conformance.py       # engine matches the spec        -> 255/255
+node   core/lifecycle.test.mjs   # lifecycle and integrator APIs  -> 49/49
+node   core/challenge.test.mjs   # step-up layer is fail-closed
 python -m http.server 8080       # then open /demo/pemantau/
 ```
 
-If `conformance.py` does not print `227 / 227`, something in `sdk/core/` has been modified
+If `conformance.py` does not print `255 / 255`, something in `sdk/core/` has been modified
 away from the specification — see [../core/SPEC.md](../core/SPEC.md).

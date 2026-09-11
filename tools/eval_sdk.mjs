@@ -64,8 +64,34 @@ if (LIVE && typeof globalThis.localStorage === 'undefined') {
     removeItem: k => { M.delete(k); },
   };
 }
+// --dump-vec F : rekam SETIAP vektor yang dinilai SDK (siapa, peran, skor, vonis) untuk
+// menyaring ide penilai lain di luar SDK tanpa menjalankan ulang simulasi 2,5 menit.
+// Berkas ini berisi fitur turunan data riset -> tulis ke temp OS, JANGAN ke repo.
+const DUMP_VEC = arg('dump-vec', null);
+const VEC_LOG = [];
+if (DUMP_VEC) {
+  const orig = BehaviorGuard.prototype._ingestVector;
+  BehaviorGuard.prototype._ingestVector = async function (vec, feat, eligible = true, events = null, meta = null) {
+    const rec = { u: this.userId, v: Array.from(vec), el: eligible, t: NOW };
+    const ev = await orig.call(this, vec, feat, eligible, events, meta);
+    if (ev) { rec.lv = ev.level; rec.ml = ev.modelLevel ?? null; rec.s = ev.modelScore ?? ev.score ?? null;
+              rec.enr = !!(ev.enrollment || ev.convergence === 'enrollment'); rec.integ = !!ev.integrity; rec.mfa = false; }
+    VEC_LOG.push(rec);
+    return ev;
+  };
+  const origStep = BehaviorGuard.prototype.reportStepUp;
+  BehaviorGuard.prototype.reportStepUp = async function (r) {
+    for (let k = VEC_LOG.length - 1; k >= 0; k--) if (VEC_LOG[k].u === this.userId) { if (r && r.passed) VEC_LOG[k].mfa = true; break; }
+    return origStep.call(this, r);
+  };
+}
 const raw = JSON.parse(fs.readFileSync(DATA, 'utf8'));
-const SUBJ = Object.keys(raw.subjects).map(Number);
+// --only 19,7 : pemilik yang dinilai (penyusup tetap semua subjek lain) — untuk diagnosa
+const ONLY = arg('only', null);
+const ALL_SUBJ = Object.keys(raw.subjects).map(Number);
+const SUBJ = ALL_SUBJ;
+const OWNERS = ONLY ? ONLY.split(',').map(Number) : ALL_SUBJ;
+const TRACE = process.argv.includes('--trace');
 
 async function freshGuard(uid) {
   const g = new BehaviorGuard();
@@ -87,6 +113,13 @@ function cloneGuard(g, uid) {
   c.cfg = structuredClone(g.cfg);
   c.sessions = g.sessions.map(s => ({ ...s }));
   c.userId = uid; c.onRisk = () => {}; c.capture = null; c._aggBuf = [];
+  // penyusup datang lewat KUNJUNGAN BARU (muat-halaman): konteks jendela-geser (C-42)
+  // hidup di memori tab pemilik dan tidak ikut. Tanpa ini vonis pertama penyusup
+  // tercampur event pemilik dan hasilnya tak mewakili serangan kredensial curian.
+  c._ctx = [];
+  // masa berlaku step-up (C-43) milik PERANGKAT & kunjungan pemilik: penyusup
+  // berkredensial curian datang dari perangkatnya sendiri tanpa verifikasi yang lolos.
+  c._mfaPassedAt = null;
   return c;
 }
 
@@ -149,7 +182,7 @@ const needsStepUp = e => e && !e.enrollment && !e.abstain && e.level !== 'LOW' &
 const own = [], imp = [], take = [], perUser = {}, noVerdict = [];
 let ownerIntegrity = 0, impIntegrity = 0;
 const t0 = performance.now();
-for (const uid of SUBJ) {
+for (const uid of OWNERS) {
   let g = await freshGuard('owner-' + uid);
   const sess = raw.subjects[uid];
   const pu = perUser[uid] = { n: 0, friction: 0, block: 0, model: 0 };
@@ -167,7 +200,9 @@ for (const uid of SUBJ) {
      g.onRisk = e => pre.push(e); await new Promise(r => setTimeout(r, 120)); g.onRisk = () => {};
      if (OWNER_MFA === 'pass') for (const e of pre) if (needsStepUp(e)) await g.reportStepUp({ passed: true });
    }
-   for (const e of [...pre, ...await feed(g, evs, LIVE && OWNER_MFA === 'pass', sh)]) {
+   const got = [...pre, ...await feed(g, evs, LIVE && OWNER_MFA === 'pass', sh)];
+   if (TRACE) for (const e of got) console.error(`  [${uid}] ${e.level} ${e.action} el=${e.eligible} n=${e.idle ? e.idle.events : '-'} ctx=${e.context ?? '-'} ${(e.reasons || [])[0] || ''}`);
+   for (const e of got) {
     if (!e || e.convergence === 'enrollment' || e.enrollment || e.abstain) continue;
     if (e.integrity) { ownerIntegrity++; }
     const rec = { uid, level: e.level, modelLevel: e.modelLevel ?? e.level, score: e.modelScore ?? e.score,
@@ -176,7 +211,7 @@ for (const uid of SUBJ) {
                   // aturan status (lantai lengket, absen, bukti sebagian)
                   cause: e.level === 'LOW' ? 'LOW' : [e.modelLevel !== 'LOW' && 'model', e.stickyFloor && 'lantai',
                           e.reverifyAfterAway && 'absen', e.partialEvidence && 'sebagian', e.integrity && 'bot'].filter(Boolean).join('+') || 'lain',
-                  n: e.idle ? e.idle.events : undefined };
+                  n: e.idle ? e.idle.events : undefined, graced: !!e.stepUpGrace };
     own.push(rec); pu.n++;
     if (rec.level !== 'LOW') pu.friction++;
     if (rec.modelLevel !== 'LOW') pu.model++;
@@ -215,6 +250,7 @@ for (const uid of SUBJ) {
       if (vs.length) seq.push(vs.some(e => e.blocked) ? 'BLOCK' : (vs.every(e => e.level === 'LOW') ? 'LOW' : vs.find(e => e.level !== 'LOW').level));
     }
     take.push({ uid, vid, seq });
+    if (TRACE && seq.length && seq.every(s => s === "LOW")) console.error(`  TAK-KETAHUAN pemilik ${uid} <- penyusup ${vid}: ${seq.length} sesi dinilai, sesi penyusup tersedia ${raw.subjects[vid].length}, jendela/sesi ${raw.subjects[vid].slice(0, TAKEOVER).map(e => e.length).join(",")} event`);
   }
   process.stderr.write(`subjek ${uid} selesai (${((performance.now() - t0) / 1000).toFixed(0)} dtk)\n`);
 }
@@ -276,7 +312,7 @@ function summarize(label, ownSet, impSet, takeSet) {
 }
 if (DUMP) {
   const by = {};
-  for (const u of SUBJ) {
+  for (const u of OWNERS) {
     const o = own.filter(x => x.uid === u), i = imp.filter(x => x.uid === u), t = take.filter(x => x.uid === u);
     by[u] = { n: o.length, fr: o.filter(x => x.level !== 'LOW').length, blk: o.filter(x => x.blocked).length,
               m: i.length, pass: i.filter(x => x.level === 'LOW').length, nv: noVerdict.filter(x => x.uid === u).length,
@@ -287,6 +323,7 @@ if (DUMP) {
   }
   fs.writeFileSync(DUMP, JSON.stringify({ k_low: K_LOW, data: path.basename(DATA), compress: COMPRESS, ownerMfa: OWNER_MFA, by }));
 }
+if (DUMP_VEC) fs.writeFileSync(DUMP_VEC, JSON.stringify({ features: (await import('../sdk/core/config.js')).DEFAULTS?.features ?? null, log: VEC_LOG }));
 console.log(`MODE: ${LIVE ? 'LIVE (jendela ' + 30 + ' dtk, seperti produksi)' : 'SESI UTUH (satuan riset, BUKAN produksi)'}`);
 console.log(`SDK: sdk/behaviorguard.js | k_low=${K_LOW ?? 'default'} | data ${path.basename(DATA)} (afk=${raw.afk}) | kompresi ${COMPRESS} dtk | pemilik-MFA=${OWNER_MFA}`);
 const rl = own.filter(x => x.rateLimited).length + imp.filter(x => x.rateLimited).length;
@@ -296,6 +333,8 @@ summarize('SEMUA 16 subjek', own, imp, take);
 const rf = new Set(REPORT_FOLD);
 summarize('HANYA belahan-lapor seed 42 (8 subjek yang tak dipakai memilih k_low)',
   own.filter(x => rf.has(x.uid)), imp.filter(x => rf.has(x.uid)), take.filter(x => rf.has(x.uid)));
+console.log(`
+masa berlaku step-up (C-43): ${own.filter(x => x.graced).length} vonis pemilik MEDIUM tidak ditanya ulang (${pct(own.filter(x => x.graced).length, own.length).toFixed(1)}%)`);
 const causes = {}; for (const x of own) if (x.level !== 'LOW') causes[x.cause] = (causes[x.cause] || 0) + 1;
 console.log('\npenyebab gesekan pemilik: ' + Object.entries(causes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' | '));
 const fr = Object.entries(perUser).map(([u, p]) => [u, pct(p.friction, p.n)]);

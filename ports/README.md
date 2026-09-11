@@ -23,7 +23,7 @@ port that is **byte-for-byte compatible within 1e-9**.
 - **[`core/SPEC.md`](../core/SPEC.md)** — the normative spec. If code and spec disagree,
   the spec is right and the code is the bug.
 - **[`core/golden.json`](../core/golden.json)** — the numeric contract: explicit inputs and
-  expected outputs. **227 checks** (112 feature-extraction + 115 engine). Inputs are written
+  expected outputs. **255 checks** (140 feature-extraction + 115 engine). Inputs are written
   out literally, so a new port never has to reproduce any generator — just read, compute, compare.
 
 An implementation is **conformant** only if it passes every check in `golden.json`.
@@ -32,11 +32,11 @@ An implementation is **conformant** only if it passes every check in `golden.jso
 
 | Language | Runtime reach | How to run | Status |
 |---|---|---|---|
-| **JavaScript** | browser, Node, edge/serverless, extensions | `core/conformance.html` via a local server | ✅ 227/227 |
-| **Python** | servers, data/ML, scripting | `python core/conformance.py` | ✅ 227/227 |
-| **Rust** | systems, WASM, CLIs, high-perf | `cd ports/rust && cargo run --release` | ✅ 227/227 |
-| **Java** | JVM, **Android**, Kotlin/Scala, enterprise | `cd ports/java && java BgConformance.java ../../core/golden.json` | ✅ 227/227 |
-| **WASM** | *any* WASM host: browser, Node, Deno, Go, Python, edge | `node ports/wasm/run.mjs` — see [`ports/wasm/`](wasm/) | ✅ 227/227 |
+| **JavaScript** | browser, Node, edge/serverless | `node core/conformance.node.mjs` or `core/conformance.html` | ✅ 255/255 |
+| **Python** | servers, data/ML, scripting | `python core/conformance.py` | ✅ 255/255 |
+| **Rust** | systems, WASM, CLIs, high-perf | `cd ports/rust && cargo run --release` | ✅ 255/255 |
+| **Java** | JVM, **Android**, Kotlin/Scala, enterprise | `cd ports/java && java BgConformance.java ../../core/golden.json` | ✅ 255/255 |
+| **WASM** | *any* WASM host: browser, Node, Deno, Go, Python, edge | `node ports/wasm/run.mjs` — see [`ports/wasm/`](wasm/) | ✅ 255/255 |
 
 All are **dependency-free** — standard library only, including a small hand-written JSON
 reader in the compiled ports. No package registry, no network, no build server needed.
@@ -63,7 +63,7 @@ python core/conformance.py
 python -m http.server 8099   # then browse http://127.0.0.1:8099/core/conformance.html
 ```
 
-Each prints `lulus 227 / 227` and `HASIL: SESUAI` ("passed 227/227", "RESULT: MATCHES").
+Each prints `lulus 255 / 255` and `HASIL: SESUAI` ("passed 255/255", "RESULT: MATCHES").
 
 ## Porting to a new language
 
@@ -75,7 +75,7 @@ The bar is deliberately low because the hard part — defining the contract — 
 2. Mirror **[`core/bg_core.py`](../core/bg_core.py)** — it's the readable reference.
 3. Read `core/golden.json`, run the two paths (`feature_cases` then `cases`), compare each
    value with a relative tolerance of `1e-9`.
-4. When you print `227 / 227`, you're done. Add a row to the table above.
+4. When you print `255 / 255`, you're done. Add a row to the table above.
 
 Good next targets by ecosystem reach: **Go** (cloud/CLI), **Swift** (iOS), **C#** (.NET),
 **WASM** (compile the Rust core once, call it from anywhere).

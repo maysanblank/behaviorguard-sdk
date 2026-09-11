@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
+riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
+lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
+`node tools/eval_sdk.mjs --live` (README "Results").
+
 experiment.py — cari rumus PENGGANTI centroid yang LEBIH AKURAT tapi tetap
 browser-trainable & nol-dependensi (portabel ke 5 runtime). Protokol held-out
 8/8 IDENTIK dengan reproduce_db.py (tune q di FOLD-TUNE, lapor di FOLD-REPORT).

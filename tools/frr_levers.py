@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""frr_levers.py - mengukur tuas-tuas yang bisa menurunkan FRR, di bawah protokol
+"""
+KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
+riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
+lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
+`node tools/eval_sdk.mjs --live` (README "Results").
+frr_levers.py - mengukur tuas-tuas yang bisa menurunkan FRR, di bawah protokol
 held-out yang sama dengan reproduce_db.py.
 
 Latar: 5-belahan memberi FRR 23% pada FAR 2% (core/DRIFT.md). Itu tidak layak kirim.

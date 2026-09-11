@@ -1,6 +1,6 @@
 # Architecture
 
-One script tag sits on top of an 18-module engine, a normative specification, and five
+One script tag sits on top of a 17-module engine, a normative specification, and five
 independently verified runtime implementations. This document shows what is underneath the
 one-liner, and — more usefully — *why* each piece is shaped the way it is.
 
@@ -41,13 +41,14 @@ while a JVM or a WASM host scores.
 
 ## 2. Module map
 
-`sdk/` is the single source of truth. `extension/` is a synchronized copy, and CI fails the
-build if the two diverge.
+`sdk/` is the single source of truth. `dist/behaviorguard.js` is generated from it by
+`tools/bundle.py`; never edit the bundle by hand.
 
 | Module | Responsibility | In spec? |
 | --- | --- | --- |
 | `behaviorguard.js` | Orchestrator: session lifecycle, storage, verdict assembly, step-up policy | No |
-| `core/capture.js` | Auto-attach DOM listeners, throttle, buffer cap | No |
+| `core/capture.js` | Auto-attach DOM listeners, throttle, buffer cap; keys become per-page tokens (typed characters are never kept) | No |
+| `core/idle.js` | Duplicate removal, idle-gap compression, evidence gating and tail carry | No |
 | `core/features.js` | 28 features from raw events | Yes (§8) |
 | `core/standardize.js` | Per-feature z-score against the owner baseline | Yes |
 | `core/isolation_forest.js` | Isolation Forest, 100 trees, seed 42 | Yes |
@@ -58,7 +59,7 @@ build if the two diverge.
 | `core/lifecycle.js` | Retrain cadence, two-sided convergence rule | No |
 | `core/challenge.js` | Rhythm template construction and verification | No |
 | `core/mfa.js` | The step-up prompt UI and capture integrity | No |
-| `core/integrity.js` | Bot and replay heuristics | No |
+| `core/integrity.js` | Bot heuristics (constant timing, duplicate events, impossible speed) | No |
 | `core/ratelimit.js` | Per-user token bucket | No |
 | `core/token.js` | HMAC session token | No |
 | `core/fingerprint.js` | Lightweight device fingerprint | No |
@@ -75,20 +76,24 @@ identical across all five runtimes to within 1e-9.
 ### Browser-trainable was a hard constraint, not a preference
 
 The single most consequential decision. Every detector must be able to **fit** in a browser,
-not merely evaluate. That immediately excluded scikit-learn's `OneClassSVM`, which is the
-better-performing model in offline evaluation (FAR 0.9%) but requires libsvm's QP solver.
+not merely evaluate. That immediately excluded scikit-learn's `OneClassSVM`, which looked
+strongest in the offline research harness but requires libsvm's QP solver.
 
 The first attempt at a browser-trainable substitute — a centroid-RBF approximation — was
 much worse than expected: it collapses the entire baseline pool to a single mean point,
-throwing away the shape of the distribution, and produced **FAR 36.2%**.
+throwing away the shape of the distribution, and produced **FAR 36.2%** in that harness.
 
 Mahalanobis distance with diagonal shrinkage keeps the covariance structure, is trainable
-with a Gauss-Jordan inverse in a few hundred lines, and brought FAR to **5.4%** at a
-comparable FRR. The decision boundary becomes an ellipse instead of a sphere, so an impostor
+with a Gauss-Jordan inverse in a few hundred lines, and brought the same harness to
+**FAR 5.4%** at a comparable FRR. (Those harness figures scored whole ~700-event research
+sessions; the numbers for the library as shipped, scored in 30-second windows, are in the
+README — see `core/DRIFT.md` C-29.) The decision boundary becomes an ellipse instead of a sphere, so an impostor
 sitting near the owner's mean but off-axis is still caught.
 
-Shrinkage (α = 0.3 toward the scaled identity) is required, not decoration: with 10–30
-baseline sessions and 28 features, the sample covariance is near-singular.
+Shrinkage toward the scaled identity is required, not decoration: with 10–30 baseline
+sessions and 28 features, the sample covariance is near-singular. It is adaptive —
+`min(0.9, max(0.3, d/n))` — heavy while the pool is small, decaying to 0.3 as it grows
+(C-22).
 
 ### The ensemble weights are inverted from what you might expect
 
@@ -107,13 +112,13 @@ combined on a common scale rather than in their native, incomparable units.
 ### Parametric thresholds instead of quantiles
 
 Risk bands are calibrated per user from that user's own baseline score distribution:
-`low = mean − 3.3·std`, `medium = mean − 5.3·std`.
+`low = mean − k_low·std`, `medium = low − k_med_extra·std`, with `k_low = 1.75` and
+`k_med_extra = 2.0`. `k_low` was re-selected on the shipped library (8 subjects tuned, 8
+reported, 5 splits) and is the one knob an integrator moves: `init({calibration:{k_low}})`.
 
 The earlier quantile approach (`low` at the 10th percentile) depends on a single order
 statistic of a 10–30 point sample, which is fragile. The parametric form uses the whole
-distribution. The operating point differs substantially — on the same model, quantile
-calibration gives FRR 37.5% / FAR 0.1% while parametric gives FRR 16.1% / FAR 5.4%. Both
-are on the same ROC curve; parametric sits at a point far more usable in production.
+distribution.
 
 `k_med_extra = 2.0` deliberately widens the `MEDIUM` band, because `MEDIUM` means "ask" and
 `HIGH` means "ask more firmly" — neither blocks on its own.
@@ -147,6 +152,39 @@ three consecutive `LOW` sessions decay it. The raw model verdict is still report
 (`modelLevel`, `modelScore`, `stickyFloor`) so the smoothing is always visible and never
 silently rewrites the score.
 
+### A verdict needs evidence
+
+The window ticks every 30 seconds, but a verdict waits for **150 events** (`minEventsAssess`).
+Evidence that has not reached 150 is carried forward for up to 15 minutes instead of being
+thrown away. Measured on the shipped library, per-owner EER is 23.8% at 30 events and 12.3%
+at 150 (C-33). A window with nothing to judge emits `UNKNOWN` / `ABSTAIN` — never silence,
+because silence is always read as safe. Sensitive actions call `assessNow()`, which judges
+immediately, has no side effects, and returns `UNKNOWN` (fail closed) when evidence is short.
+
+### Idle is compressed, absence is a security event
+
+Gaps of 15 s or more are shortened to 15 s before features are computed, so an owner who
+steps away for coffee is not measured as a different person (AFK-injected held-out: FRR
+18.4% → 9.7% at unchanged FAR, C-28). Absence is still recorded from the original
+timestamps: 5 minutes away resets accumulated trust, 15 minutes forces a re-verification
+even if behavior afterwards looks normal — the lunch-break attack.
+
+### Step-up grace
+
+After a **proven** step-up (the built-in rhythm challenge verified, or
+`reportStepUp({passed:true})`), `MEDIUM` verdicts do not ask again for `mfa.graceSec` (900 s).
+Owner friction clusters by day, not by window — an owner flagged once in a visit is usually
+flagged in every window of it — so without this an owner who just passed an OTP was asked
+again 30 seconds later. `HIGH` still asks, absence revokes it, and graced windows never
+train. Owner friction 16.4% → 14.5% with no security metric worse (C-43).
+
+### Replay is not behavior
+
+A recorded session replayed with shifted timestamps produces a feature vector identical to
+a stored one, which the model would happily call `LOW`. No human repeats themself that
+closely (nearest real owner pair: 0.289 standardized RMS), so anything under 0.05 is `HIGH`
+and never trains (C-35).
+
 ### Prequential evaluation
 
 Session *N* is judged by a model that has not seen session *N*. Retraining happens *after*
@@ -168,15 +206,21 @@ stabilizes. Both together bound over- and under-fitting.
 ## 4. Session lifecycle
 
 ```
- session 1 .. 10     ENROLLMENT       vectors pooled, no verdicts emitted
- session 11          first verdict    model built from the 10 baseline sessions
- every 6 sessions    RETRAIN CHECK    convergence test; rebuild if not converged
- any session         QUALITY GATE     >=100 events, >=5 s, >=6 non-zero features
-                                      failing sessions are scored but never train
+ windows 1 .. 10     ENROLLMENT       vectors pooled, no verdicts emitted
+ window 11           first verdict    model built from the 10 baseline vectors
+ every 6 new LOW     RETRAIN CHECK    convergence test; rebuild if not converged
+ any window          QUALITY GATE     >=100 events, >=5 s, >=6 non-zero features, typed
+                                      (not pasted/autofilled); failing windows never train
 ```
 
-A session closes on a 30-second timer, on `visibilitychange`, or on page unload; a tail
-buffer is persisted across navigation so SPA route changes do not truncate it.
+The window ticks on a 30-second timer and on `visibilitychange`. On `pagehide` the unscored
+tail is banked to storage and scored on the next page load, so multi-page navigation does
+not lose evidence. Nothing else may call `endSession()` on unload — an earlier auto-boot did,
+drained the buffer first, and lost every last page (C-40).
+
+The enrollment block is an anchor: it never rolls out of the training pool, which keeps the
+last 90 trusted windows on top of it (C-31). Stored history is bounded to the enrollment
+block plus 240 entries.
 
 Deduplication of the training pool ignores temporal features, so two genuinely similar
 sessions at different times of day are correctly treated as one behavioral sample.
@@ -190,11 +234,11 @@ The engine is defined once, in prose and numbers, and implemented five times.
 ```
 core/SPEC.md      normative prose  ─┐
 core/bg_core.py   readable reference │──▶ core/golden.json ──▶ every port must match
-                                    ─┘     227 checks, 1e-9
+                                    ─┘     255 checks, 1e-9
 ```
 
-`golden.json` contains **literal inputs and expected outputs** — 112 feature-extraction
-checks plus 115 engine checks. A new port never has to reproduce a generator; it reads the
+`golden.json` contains **literal inputs and expected outputs** — 140 feature-extraction
+checks (five event streams × 28 features) plus 115 engine checks. A new port never has to reproduce a generator; it reads the
 file, computes, and compares.
 
 Two portability traps are called out in the spec because both silently break ports:
@@ -203,10 +247,14 @@ Two portability traps are called out in the spec because both silently break por
    common cause of a failing port.
 2. **Time-of-day is computed in UTC.** It was local time once, which made feature extraction
    non-deterministic across machines — fatal for a "one brain, every runtime" claim.
+3. **A mouse turn exactly on `pi/4`.** `atan2` differs by one ulp between math libraries
+   there, which flipped `direction_changes` in one language on 5 of 192 real sessions while
+   every golden check passed. The spec compares against `pi/4 + 1e-9` and the golden file
+   now carries those real move pairs (SPEC 1.3, C-34).
 
 CI runs Python, JavaScript, Rust, Java and WASM on every push, and additionally verifies
-that `golden.json` is still in sync with its generator, that the step-up regression suite
-passes, and that `sdk/` and `extension/` have not diverged.
+that `golden.json` is still in sync with its generator and that the step-up, detector-gate
+and integrity regression suites pass.
 
 ---
 
@@ -216,12 +264,13 @@ passes, and that `sdk/` and `extension/` have not diverged.
 | --- | --- | --- |
 | One `<script>` tag | You control the page | `dist/behaviorguard.js` |
 | ES module | You want explicit lifecycle control | `sdk/behaviorguard.js` |
-| MV3 extension | You do **not** control the page | `extension/` |
 | Hybrid (optional) | Baseline must follow the user across devices | `server/` |
 
-Hybrid mode transmits only 28-float feature vectors, never raw events. It is off unless both
-a key and an endpoint are supplied, and it carries real risks of its own — read
-[THREAT-MODEL.md](THREAT-MODEL.md) §4.6 before enabling it.
+Hybrid mode transmits only 28-float feature vectors and verdicts, never raw events. It is
+off unless a public key, an endpoint **and** a short-lived user token (HMAC, minted by your
+backend with the tenant secret) are all supplied; the server takes the user id from the
+token, never from the request. Read [THREAT-MODEL.md](THREAT-MODEL.md) §4.6 before enabling
+it.
 
 ---
 
@@ -231,14 +280,15 @@ Three tiers, tried in order, so the library never crashes in a private window or
 data blocked: **IndexedDB → localStorage → in-memory**.
 
 Values are HMAC-sealed for tamper detection. This is **integrity, not confidentiality** —
-the payload is base64, not encrypted. localStorage writes are capped at 1.8 MB, and session
-history is trimmed to the most recent 30 entries there.
+the payload is base64, not encrypted — which is why typed characters are never captured in
+the first place (C-30). localStorage writes are capped at 1.8 MB; when trimming, the
+enrollment block is always kept and only the progressive history is shortened.
 
 ---
 
 ## 8. Where to look next
 
 - [`core/SPEC.md`](core/SPEC.md) — the normative contract
-- [`core/DRIFT.md`](core/DRIFT.md) — measured gaps between engines, and the C-1..C-10 audit
+- [`core/DRIFT.md`](core/DRIFT.md) — measured gaps between engines, and the C-1..C-43 audit
 - [`ports/README.md`](ports/README.md) — how to add a sixth runtime
 - [`THREAT-MODEL.md`](THREAT-MODEL.md) — trust boundaries and known attacks

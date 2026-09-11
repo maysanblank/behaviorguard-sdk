@@ -53,7 +53,7 @@ Setiap elemen: bilangan pecahan presisi ganda (IEEE-754 binary64), selalu finit.
 | `model2` / `mahalanobis.shrink` | `mahalanobis` / 0.3 | detektor-2 & shrinkage diagonal (v1.2) |
 | `ensembleMinSamples` | IF 8 / SVM 20 / LSTM 24 | gerbang: di bawah ini bobotnya dinolkan |
 | `calibrationMode` | `parametric` | mode kalibrasi ambang (v1.2) |
-| `k_low` / `k_med_extra` | 3.3 / 2.0 | kalibrasi parametrik: `low = mean − k·std` |
+| `k_low` / `k_med_extra` | 1.75 / 2.0 | kalibrasi parametrik: `low = mean − k·std` (v1.3.0; dulu 3.3) |
 | `q_low` / `q_med` | 0.10 / 0.033 | kuantil kalibrasi ambang (mode `quantile` lama) |
 | `blockAfterConsecutiveHigh` | 2 | aturan-run: block keras hanya bila HIGH berturut ≥ N (lapisan SDK) |
 | `baseline` / `retrainEvery` | 10 / 6 | siklus pendaftaran & latih-ulang |
@@ -128,7 +128,7 @@ padanan `sdk/core/mahalanobis.js`. Dari kolam baseline terstandardisasi `X` (n×
 Urutan operasi float (loop i-luar/j-dalam, normalisasi baris penuh, eliminasi)
 **wajib identik** antar bahasa agar bit-exact 1e-9. Rumus lama tetap ada di `ocsvm.js`
 untuk `model2='centroid'`. Latar: centroid menggepengkan kolam jadi satu titik → FAR 36%;
-Mahalanobis memperhitungkan kovarians → held-out FAR **5.4%**, FRR **16.1%**, AUC **0.942**, EER **11.9%** (kalibrasi parametrik; reproduksi: `python tools/experiment.py --calib parametric`). Lihat `DRIFT.md`.
+Mahalanobis memperhitungkan kovarians → held-out FAR **5.4%**, FRR **16.1%**, AUC **0.942**, EER **11.9%** di harness riset offline yang menilai sesi utuh (~700 event). Pustaka yang dikirim, diukur per jendela 30 dtk yang benar-benar ia nilai (`tools/eval_sdk.mjs --live`), dilaporkan di README. Lihat `DRIFT.md` C-29.
 
 ### 5.5 Kalibrasi & campuran
 Untuk tiap sub-model: rerata + simpangan baku skor baseline, lalu **S-2**
@@ -166,10 +166,11 @@ FAR tetap. Lapisan ini **di luar** golden (golden menguji `to_action` stateless)
 Sebuah implementasi disebut **sesuai** hanya bila lulus `core/golden.json`,
 toleransi relatif **1e-9**:
 
-- **§8 ekstraksi fitur** — 4 kasus fitur × 28 elemen = **112 pemeriksaan** vektor,
-  dari event mentah eksplisit di `feature_cases`.
+- **§8 ekstraksi fitur** — 5 kasus fitur × 28 elemen = **140 pemeriksaan** vektor,
+  dari event mentah eksplisit di `feature_cases` (kasus kelima, `_fc_atan2_pi4_edges`,
+  berisi gerakan mouse nyata yang berbelok tepat di `pi/4`; v1.3.0).
 - **§2–§7 mesin** — 3 kasus, 16 probe = **115 pemeriksaan** vonis, dari `cases`.
-- Total **227 pemeriksaan**.
+- Total **255 pemeriksaan**.
 
 Golden menyimpan **input eksplisit** (bukan generator), jadi port tidak perlu meniru
 generator apa pun. Titik antara juga disimpan (`stats_*`, `if_stats`, `svm_stats`,
@@ -177,12 +178,12 @@ generator apa pun. Titik antara juga disimpan (`stats_*`, `if_stats`, `svm_stats
 
 | Implementasi | Cara uji | Status |
 |---|---|---|
-| Python `core/bg_core.py` | `python core/conformance.py` | **SESUAI** 227/227 |
-| JS `sdk/core/*.js` (browser) | buka `core/conformance.html` lewat server lokal | **SESUAI** 227/227 |
-| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **SESUAI** 227/227 |
-| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **SESUAI** 227/227 |
-| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **SESUAI** 227/227 |
-| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (atau `ports/wasm/index.html`) | **SESUAI** 227/227 |
+| Python `core/bg_core.py` | `python core/conformance.py` | **SESUAI** 255/255 |
+| JS `sdk/core/*.js` (browser) | buka `core/conformance.html` lewat server lokal | **SESUAI** 255/255 |
+| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **SESUAI** 255/255 |
+| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **SESUAI** 255/255 |
+| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **SESUAI** 255/255 |
+| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (atau `ports/wasm/index.html`) | **SESUAI** 255/255 |
 | Port baru (Go/Swift/C#) | tiru logika `conformance.py`; lihat `ports/README.md` | — |
 
 Semua port **nol dependensi** (pustaka standar saja, termasuk pembaca JSON kecil

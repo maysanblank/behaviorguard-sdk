@@ -20,7 +20,8 @@ session that already passed the login check.
 | Remote-access scam ("support" takes over) | Victim hands over live control | Yes |
 | Unattended, unlocked device | Physical access to a live session | Yes |
 | Malicious extension driving the page | Script-driven interaction | Partly (see §4.3) |
-| Automated bots and replay | Synthetic event timing | Partly (see §4.3) |
+| Automated bots | Synthetic event timing | Partly (see §4.3) |
+| Recorded-and-replayed behavior | Victim's own events captured and replayed | Yes, exact and near-exact replays (see §4.3) |
 | Credential phishing before login | — | No, this is a login-time control |
 | Server-side compromise | — | No |
 | Network interception | — | No, use TLS |
@@ -28,7 +29,8 @@ session that already passed the login check.
 The core assumption is simple and worth stating because everything rests on it:
 **the legitimate owner's interaction dynamics are stable enough over time, and distinct
 enough between people, to be discriminative.** Our data supports this for ordinary users
-(AUC 0.942 over 16 subjects), but see §5 on how far that evidence stretches.
+(per-owner AUC 0.927 over 16 subjects, measured on the shipped library in 30-second
+windows), but see §5 on how far that evidence stretches.
 
 ---
 
@@ -73,7 +75,8 @@ client-side UI can be bypassed by anyone willing to open devtools.
 
 | Data | Where it lives | Leaves the device? |
 | --- | --- | --- |
-| Raw events (coordinates, key timings) | Memory, drained every 30 s | **Never** |
+| Raw events (coordinates, key timings) | Memory; an unscored tail may wait in localStorage up to 15 min between page loads | **Never** |
+| Typed characters | Not captured: keys become per-page tokens before anything is buffered | **Never** |
 | 28-float feature vector | IndexedDB / localStorage | Only in hybrid mode |
 | Rhythm template (dwell/flight medians + MAD) | IndexedDB / localStorage | **Never** |
 | Verdicts and reasons | Passed to your callback | Only if you send them |
@@ -97,10 +100,11 @@ leaves the device. That is your call to make, and worth making deliberately.
 An attacker who can observe the victim's typing and mouse behavior, then deliberately
 imitate its rhythm, is **not covered by our evaluation and may well succeed**.
 
-Our FAR of 5.4% is measured against *other ordinary users behaving naturally*, not against
+Our impostor figures — 13.3% of impostors pass their first verdict, 9.2% pass their whole
+session — are measured against *other ordinary users behaving naturally*, not against
 adversaries optimizing to defeat the model. These are different threat classes and the
 second is strictly harder. We have not tested it, we do not claim resistance to it, and we
-would expect a determined, well-informed mimic to have meaningfully better odds than 5.4%.
+would expect a determined, well-informed mimic to have meaningfully better odds.
 
 An attacker who can additionally read local storage can retrieve the rhythm template
 directly — dwell and flight medians per position — and synthesize a passing sample without
@@ -127,6 +131,13 @@ mouse velocity, event rates above 80/s, non-monotonic or duplicated timestamps.
 This catches naive automation. It does **not** catch an attacker who injects humanlike
 jitter, and a synthetic profile tuned against these specific thresholds will pass. The
 checks are heuristics, not a bot-detection product.
+
+**Replay** of the victim's own recorded behavior (XSS, a malicious extension, a recorder)
+produces a feature vector identical to a stored session, which the model would call `LOW`.
+A window within 0.05 standardized RMS of any stored window (temporal features excluded) is
+now `HIGH` and never trains; the closest pair of genuine owner windows in our data is 0.289
+(C-35). A replay that is resampled, reordered or mixed with new input far enough to move
+beyond that distance is not caught by this rule and falls back to the model.
 
 ### 4.4 The main detector could be permanently inactive — FIXED
 
@@ -181,20 +192,25 @@ shape and finiteness must match the template exactly before any comparison happe
 miss budget is proportional to phrase length rather than a fixed two. Locked by 20
 regression tests in `core/challenge.test.mjs`, enforced in CI. See `core/DRIFT.md` §C-1.
 
-### 4.7 Cross-device baseline poisoning via hybrid mode — OPEN if you enable it
+### 4.7 Cross-device baseline poisoning via hybrid mode — MITIGATED (was open)
 
-In hybrid mode the client authenticates to your server with a **publishable key embedded in
-client-side JavaScript**. Anyone who reads your page source can obtain it and `POST`
-arbitrary feature vectors to `/baseline` for any user id, poisoning that account's baseline
-across all its devices.
+Earlier, the client authenticated with only the **publishable key embedded in every page**.
+Anyone who read it could read any account's behavior template, overwrite it with their own
+vectors (and so be accepted as the owner on every device that adopted it), forge verdicts,
+and list every tenant's key through an unauthenticated `/tenants` (C-39).
 
-The client also adopts the server's baseline whenever the server holds at least as many
-vectors as the local device.
+Now each tenant has a public `pk` and a secret `sk`. Every account call needs a short-lived
+user token, `HMAC-SHA256(sk, pk|userId|exp)`, minted by **your** backend after a real login;
+the server takes the user id from the token, never from the request. The operator dashboard
+needs `sk`, escapes every client-supplied field and is served under a nonce CSP, and the
+server whitelists the shape of logged verdicts (C-41). The client adopts a server baseline
+**only on a device that has no enrollment of its own**; an existing local baseline is never
+replaced remotely.
 
-**If you enable hybrid mode, your server must authenticate the user independently** — a
-session cookie or bearer token tied to the real account — and must never treat the
-publishable key as authorization. The bundled `server/` is a reference implementation for
-the demo, not a hardened service.
+What remains: anyone holding a valid token for a user (for example, script running in that
+user's session) can write that user's server baseline, and a **new** device of that user
+would adopt it. Mint tokens with short lifetimes, only after authentication you trust. The
+bundled `server/` is a reference implementation (Flask + SQLite), not a hardened service.
 
 ### 4.8 An ignored step-up prompt disabled the whole step-up layer — FIXED
 
@@ -232,9 +248,36 @@ time. Green tests bounded the numeric engine, not the product.
 An attacker who can produce two consecutive `HIGH` verdicts triggers `BLOCK_SESSION`. Since
 anyone with brief physical access to an unlocked session can behave unlike the owner on
 purpose, this can lock a user out. The run rule (block only on *consecutive* `HIGH`) and the
-step-up path exist to keep false blocks rare — held-out owner block rate is a few percent —
-but a deliberate attempt will succeed. Provide a recovery path that does not depend on
-BehaviorGuard.
+step-up path exist to keep false blocks rare — the owner block rate is 0% when a step-up
+path exists, but **25.7% if the integrator wires none** (C-32), so wire `reportStepUp` or
+leave the built-in challenge on — and a deliberate attempt will still succeed. Provide a
+recovery path that does not depend on BehaviorGuard.
+
+### 4.11 Step-up grace — accepted residual risk
+
+After a **proven** step-up, `MEDIUM` verdicts do not ask again for 15 minutes (C-43). An
+attacker who never passes a step-up — a stolen password on their own device — never gets
+this. The residual case is someone who takes over the owner's **unlocked, just-verified**
+session within 5 minutes of the owner leaving: for the rest of the 15 minutes, only a `HIGH`
+verdict asks them to verify. A 5-minute absence, a page load after one, a device-fingerprint
+change or a replay match all revoke the grace, and graced windows never train the model.
+Set `mfa.graceSec: 0` if this trade is wrong for you.
+
+### 4.12 Not enough evidence — by design, and it has a cost
+
+A verdict needs 150 events. An impostor session too short to produce them is never scored
+(0.6% of impostor sessions; 2.8% when long idle gaps are injected). Such a window emits
+`UNKNOWN`/`ABSTAIN`, never "safe" — but a routine callback that only reacts to `HIGH` will
+let it through. An attacker who logs in and changes the recovery email within 20 seconds
+can finish before the first routine verdict. **Every sensitive action must call
+`assessNow()` and treat `UNKNOWN` as "verify".**
+
+### 4.13 Enrollment is unprotected
+
+The first 10 eligible windows produce no verdict — there is nothing to compare against.
+Windows whose keystroke block was pasted or autofilled never count toward enrollment (their
+typing features are structurally empty), so a user who only ever uses a password manager
+may take a long time to enroll. Until enrollment completes, rely on your other controls.
 
 ---
 
@@ -249,9 +292,11 @@ BehaviorGuard.
 - **Hyperparameters were selected on this dataset.** We use a held-out split for the
   headline number, so it is not circular, but absolute values will move on new data. We
   trust the *ordering* of design decisions more than the decimals.
-- **The shipped engine and the research engine still differ.** Two clamps diverge, moving
-  8 of 16 probe verdicts. Tracked in `core/DRIFT.md`. Numbers must be quoted with the engine
-  that produced them.
+- **Earlier numbers measured other engines.** The Python research harnesses imitated the
+  library and each missed it somewhere (whole sessions instead of 30-second windows,
+  different thresholds, no sticky floor). Headline numbers now come from
+  `tools/eval_sdk.mjs`, which drives the shipped code itself (C-29); the Python tools are
+  research-only.
 
 ---
 

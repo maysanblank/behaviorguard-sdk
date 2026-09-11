@@ -3,7 +3,7 @@
 **Detect account takeover from how someone moves, types and navigates — entirely on the
 device, with a built-in step-up challenge. One script tag. No backend required.**
 
-[![conformance](https://img.shields.io/badge/conformance-227%2F227%20across%205%20runtimes-brightgreen)](core/golden.json)
+[![conformance](https://img.shields.io/badge/conformance-255%2F255%20across%205%20runtimes-brightgreen)](core/golden.json)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#no-dependencies-anywhere)
 
@@ -29,10 +29,10 @@ unacceptable price.
 **BehaviorGuard makes the session itself continuously accountable.** It builds a model of
 how *this account's owner* behaves — mouse dynamics, keystroke rhythm, navigation shape —
 and re-scores the live session every 30 seconds. When the behavior stops looking like the
-owner, it raises a step-up challenge that verifies identity by **typing rhythm**, not by a
-code the attacker may already control.
+owner, it asks for a step-up: its own typing-rhythm challenge, or your OTP / WebAuthn.
 
-Raw interaction data never leaves the browser.
+Raw interaction data never leaves the browser. The characters a user types are never
+stored — not even on the device.
 
 ---
 
@@ -55,11 +55,26 @@ scoring, enrollment, retraining and the step-up prompt all start on their own.
 
 **The built-in step-up needs no code at all.** On a `MEDIUM` or `HIGH` verdict the library
 raises its own challenge and asks the user to retype their security phrase; identity is
-proven from per-character dwell and flight timing. Disable it with
-`window.BehaviorGuardConfig = { mfa: { enabled: false } }`.
+proven from per-character dwell and flight timing.
 
-Prefer explicit control? [docs/QUICKSTART.md](docs/QUICKSTART.md) covers the ES-module
-form, the config object, the browser-extension deployment and framework notes.
+**Already have OTP or WebAuthn?** Turn the built-in prompt off and report your own result:
+
+```js
+window.BehaviorGuardConfig = { mfa: { enabled: false } };
+// ...on a MEDIUM/HIGH verdict, run your own step-up, then:
+BehaviorGuard.reportStepUp({ passed: true });   // clears the verdict, lets the session train
+```
+
+**Before a sensitive action** (change email or password, payout, new device), ask for a
+verdict right now instead of waiting for the next 30-second window:
+
+```js
+const v = BehaviorGuard.assessNow();
+if (v.level !== 'LOW') requireStepUp();          // UNKNOWN means "not enough evidence": fail closed
+```
+
+More: [docs/QUICKSTART.md](docs/QUICKSTART.md) covers the ES-module form, the config
+object, the optional server and framework notes.
 
 ---
 
@@ -71,7 +86,13 @@ session 11+      LOW              ALLOW_SESSION
                  MEDIUM           REQUIRE_MFA       -> step-up prompt
                  HIGH             REQUIRE_STEPUP    -> step-up prompt
                  HIGH twice       BLOCK_SESSION     -> run rule: sustained, not a bad day
+                 UNKNOWN          ABSTAIN           -> not enough evidence yet (never "safe")
 ```
+
+A verdict needs 150 events of evidence; the window still ticks every 30 seconds and
+collects evidence until it has enough. After the owner passes a step-up, `MEDIUM` verdicts
+do not ask again for 15 minutes (`HIGH` always does, and walking away for 5 minutes
+cancels it).
 
 Every verdict carries its reasoning — the top deviating features with their z-scores — so
 `HIGH` is never a black box:
@@ -86,57 +107,71 @@ Every verdict carries its reasoning — the top deviating features with their z-
 
 ## Results
 
-Held-out evaluation on **653 sessions from 16 human subjects**. Subjects are split 8/8 with
-seed 42: hyperparameters are tuned on the first 8 and **reported on the 8 the model never
-saw**. Impostors are simulated by scoring every other subject's sessions against each
-owner's model.
+Measured on **653 sessions from 16 human subjects** by driving the **shipped library
+itself** (`node tools/eval_sdk.mjs --live`): every session is replayed through the real
+capture-to-verdict path in 30-second windows, exactly as `setInterval` runs in a browser.
+Each research session is one visit (page load, state read back from storage). Owners answer
+step-ups through the public `reportStepUp` API. Impostors are the other 15 subjects, each
+arriving through a fresh visit on the owner's account.
 
-**Shipped configuration** — Mahalanobis (shrinkage 0.3), weights IF 0.30 / Mahalanobis
-0.70, parametric thresholds (`k_low` 3.3, `k_med_extra` 2.0):
-
-| Metric | Value |
+| Owner | |
 | --- | --- |
-| FRR (owner asked to re-verify) | **16.1%** |
-| FAR (impostor scored as normal) | **5.4%** |
-| ROC AUC | 0.942 |
-| EER | 11.9% |
-| FAR at FRR 15% | 7.7% |
+| Verdicts that asked the owner to verify | **14.5%** |
+| Owner blocked | **0%** |
 
-Reproduce exactly: `python tools/experiment.py --calib parametric`, row `maha s.3 3/7`.
+| Impostor (stolen password, own device) | |
+| --- | --- |
+| Passed the first verdict with no friction | **13.3%** |
+| Got through the **whole** session with no friction | **9.2%** |
+| Never assessed (session too short to collect evidence) | 0.6% |
 
-**What replacing the detector bought.** The previous shipped engine collapsed the baseline
-pool to a single average point, discarding the shape of the distribution:
+| Takeover (impostor keeps using the account, 6 sessions) | |
+| --- | --- |
+| Caught in the first session | **89.6%** |
+| Caught within 3 sessions | 98.3% |
+| Never caught in 6 sessions | **0%** |
 
-| Engine | FRR | FAR | AUC | EER |
-| --- | --- | --- | --- | --- |
-| centroid-RBF (previous) | 17.7% | **36.2%** | 0.860 | 21.0% |
-| Mahalanobis (current) | 16.1% | **5.4%** | 0.942 | 11.9% |
+Threshold-free separation, per owner: AUC **0.927**, EER **12.3%**.
 
-A 6.7x reduction in false accepts at a comparable false-reject rate, because covariance
-turns the decision boundary from a sphere into an ellipse — so an impostor sitting near the
-owner's mean is still caught.
+### Choosing an operating point
 
-**The step-up layer changes the cost of being wrong.** A single `HIGH` triggers
-verification rather than a block; only consecutive `HIGH` verdicts block. Owners have bad
-days and produce isolated outliers; a real takeover produces sustained ones.
+One knob, `init({ calibration: { k_low } })`. Smaller is stricter.
+
+| `k_low` | owner asked to verify | impostor passes 1st verdict | impostor passes whole session | takeover never caught |
+| --- | ---: | ---: | ---: | ---: |
+| 1.25 | 19.3% | 8.5% | 5.4% | 0% |
+| 1.5 | 16.5% | 11.1% | 7.4% | 0% |
+| **1.75 (default)** | **14.5%** | **13.3%** | **9.2%** | **0%** |
+| 2.0 | 13.0% | 15.6% | 11.2% | 0.4% |
+| 2.5 | 10.9% | 19.8% | 15.4% | 1.7% |
+
+The default was chosen on 8 subjects and checked on the other 8 (5 random splits), not fit
+to the whole table.
+
+**Strict mode (opt-in):** `session: { contextEvents: 450 }` lets later verdicts in a visit
+reuse the evidence just assessed. Impostors pass the first verdict 10.1% and the whole
+session 8.2%, at the same owner friction — but one impostor (of 15) went uncaught for 6
+sessions on 3 accounts, so it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42.
 
 ### Read these numbers honestly
 
-- **FAR 5.4% means roughly 1 in 18 impostor sessions still scores as normal.** This is a
-  step-up layer, not a lock. Treat `HIGH` as "make them prove it", never as proof of fraud.
-- **The impostors here are 15 other ordinary users, not attackers imitating a specific
+- **About 1 in 8 impostors passes the first check.** This is a step-up layer, not a lock.
+  Treat `HIGH` as "make them prove it", never as proof of fraud, and gate sensitive actions
+  with `assessNow()`.
+- **The impostors are 15 other ordinary users, not attackers imitating a specific
   victim.** Targeted mimicry is **untested** and is the most important open threat — see
   [THREAT-MODEL.md](THREAT-MODEL.md).
+- **Owner friction is not random noise.** It is flat across windows within a visit: an
+  owner is flagged on the *days* their behavior differs, in every window of that day. It
+  cannot be averaged away; it is what the step-up is for. That is why passing a step-up
+  now buys 15 quiet minutes.
 - **16 subjects is a small sample.** Expect several points of movement on a different
-  population. What we consider robust is the *ordering* of the design choices, not the
-  third decimal place.
-- **The research pipeline and the shipped library are not yet numerically identical.**
-  `tools/reproduce_db.py` uses scikit-learn's `OneClassSVM` and reports FRR 35.1% /
-  FAR 0.9% — a *different engine*, and not the one that ships, because it cannot train in a
-  browser. Two safety clamps also still differ between them, currently moving **8 of 16**
-  probe verdicts. This is measured and reproducible (`python core/drift_check.py`) and
-  documented in [core/DRIFT.md](core/DRIFT.md). **Any number you quote must name its
-  engine.** The table above is the shipped one.
+  population and a different site.
+- **Earlier numbers in this repository described other engines.** FRR 16.1% / FAR 5.4% came
+  from a Python harness scoring whole research sessions (~700 events), a unit the library
+  never scores; FRR 35.1% / FAR 0.9% came from scikit-learn's One-Class SVM, which does not
+  ship. The table above is the first measurement of the library users actually get
+  ([core/DRIFT.md](core/DRIFT.md) C-27, C-29).
 
 ---
 
@@ -148,24 +183,26 @@ the *same* numeric contract — not asserted to match, **proven** to match.
 
 | Runtime | Reach | Conformance |
 | --- | --- | --- |
-| JavaScript | browser, Node, edge, extensions | 227/227 |
-| Python | servers, data and ML | 227/227 |
-| Rust | systems, CLI, embedded | 227/227 |
-| Java | JVM, **Android**, Kotlin | 227/227 |
-| WASM | any WASM host | 227/227 |
+| JavaScript | browser, Node, edge | 255/255 |
+| Python | servers, data and ML | 255/255 |
+| Rust | systems, CLI, embedded | 255/255 |
+| Java | JVM, **Android**, Kotlin | 255/255 |
+| WASM | any WASM host | 255/255 |
 
-- [`core/SPEC.md`](core/SPEC.md) — the normative specification. *If the code and the spec
-  disagree, the spec is right and the code is the bug.*
-- [`core/golden.json`](core/golden.json) — 227 explicit input/output checks, tolerance 1e-9.
+- [`core/SPEC.md`](core/SPEC.md) — the normative specification (v1.3.0). *If the code and
+  the spec disagree, the spec is right and the code is the bug.*
+- [`core/golden.json`](core/golden.json) — 255 explicit input/output checks, tolerance 1e-9,
+  including real mouse-move pairs that sit exactly on a `pi/4` turn, where `atan2` differs by
+  one ulp between math libraries (C-34).
 
-CI runs all five on every push, plus a regression suite for the step-up layer and a check
-that `sdk/` and `extension/` have not diverged.
+CI runs all five on every push, plus the regression suites for the step-up layer, the
+detector gate and the integrity heuristics.
 
 ### No dependencies, anywhere
 
 No `npm install`, no `pip install`, no model download, no network call. Every port uses
 only its standard library — including a hand-written JSON reader in the compiled ones. The
-entire browser build is one 87 KB classic script.
+entire browser build is one ~160 KB classic script.
 
 ---
 
@@ -186,37 +223,38 @@ products for 10-12 sessions to enroll, then let someone else drive and watch the
 move.
 
 ```bash
-python core/conformance.py      # engine vs golden.json   -> 227/227
-node   core/challenge.test.mjs  # step-up regression      -> 20/20
-node   core/ensemble.test.mjs   # detector-gate regression -> 11/11
-python core/drift_check.py      # honest engine-gap report
+python core/conformance.py         # engine vs golden.json        -> 255/255
+node   core/lifecycle.test.mjs     # long-run lifecycle & APIs    -> 49/49
+node   core/privacy.test.mjs       # no typed characters stored   -> 10/10
+node   core/challenge.test.mjs     # step-up regression
+python server/test_app.py          # optional server: auth, XSS   -> 35/35
 ```
 
 `demo/attack_sim.html` runs four attack vectors — paste replay, speed bot, minimal mouse
-path, and rhythm mimicry — against a seeded owner model. All four should come back `HIGH`,
-and the mimicry one should be caught by the **ensemble**, not by the bot heuristics.
+path, and rhythm mimicry — against a seeded owner model.
 
 ---
 
 ## How it works
 
 ```
-DOM events -> 28 features -> z-score vs owner -> IF 0.30 + Mahalanobis 0.70
-                                                          |
-                                    parametric thresholds (mean - k*std)
-                                                          |
-                                      LOW / MEDIUM / HIGH + reasons
-                                                          |
-                                     step-up challenge (typing rhythm)
+DOM events -> drop duplicates -> compress idle gaps -> 150 events of evidence
+          -> 28 features -> z-score vs owner -> IF 0.30 + Mahalanobis 0.70
+          -> per-owner thresholds (mean - k*std) -> LOW / MEDIUM / HIGH + reasons
+          -> replay check, sticky floor, run rule, away/re-verify, step-up grace
+          -> step-up (typing rhythm, or your OTP via reportStepUp)
 ```
 
-- **Enrollment** — the first 10 sessions build the owner baseline; no verdicts are emitted.
-- **Retraining** — every 6 sessions, but **only sessions that scored `LOW`, or that passed a
-  genuine step-up verification, are ever allowed to teach the model.** That is what stops a
-  slow takeover from gradually becoming the new normal.
-- **Prequential** — session *N* is always judged by a model that has not seen session *N*.
-- **Convergence** — training stops on a two-sided rule: a window of consecutive `LOW`
-  sessions **and** a cohort guard, so the model neither over- nor under-fits.
+- **Enrollment** — the first 10 eligible sessions build the owner baseline. They are an
+  anchor: they never roll out of the training pool.
+- **Trust loop** — only windows that scored `LOW`, or that passed a genuine step-up, are
+  ever allowed to teach the model. That is what stops a slow takeover from gradually
+  becoming the new normal.
+- **Idle** — gaps of 15 s or more are shortened, not cut, so a coffee break is not read as
+  a different person. A 5-minute absence resets trust; 15 minutes asks for re-verification
+  (the lunch-break attack).
+- **Replay** — a session that is a near-exact copy of a stored one (recorded and replayed)
+  is `HIGH` and never trains.
 
 Full detail: [ARCHITECTURE.md](ARCHITECTURE.md) and [core/SPEC.md](core/SPEC.md).
 
@@ -238,17 +276,17 @@ drop into a site.
 The combination below is what we have not found elsewhere:
 
 1. **It trains in the browser.** Every detector is browser-trainable, so there is no server
-   ML and no model-serving step. This is a real design constraint, not a convenience — it is
-   why Mahalanobis was chosen over an SVM that needs libsvm to fit.
+   ML and no model-serving step.
 2. **Fusion, not keystrokes alone.** 28 features across mouse dynamics, keystroke timing,
    temporal rhythm, navigation and form interaction.
-3. **A drop-in library, not a notebook.** One tag, one line, zero dependencies.
-4. **The step-up challenge is included.** Most detectors emit a score and stop; the hard
-   part is what you do at `MEDIUM`. BehaviorGuard ships the response, not just the signal.
+3. **A drop-in library, not a notebook.** One tag, zero dependencies.
+4. **The response is included.** Most detectors emit a score and stop; BehaviorGuard ships
+   the step-up, the run rule, the re-verify-after-absence rule and the integrator APIs.
 5. **Cross-language conformance as a first-class artifact.** A spec plus a golden file means
    a port is *proven* equivalent, not hoped to be.
-6. **A published, honest gap report.** [`core/DRIFT.md`](core/DRIFT.md) documents where our
-   own numbers do not yet line up. We would rather ship that than quietly round it away.
+6. **It measures itself.** `tools/eval_sdk.mjs` replays research data through the shipped
+   code, and [`core/DRIFT.md`](core/DRIFT.md) records every place where an earlier number
+   turned out to describe something else.
 
 ---
 
@@ -256,30 +294,25 @@ The combination below is what we have not found elsewhere:
 
 The step-up layer is **client-side re-authentication for convenience and friction**, not a
 cryptographic second factor. An attacker who fully controls the browser can bypass any
-client-only check. For a real security boundary, verify the rhythm server-side as well, or
-combine it with an out-of-band factor.
+client-only check. For a real security boundary, pair it with a server-verified factor and
+`reportStepUp`.
 
-We audited our own defenses adversarially and found and fixed **eighteen** logic flaws.
-Two are worth naming, because both defeated the product entirely and neither was visible
-from reading the code:
+We audited our own defenses adversarially and fixed more than forty logic flaws, each with
+its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/DRIFT.md)
+(C-1 to C-43). A few that defeated the product entirely:
 
 - **A complete step-up bypass.** Pasting the phrase produced zero keystroke events, and
-  `NaN > x` silently returns false in JavaScript — so an empty rhythm recorded no
-  violations and passed every check.
-- **The main detector was never active.** The ensemble gate needs 20 pooled sessions, but
-  the convergence rule froze the model at 10. For any user whose early sessions were
-  consistent, the Mahalanobis detector — 70% of the ensemble weight — stayed switched off
-  permanently, and an impostor session scoring -1811 on that detector was still returned
-  as `LOW`.
-- **Ordinary humans were blocked as bots.** The capture layer never populated `velocity`,
-  while the bot heuristic read it — so every value was 0, its standard deviation was 0, and
-  any session that was mostly mouse movement was reported as "constant velocity". The same
-  gap pinned one of the 28 features at a constant, so the model was trained on a live
-  feature and deployed against a dead one. Found only by driving a real page; every earlier
-  audit had fed synthetic events straight past the capture layer.
-
-Each fix is documented with its failure mode, its empirical evidence, and a regression
-test, in [`core/DRIFT.md`](core/DRIFT.md) sections C-1 to C-24.
+  `NaN > x` silently returns false in JavaScript — so an empty rhythm passed every check.
+- **The main detector was never active.** The convergence rule froze the model before the
+  Mahalanobis detector (70% of the weight) was switched on; an impostor scoring -1811 on it
+  was still returned as `LOW`.
+- **Passwords were stored in plain text.** The capture layer kept the characters users
+  typed and banked them to localStorage. Keys are now per-page tokens; the one feature that
+  needs them is bit-identical (C-30).
+- **The public key opened everything.** On the optional server, the `pk` embedded in every
+  page could read and overwrite any account's behavior template. Per-user HMAC tokens now
+  gate every account call, and the operator dashboard escapes all client-supplied fields
+  under a nonce CSP (C-39, C-41).
 
 Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-MODEL.md).
 
@@ -287,28 +320,28 @@ Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-M
 
 ## Privacy
 
-Raw events never leave the device. Features are computed locally and the baseline is stored
-locally (IndexedDB, falling back to localStorage, then memory). There is no telemetry and
-no default network destination.
+Raw events never leave the device, and typed characters are never stored anywhere. Features
+are computed locally and the baseline is stored locally (IndexedDB, falling back to
+localStorage, then memory). There is no telemetry and no default network destination.
 
-The optional hybrid mode syncs a **28-float feature vector per session** to a server you
-run, so an account baseline can follow a user across devices. Raw events are still never
-transmitted. It is off unless you supply both a key and an endpoint.
+The optional server ([server/README.md](server/README.md)) syncs a **28-number feature
+vector per window** to a server you run, so a baseline can follow a user across devices,
+and logs verdicts for an operator dashboard. It is off unless you supply a public key, an
+endpoint **and** a short-lived user token minted by your own backend.
 
 ---
 
 ## Project layout
 
 ```
-sdk/          the library (entry + 18 core modules)    <- single source of truth
+sdk/          the library (entry + 17 core modules)    <- single source of truth
 dist/         one-file bundle for a plain <script> tag
-loader/       one-line drop-in loader
-extension/    MV3 extension for third-party sites      <- synced from sdk/, verified in CI
+loader/       one-line drop-in loader for the ES-module build
 core/         SPEC.md, golden.json, conformance runners, DRIFT.md, tests
 ports/        Rust, Java and WASM implementations
-demo/         offline two-pane demo (clean site + external monitor)
-tools/        reproduction, experiments, bundler, sync
-server/       optional hybrid-mode backend and dashboard
+demo/         offline demos (clean site + external monitor, shops, accuracy lab)
+tools/        eval_sdk.mjs (measures the shipped library), research scripts, bundler
+server/       optional backend (baseline sync, verdict log) and operator dashboard
 ```
 
 ---
@@ -321,8 +354,8 @@ server/       optional hybrid-mode backend and dashboard
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | Measured engine gaps and the C-1..C-24 security audit |
-| [docs/USULAN-KONTEKS-DAN-IDLE.md](docs/USULAN-KONTEKS-DAN-IDLE.md) | Idle handling (C-23), session-length invariance (C-24), the measurement-validity gate, and 20+ cases where the *instrument* changes rather than the person |
+| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-43 audit: every defect, its evidence and its test |
+| [server/README.md](server/README.md) | Optional server: keys, user tokens, dashboard |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 
 ---

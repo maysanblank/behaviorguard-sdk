@@ -29,8 +29,12 @@ export async function verifyToken(token, secret){
   let diff=0; for(let i=0;i<expected.length;i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
   return diff===0;
 }
-export async function getOrCreateSecret(userId){
+// C-41: `storage` DIOPER pemanggil. Dulu `await import('../storage.js')` — di bundle satu
+// berkas (dist/) jalur relatif itu menunjuk ke /storage.js milik SITUS: 404 di tiap muat
+// halaman (terlihat di tab Network integrator), lalu jatuh ke catch dan rahasia dibuat acak
+// ulang tiap kunjungan.
+export async function getOrCreateSecret(userId, storage){
   const key = `bg:secret:${userId}`;
   // S1 fix: secret disimpan via storage seal (HMAC), bukan plaintext localStorage
-  try{ const {storage}=await import('../storage.js'); const v=await storage.get(key); if(v) return v; const raw=crypto.getRandomValues(new Uint8Array(32)); const s=btoa(String.fromCharCode(...raw)); await storage.set(key,s); return s; }catch{ return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))); }
+  try{ if(!storage) throw new Error('storage wajib'); const v=await storage.get(key); if(v) return v; const raw=crypto.getRandomValues(new Uint8Array(32)); const s=btoa(String.fromCharCode(...raw)); await storage.set(key,s); return s; }catch{ return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))); }
 }
