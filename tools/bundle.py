@@ -65,6 +65,50 @@ def wrap(key, src, exports):
         + "return {%s};\n})();\n" % ret
     )
 
+def strip_comments(src):
+    """
+    Pengecil KONSERVATIF, tanpa dependensi: hanya membuang baris yang SELURUHNYA komentar
+    (`// ...`, blok `/* ... */` yang dibuka di awal baris), baris kosong, dan indentasi -
+    dan tidak pernah menyentuh isi template literal (CSS dialog, HTML). Komentar di ujung
+    baris kode dibiarkan: memotongnya butuh pengurai JS penuh (string, regex), dan salah
+    potong di pustaka keamanan bukan pertukaran yang layak demi beberapa KB.
+    Kesetaraannya diuji: tools/min_check.mjs menjalankan kedua berkas dengan event yang
+    sama dan mewajibkan vonis yang identik.
+    """
+    out, in_tpl, in_block = [], False, False
+    for line in src.replace("\r\n", "\n").split("\n"):
+        if in_tpl:
+            out.append(line)
+        else:
+            t = line.strip()
+            if in_block:
+                if "*/" in t:
+                    in_block = False
+                    rest = t.split("*/", 1)[1].strip()
+                    if rest:
+                        out.append(rest)
+                continue
+            if t.startswith("/*") and "*/" not in t[2:]:
+                in_block = True
+                continue
+            if t.startswith("/*") and t.endswith("*/") and t.count("*/") == 1:
+                continue
+            if t.startswith("//") or not t:
+                continue
+            out.append(t)
+        # status template literal sesudah baris ini: jumlah backtick tak-ter-escape ganjil = berganti
+        n = 0; i = 0
+        while i < len(line):
+            if line[i] == "\\":
+                i += 2; continue
+            if line[i] == "`":
+                n += 1
+            i += 1
+        if n % 2 == 1:
+            in_tpl = not in_tpl
+    return "\n".join(out) + "\n"
+
+
 def main():
     parts = []
     parts.append("/* BehaviorGuard bundle - AUTO-GENERATED oleh tools/bundle.py. Jangan edit tangan. */")
@@ -173,6 +217,14 @@ try{
         f.write("\n".join(parts))
     kb = os.path.getsize(dest)/1024
     print("OK -> dist/behaviorguard.js  (%.1f KB, %d modul)" % (kb, len(ORDER)))
+    import gzip
+    full = "\n".join(parts)
+    mini = strip_comments(full)
+    dest_min = os.path.join(out, "behaviorguard.min.js")
+    with open(dest_min, "w", encoding="utf-8", newline="\n") as f:
+        f.write(mini)
+    print("OK -> dist/behaviorguard.min.js  (%.1f KB, %.1f KB gzip)"
+          % (len(mini.encode("utf-8"))/1024, len(gzip.compress(mini.encode("utf-8"), 9))/1024))
 
     # SDK backend single-file: salin bg_core.py apa adanya ke dist/ (biar sinkron)
     import shutil

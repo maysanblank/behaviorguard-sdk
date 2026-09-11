@@ -79,6 +79,10 @@ if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'change your ema
 `BehaviorGuard.status()` gives you what to show in your own UI (learning vs protecting,
 enrollment progress, last verdict), `stop()` is logout, `forget()` erases the user's data.
 
+For production, serve `dist/behaviorguard.min.js` (118 KB, **37 KB gzip**). It is the same
+bundle with whole-line comments and indentation removed, and `node tools/min_check.mjs`
+proves it returns the identical verdict sequence.
+
 More: [docs/QUICKSTART.md](docs/QUICKSTART.md) covers the ES-module form, the config
 object, the optional server and framework notes.
 

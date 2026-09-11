@@ -66,6 +66,10 @@ if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'ganti email' })
 `BehaviorGuard.status()` memberi keadaan untuk UI Anda sendiri (masih mengenali / melindungi,
 progres pendaftaran, vonis terakhir), `stop()` untuk logout, `forget()` menghapus data pengguna.
 
+Untuk produksi, pakai `dist/behaviorguard.min.js` (118 KB, **37 KB gzip**): bundel yang sama
+tanpa baris komentar dan indentasi; `node tools/min_check.mjs` membuktikan urutan vonisnya
+identik.
+
 Panduan lengkap (modul ES, objek konfigurasi, server opsional):
 [docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang berbahasa Indonesia:
 [dist/PASANG.md](dist/PASANG.md).

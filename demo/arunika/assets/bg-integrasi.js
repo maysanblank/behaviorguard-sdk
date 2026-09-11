@@ -109,6 +109,7 @@
     // terbuka; hasil dialog itulah yang menentukan, jadi jangan bertindak sendiri.
     if (e.mfa && (e.mfa.awaiting || e.mfa.busy)) return;
     const alasan = jelaskan(e);
+    const kalimat = (daftar, cadangan) => daftar.length ? daftar.join('; ').replace(/^./, c => c.toUpperCase()) + '.' : cadangan;
     const lv = e.level;
     if (e.action === 'MFA_PASSED') {
       kunci(false);
@@ -116,14 +117,14 @@
       return;
     }
     if (e.action === 'BLOCK_SESSION' || (e.action === 'MFA_FAILED' && lv === 'HIGH')) {
-      catat({ lv: 'bad', t1: 'Sesi dihentikan', t2: alasan.join('; ') || 'Aktivitas tidak cocok dengan pemilik akun.' });
+      catat({ lv: 'bad', t1: 'Sesi dihentikan', t2: kalimat(alasan, 'Aktivitas tidak cocok dengan pemilik akun.') });
       hentikanSesi(alasan);
       return;
     }
     if (lv === 'MEDIUM' || lv === 'HIGH') {
       // dialog ditutup/gagal, atau tak ada jalur verifikasi -> kunci aksi sensitif di tab ini
       kunci(true);
-      catat({ lv: 'warn', t1: lv === 'HIGH' ? 'Aktivitas sangat tidak biasa' : 'Aktivitas tidak biasa', t2: (alasan.join('; ') || 'Pola pemakaian berbeda dari kebiasaan.') + ' Verifikasi belum diselesaikan.' });
+      catat({ lv: 'warn', t1: lv === 'HIGH' ? 'Aktivitas sangat tidak biasa' : 'Aktivitas tidak biasa', t2: kalimat(alasan, 'Pola pemakaian berbeda dari kebiasaan.') + ' Verifikasi belum diselesaikan.' });
       return;
     }
     if (e.stepUpGrace) return;      // MEDIUM yang diredam karena baru saja terverifikasi

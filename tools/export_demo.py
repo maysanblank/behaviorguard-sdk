@@ -43,6 +43,9 @@ def main():
             n += 1
     os.makedirs(os.path.join(dest, 'behaviorguard'), exist_ok=True)
     shutil.copyfile(BUNDLE, os.path.join(dest, 'behaviorguard', 'behaviorguard.js'))
+    mini = BUNDLE.replace('behaviorguard.js', 'behaviorguard.min.js')
+    if os.path.isfile(mini):   # versi produksi, untuk dipasang di situs lain
+        shutil.copyfile(mini, os.path.join(dest, 'behaviorguard', 'behaviorguard.min.js'))
     print('OK -> %s (%d berkas + pustaka %.1f KB)' % (dest, n, os.path.getsize(BUNDLE) / 1024))
 
 
