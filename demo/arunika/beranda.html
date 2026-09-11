@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beranda · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="page-hd"><div><h1 id="hai"></h1><p id="tgl"></p></div></div>
+  <div class="grid g-2">
+    <div class="grid">
+      <section class="acct" aria-label="Rekening utama">
+        <div class="lbl">Tabungan Arunika · saldo tersedia</div>
+        <div class="bal num"><span id="saldo"></span><button id="lihat" type="button" aria-label="Sembunyikan saldo"></button></div>
+        <div class="no" id="norek"></div>
+        <div class="acts"><a href="transfer.html">Transfer</a><a href="bayar.html">Bayar tagihan</a><a href="riwayat.html">Mutasi</a></div>
+      </section>
+      <section class="card">
+        <div class="card-h"><div><h2>Transaksi terakhir</h2></div><a class="small" href="riwayat.html">Lihat semua</a></div>
+        <ul class="list" id="tx"></ul>
+      </section>
+    </div>
+    <div class="grid" style="align-content:start">
+      <section class="card card-b" id="guard"></section>
+      <section class="card card-b spend">
+        <h2>Pengeluaran 30 hari</h2>
+        <div class="num" style="font-size:22px;font-weight:700;margin-top:6px" id="total"></div>
+        <div class="bar" id="bar"></div>
+        <div class="legend" id="legend"></div>
+      </section>
+      <section class="card">
+        <div class="card-h"><h2>Penerima tersimpan</h2><a class="small" href="transfer.html">Transfer</a></div>
+        <ul class="list" id="penerima"></ul>
+      </section>
+    </div>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integrasi.js"></script>
+<script src="assets/status.js"></script>
+<script src="assets/panel-demo.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('beranda.html');
+  if (!a) return;
+  document.getElementById('hai').textContent = `${A.salam()}, ${a.nama.split(' ')[0]}`;
+  document.getElementById('tgl').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  let tampil = sessionStorage.getItem('arunika:saldo-sembunyi') !== '1';
+  const saldo = document.getElementById('saldo'), lihat = document.getElementById('lihat');
+  const render = () => {
+    saldo.textContent = tampil ? A.rupiah(a.saldo) : 'Rp ••••••••';
+    lihat.innerHTML = tampil ? A.I.eyeoff : A.I.eye;
+    lihat.setAttribute('aria-label', tampil ? 'Sembunyikan saldo' : 'Tampilkan saldo');
+  };
+  lihat.onclick = () => { tampil = !tampil; sessionStorage.setItem('arunika:saldo-sembunyi', tampil ? '0' : '1'); render(); };
+  render();
+  document.getElementById('norek').textContent = 'No. rekening ' + a.rekening.replace(/(\d{4})(\d{4})(\d{2})/, '$1 $2 $3');
+  document.getElementById('tx').innerHTML = a.tx.slice(0, 6).map(t => {
+    const k = A.KAT[t.kat] || A.KAT.Transfer;
+    return `<li class="row"><div class="ico">${A.I[k.ic]}</div><div class="main"><div class="t">${A.esc(t.ket)}</div><div class="s">${A.esc(t.kat)} · ${A.tanggal(t.t)}, ${A.jam(t.t)}</div></div>
+      <div class="amt ${t.jml > 0 ? 'in' : ''}">${t.jml > 0 ? '+' : '−'}${A.rupiah(Math.abs(t.jml)).replace('Rp', 'Rp')}</div></li>`;
+  }).join('');
+  const batas = Date.now() - 30 * 86400000;
+  const per = {};
+  for (const t of a.tx) if (t.t >= batas && t.jml < 0) per[t.kat] = (per[t.kat] || 0) - t.jml;
+  const tot = Object.values(per).reduce((x, y) => x + y, 0);
+  document.getElementById('total').textContent = A.rupiah(tot);
+  const urut = Object.entries(per).sort((x, y) => y[1] - x[1]);
+  document.getElementById('bar').innerHTML = urut.map(([k, v]) => `<i style="width:${(v / tot * 100).toFixed(1)}%;background:${(A.KAT[k] || {}).c}" title="${A.esc(k)}"></i>`).join('');
+  document.getElementById('legend').innerHTML = urut.map(([k, v]) => `<span style="--c:${(A.KAT[k] || {}).c}">${A.esc(k)}</span><b class="num">${A.rupiah(v)}</b>`).join('');
+  document.getElementById('penerima').innerHTML = a.penerima.slice(0, 4).map(p => `<li class="row"><div class="avatar" style="background:#e5e7eb;color:#374151">${A.esc(A.inisial(p.nama))}</div>
+    <div class="main"><div class="t">${A.esc(p.nama)}</div><div class="s num">${A.esc(p.bank)} · ${A.esc(p.rek)}</div></div>
+    <a class="btn btn-sm" href="transfer.html?ke=${encodeURIComponent(p.rek)}">Kirim</a></li>`).join('');
+  StatusGuard.mount(document.getElementById('guard'), { ringkas: true });
+})();
+</script>
+</body>
+</html>

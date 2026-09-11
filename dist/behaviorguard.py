@@ -6,7 +6,7 @@ bg_core.py - MESIN INTI BehaviorGuard, bebas-runtime, tanpa dependensi.
 Ini implementasi acuan dari core/SPEC.md. Input dan output cuma angka:
 tidak ada DOM, tidak ada browser, tidak ada storage, tidak ada jaringan.
 
-    vektor 28-float  +  kolam baseline  ->  verdict
+    vektor 34-float  +  kolam baseline  ->  verdict
 
 Semua konstanta numerik (epsilon, clamp, seed) mengikuti SPEC.md secara harfiah.
 Kalau SPEC dan file ini beda, SPEC yang benar dan file ini yang bug.
@@ -530,7 +530,7 @@ def build_model(vectors, cfg=None):
 
 
 def score_vector(model, vec, cfg=None):
-    """vektor 28-float -> verdict. Permukaan yang harus sama di semua bahasa."""
+    """vektor 34-float -> verdict. Permukaan yang harus sama di semua bahasa."""
     cfg = cfg or DEFAULTS
     x_std = standardize(vec, model['stats'])
     score = model['ensemble'].score_one(x_std)
@@ -547,11 +547,11 @@ def score_vector(model, vec, cfg=None):
 
 
 # ======================================================================
-# EKSTRAKSI FITUR (SPEC v1.1) - event mentah -> vektor 28-float
+# EKSTRAKSI FITUR (SPEC v1.1) - event mentah -> vektor 34-float
 # ----------------------------------------------------------------------
 # Padanan persis sdk/core/features.js:extractF4. Ini melengkapi separuh
 # jalur yang belum tercakup v1.0.0:
-#     event mentah  --[ BAGIAN INI ]-->  28 angka  --[ v1.0.0 ]-->  vonis
+#     event mentah  --[ BAGIAN INI ]-->  34 angka  --[ v1.0.0 ]-->  vonis
 #
 # Kontrak: fungsi murni, deterministik, hanya angka masuk-keluar. Satu-satunya
 # sumber non-determinisme di JS asli - waktu-lokal via getHours() - diseragamkan

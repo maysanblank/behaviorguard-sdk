@@ -10,11 +10,13 @@ __M["core/config.js"] = (function(){
  * config.js - default SDK yang DIKIRIM.
  *
  * Angka resmi diukur dengan SDK ini sendiri (`node tools/eval_sdk.mjs --live`: 653 sesi,
- * 16 subjek, jendela 30 dtk persis setInterval browser, step-up dijawab lewat API publik):
- *   pemilik diminta verifikasi 14,5%   diblokir 0%
- *   penyusup lolos vonis pertama 13,3%   lolos seluruh sesinya 9,2%
- *   ambil-alih ketahuan di sesi pertama 89,6%   tak ketahuan dalam 6 sesi 0%
- *   AUC / EER per pemilik 0,927 / 12,3%
+ * 16 subjek, jendela 30 dtk persis setInterval browser, sesi URUT WAKTU seperti pemakaian
+ * nyata, step-up dijawab lewat API publik):
+ *   pemilik diminta verifikasi 11,4%   diblokir 0%
+ *   penyusup lolos vonis pertama 10,5%   lolos seluruh sesinya 7,9%
+ *   (penyusup yang memakai akun di jam biasa pemilik: 14,3% / 10,8%)
+ *   ambil-alih ketahuan di sesi pertama 95,0%   tak ketahuan dalam 6 sesi 0,4% (1/240)
+ *   AUC / EER per pemilik 0,953 / 10,1%
  * Titik operasi lain (k_low) dan mode ketat (session.contextEvents): README "Choosing an
  * operating point" dan core/DRIFT.md C-42, C-43.
  *
@@ -82,14 +84,26 @@ const DEFAULTS = {
     rounds: 3,                       // berapa kali ketik saat pendaftaran template ritme
     triggerOn: ['MEDIUM', 'HIGH'],   // vonis yang memunculkan popup
     cooldownMs: 15000,               // jangan popup lagi dalam N ms setelah lolos
-    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
-    enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
+    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri (C-45: sejak input terakhir)
+    enrollTimeoutMs: 90000,          // C-45: dihitung dari ketidakaktifan, bukan sejak dialog dibuka
     enrollSnoozeMs: 86400000,        // C-37: ditutup/diabaikan -> jangan tawarkan lagi 24 jam
     // C-43: sesudah verifikasi TERBUKTI (MFA bawaan / reportStepUp passed), MEDIUM tidak
     // meminta verifikasi ulang selama graceSec; HIGH tetap; absen >= idle.awaySec
     // mencabutnya. eval_sdk --live: pemilik diminta verifikasi 16,4% -> 14,5%, penyusup
     // lolos vonis pertama 13,5% -> 13,3%, ambil-alih tak ketahuan tetap 0%. 0 = mati.
+    // (Angka C-43 itu diukur pada 28 fitur, sesi urut-id. Tanpa grace pada mesin C-44:
+    // pemilik 12,5% -> 11,4% dengan grace, penyusup 10,5% sama.)
     graceSec: 900,
+    // C-45: tampilan & jalur cadangan dialog (semuanya opsional)
+    //   onFallback: async ({level, reasons, trigger, why}) => boolean  - OTP/WebAuthn milik
+    //               integrator, DIVERIFIKASI SERVER; memunculkan tombol "Gunakan cara lain"
+    //   autoEnroll: false -> pendaftaran irama hanya lewat BehaviorGuard.enrollMfa()
+    //   brand, accent (warna CSS), theme ('auto'|'light'|'dark'), lang ('id'|'en'), texts
+    autoEnroll: true,
+    theme: 'auto',
+    // C-45: sesudah N dialog irama gagal BERTURUT (lintas kunjungan), jalur irama dikunci dan
+    // verifikasi hanya lewat onFallback sampai berhasil. 0 = tanpa batas (tidak disarankan).
+    lockAfterFailures: 3,
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
@@ -139,6 +153,9 @@ const DEFAULTS = {
   // penyusup lolos vonis pertama 13,3% -> 10,1%, seluruh sesi 9,2% -> 8,2%, pemilik
   // 14,5% -> 14,5% — TAPI satu dari 15 penyusup lolos 6 sesi berturut di 3 akun (0 -> 3
   // dari 240 pasangan). Karena itu tidak dijadikan default. Lihat core/DRIFT.md C-42.
+  // C-44 (34 fitur, urut waktu), N=450 + k_low 2,0: pemilik 11,0%, penyusup vonis pertama
+  // 8,7%, seluruh sesi 7,9%, tak pernah ketahuan 0/240 — tapi pada data ber-AFK penyusup
+  // naik (5,6% -> 6,5% seluruh sesi), jadi tetap opt-in.
   session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0, contextEvents: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen
@@ -864,6 +881,14 @@ function createCapture(onEvent){
     // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
     // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
     // direkam: menggerakkan mouse ke popup adalah gerakan tangan yang wajar.
+    const NON_TEXT=new Set(['checkbox','radio','button','submit','reset','range','color','file','image','hidden']);
+    const isTextEntry=t=>{
+      try{
+        if(t.isContentEditable || t.tagName==='TEXTAREA') return true;
+        if(t.tagName!=='INPUT') return false;          // SELECT dan lainnya
+        return !NON_TEXT.has(String(t.type||'text').toLowerCase());
+      }catch{ return true; }
+    };
     const fromBg=e=>{ try{ return !!(e && e.target && e.target.closest && e.target.closest('[data-bg-mfa]')); }catch{ return false; } };
     let lastScrollY=window.scrollY;
     // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
@@ -897,8 +922,12 @@ function createCapture(onEvent){
       // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
       // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
       kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
-      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; push(ev); },
-      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; if(e.key==='Unidentified' || e.keyCode===229 || e.isComposing) ev.soft=true; push(ev); },
+      // C-45: `txt` = kolom yang MEMANG diisi dengan mengetik. Fokus ke <select>, kotak
+      // centang, atau tombol radio tidak pernah menghasilkan ketikan, dan dulu terbaca sebagai
+      // "form tersentuh tapi tidak diketik" (A3, autofill) -> jendelanya tak layak melatih dan
+      // ditandai bukti sebagian. Fiturnya (form_focus_count) tidak berubah: event yang sama.
+      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', txt: isTextEntry(e.target), page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
       // A3: form yang diisi password manager / autofill / tempel TIDAK menghasilkan
@@ -1003,7 +1032,7 @@ __M["core/idle.js"] = (function(){
  * `extractF4` hanya pernah melihat potongan yang KONTIGU. Rumus fitur di
  * core/SPEC.md tidak berubah sedikit pun — yang berubah hanya APA yang disuapkan
  * ke sana. Karena itu golden vector dan keempat port (Python/Rust/Java/WASM)
- * tetap 227/227 tanpa disentuh.
+ * tetap hijau tanpa disentuh.
  *
  * Idle punya DUA konsekuensi berbeda, jadi ambangnya dua:
  *   gapMs  (ukur)  — jeda yang tidak boleh diukur melintasinya.        default 30 dtk
@@ -1273,19 +1302,29 @@ function axis(samples, key) {
  * Menolak (mengembalikan null) bila sampel tidak konsisten bentuknya atau
  * frasanya terlalu pendek — lebih baik tanpa template daripada template lemah.
  */
+// C-45: keyboard layar sentuh (Android/iOS) menembakkan keydown `Unidentified` / 229 tanpa
+// waktu tahan yang bermakna, jadi dwell tidak bisa diukur di sana. Sampel dari keyboard
+// seperti itu bermode 'soft': hanya jeda antar-karakter (flight) yang dinilai. Template
+// menyimpan modenya; sampel dengan mode berbeda DITOLAK (gagal-tertutup), bukan
+// diterjemahkan - ritme keyboard fisik dan layar sentuh bukan besaran yang sama.
+const modeOf = s => (s && s.mode === 'soft') ? 'soft' : 'hard';
+
 function buildTemplate(samples) {
   if (!Array.isArray(samples) || samples.length < 2) return null;
   const nD = samples[0] && Array.isArray(samples[0].dwell) ? samples[0].dwell.length : 0;
   const nF = samples[0] && Array.isArray(samples[0].flight) ? samples[0].flight.length : 0;
   if (nD < MIN_DWELL_POINTS) return null;
+  const mode = modeOf(samples[0]);
   // setiap sampel harus berbentuk sama & finit — kalau tidak, pendaftarannya cacat
   for (const s of samples) {
     if (!s || !isFiniteArray(s.dwell, nD) || !isFiniteArray(s.flight, nF)) return null;
+    if (modeOf(s) !== mode) return null;
   }
   const d = axis(samples, 'dwell');
   const f = axis(samples, 'flight');
   return {
     v: 2,
+    mode,
     dwell: d.med, dwellMad: d.mad,
     flight: f.med, flightMad: f.mad,
     k: K_DEFAULT,
@@ -1316,6 +1355,14 @@ function verify(sample, tmpl) {
     };
   }
 
+  if (modeOf(sample) !== modeOf(tmpl)) {
+    return {
+      ok: false, modeMismatch: true,
+      reasons: [`jenis keyboard berbeda dari saat pendaftaran (${modeOf(tmpl)} vs ${modeOf(sample)})`],
+      checks: nD + nF, misses: nD + nF, budget: 0,
+    };
+  }
+  const soft = modeOf(tmpl) === 'soft';
   const k = Number.isFinite(tmpl.k) ? tmpl.k : K_DEFAULT;
   const reasons = [];
   const push = (label, i, d, lim) =>
@@ -1334,7 +1381,9 @@ function verify(sample, tmpl) {
   const rF = clampRatio(medianOf([...tmpl.flight].sort((a, b) => a - b)),
                         medianOf([...sample.flight].sort((a, b) => a - b)));
 
-  for (let i = 0; i < nD; i++) {
+  // Mode soft: dwell tidak terukur, jadi tidak dinilai SAMA SEKALI - kalau dihitung sebagai
+  // "lolos", anggaran meleset di bawah ikut membengkak dan melonggarkan cek flight.
+  if (!soft) for (let i = 0; i < nD; i++) {
     const lim = k * tmpl.dwellMad[i];
     const d = Math.abs(sample.dwell[i] * rD - tmpl.dwell[i]);
     if (d > lim) push('dwell', i, d, lim);
@@ -1347,7 +1396,7 @@ function verify(sample, tmpl) {
 
   // Anggaran meleset PROPORSIONAL, bukan angka tetap 2. Pada frasa pendek
   // "2 posisi bebas" adalah celah besar; pada frasa panjang justru terlalu galak.
-  const checks = nD + nF;
+  const checks = soft ? nF : nD + nF;
   const budget = Math.max(1, Math.floor(MISS_BUDGET_REL * checks));
   return { ok: reasons.length <= budget, reasons, checks, misses: reasons.length, budget };
 }
@@ -1357,209 +1406,581 @@ return {MIN_DWELL_POINTS: MIN_DWELL_POINTS, buildTemplate: buildTemplate, verify
 /* ---- core/mfa.js ---- */
 __M["core/mfa.js"] = (function(){
 /**
- * mfa.js - MFA behavioral BAWAAN (popup dari library).
+ * mfa.js - verifikasi step-up BAWAAN (dialog dari pustaka).
  *
- * Dipicu otomatis saat vonis MEDIUM (REQUIRE_MFA) / HIGH (REQUIRE_STEPUP) bila
- * cfg.mfa.enabled. User diminta MENGETIK ULANG frasa-rahasianya; identitas
+ * Dipicu saat vonis MEDIUM/HIGH, atau dipanggil integrator lewat BehaviorGuard.stepUp().
+ * Pengguna MENGETIK ULANG frasa yang tampil di layar; frasanya bukan rahasia - identitas
  * dibuktikan dari RITME ketik (dwell/flight per posisi) lewat challenge.js.
- * NOL dependensi, NOL backend, murni on-device.
+ * Nol dependensi, nol backend, murni di perangkat.
  *
- * CATATAN KEJUJURAN: verifikasi client-side = re-autentikasi step-up yang nyaman,
- * BUKAN faktor kedua kelas-keamanan. Attacker yang menguasai browser bisa melewati
- * cek client-only. Untuk keamanan sungguhan, verifikasi ritme sebaiknya juga
- * diulang di server (kirim sample ke endpoint) atau gabung faktor eksternal.
+ * CATATAN KEJUJURAN: verifikasi sisi-klien = re-autentikasi step-up yang nyaman, BUKAN
+ * faktor kedua kelas-keamanan. Penyerang yang menguasai browser bisa melewati cek yang
+ * seluruhnya di klien (THREAT-MODEL.md). Untuk aksi bernilai tinggi, sediakan jalur
+ * `mfa.onFallback` (OTP/WebAuthn milik integrator yang diverifikasi di server).
  *
- * API: runMfaChallenge({ phrase, template, rounds, buildTemplate, verify, title })
- *  -> Promise<{ passed, enrolled?, template?, reasons?, cancelled? }>
- *   - template null  -> mode DAFTAR: ketik `rounds`x -> kembalikan {enrolled:true, template}
- *   - template ada   -> mode VERIFIKASI: ketik 1x -> {passed, reasons}
+ * C-45 - dialog versi produksi. Yang berubah dari versi lama dan KENAPA:
+ *  - Shadow DOM + stylesheet sendiri. Dulu gaya inline di dalam halaman integrator: CSS
+ *    situs (`input{...}`, `button{...}`, reset framework) ikut mengubah tampilan dialog,
+ *    dan id tetap (#bg-inp) bisa bertabrakan dengan id milik halaman. innerHTML dengan
+ *    atribut style juga diblokir oleh CSP `style-src` yang ketat - justru kebijakan yang
+ *    dipakai situs bank. Kini: adoptedStyleSheets (tak terkena CSP inline), nol atribut
+ *    style di markup, teks dari integrator selalu lewat textContent (tak ada injeksi HTML).
+ *  - Aksesibilitas: role=dialog, aria-modal, fokus terkunci di dalam dialog (Tab berputar),
+ *    Esc = batal, pesan lewat aria-live, fokus dikembalikan ke elemen semula saat tutup.
+ *  - Keyboard layar sentuh: keydown di Android/iOS memberi `Unidentified`/229 tanpa waktu
+ *    tahan. Versi lama tak pernah bisa merekam sampel utuh di ponsel ("ritme tidak terekam
+ *    utuh" selamanya) - pemilik yang memakai ponsel terkunci tanpa jalan keluar. Kini jeda
+ *    antar-karakter diukur dari event `input` dan sampelnya bermode 'soft'.
+ *  - Backspace dulu hanya mengosongkan rekaman tapi tidak isi kolom, jadi ketikan
+ *    berikutnya pasti ditolak tanpa pengguna tahu kenapa. Kini kolom ikut dikosongkan dan
+ *    alasannya ditulis.
+ *  - Frasa tampil per huruf dan menyala sesuai ketikan; salah huruf langsung terlihat.
+ *    Frasa lengkap dikirim otomatis (tanpa harus menekan Enter).
+ *  - "Gunakan cara lain": jalur keluar untuk pemilik yang tidak bisa mengetik frasa
+ *    (ponsel lain, cedera tangan, keyboard berbeda). Tanpa jalur ini pemilik yang gagal
+ *    ritme tidak punya pilihan selain diblokir.
+ *  - Ketikan di dialog tidak bocor ke pintasan keyboard halaman (propagasi dihentikan di
+ *    host); penangkap perilaku sudah mengabaikannya lewat [data-bg-mfa].
+ *
+ * API: runMfaChallenge(opsi) -> Promise<{ passed, verified, enrolled?, template?, reasons?,
+ *        cancelled?, timedOut?, attemptsExhausted?, fallback?, modeMismatch?, reason? }>
+ *   - template null -> mode DAFTAR: ketik `rounds`x -> {enrolled:true, template}
+ *   - template ada  -> mode VERIFIKASI: ketik 1x (maks 3 percobaan) -> {verified}
  */
 
-function norm(s) { return (s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+const TEXT = {
+  id: {
+    verifyTitleMedium: 'Konfirmasi bahwa ini kamu',
+    verifyTitleHigh: 'Kami perlu memastikan ini kamu',
+    verifySubMedium: 'Cara kamu memakai akun ini sedikit berbeda dari biasanya.',
+    verifySubHigh: 'Aktivitas di sesi ini sangat berbeda dari kebiasaanmu.',
+    verifyPrompt: 'Ketik frasa di bawah dengan irama biasamu.',
+    verifySubAction: r => `Sebelum ${r}, pastikan ini memang kamu.`,
+    verifySubGeneric: 'Pastikan ini memang kamu sebelum melanjutkan.',
+    enrollTitle: 'Atur verifikasi irama ketik',
+    enrollSub: 'Saat aktivitasmu terlihat tidak biasa, kami akan memintamu mengetik frasa ini. Yang dicocokkan adalah irama ketikanmu, bukan hurufnya.',
+    enrollPrompt: n => `Ketik frasa di bawah ${n} kali seperti biasa.`,
+    enrollRound: (i, n) => `Putaran ${i} dari ${n}`,
+    placeholder: 'Ketik frasa di atas',
+    phraseLabel: 'Frasa yang harus diketik',
+    inputLabel: 'Ketik frasa',
+    cancel: 'Batal',
+    later: 'Nanti saja',
+    submit: 'Lanjut',
+    fallback: 'Gunakan cara lain',
+    close: 'Tutup',
+    wrongChar: 'Ada huruf yang tidak cocok. Tekan Backspace untuk mengulang.',
+    restarted: 'Diulang dari awal. Irama dihitung dari ketikan utuh.',
+    pasteBlocked: 'Menempel tidak bisa dipakai. Ketik frasanya.',
+    suggestion: 'Saran kata dari keyboard terdeteksi. Ketik per huruf.',
+    incomplete: 'Irama tidak terekam utuh. Ketik ulang dari awal tanpa menempel.',
+    mismatchText: 'Teks belum sama dengan frasa.',
+    again: 'Bagus. Sekali lagi.',
+    tryAgain: (i, n) => `Iramanya belum cocok. Coba lagi (${i} dari ${n}).`,
+    otherKeyboard: 'Keyboard ini berbeda dari saat kamu mengatur verifikasi.',
+    capsLock: 'Caps Lock menyala.',
+    verified: 'Terverifikasi',
+    verifiedSub: 'Terima kasih. Kamu bisa melanjutkan.',
+    enrolled: 'Verifikasi siap dipakai',
+    enrolledSub: 'Irama ketikmu tersimpan di perangkat ini.',
+    failed: 'Verifikasi tidak berhasil',
+    failedSub: 'Irama ketikan tidak cocok dengan pemilik akun.',
+    enrollFailed: 'Irama belum konsisten',
+    enrollFailedSub: 'Coba lagi lain kali di tempat yang nyaman.',
+    timeLeft: s => `Sisa waktu ${s} detik`,
+    footer: 'Irama ketik dicocokkan di perangkat ini dan tidak dikirim ke mana pun.',
+  },
+  en: {
+    verifyTitleMedium: 'Confirm it’s you',
+    verifyTitleHigh: 'We need to make sure it’s you',
+    verifySubMedium: 'The way this account is being used looks a little different from usual.',
+    verifySubHigh: 'Activity in this session is very different from your usual pattern.',
+    verifyPrompt: 'Type the phrase below at your normal pace.',
+    verifySubAction: r => `Before you ${r}, confirm it’s really you.`,
+    verifySubGeneric: 'Confirm it’s really you before continuing.',
+    enrollTitle: 'Set up typing-rhythm verification',
+    enrollSub: 'When your activity looks unusual we will ask you to type this phrase. What is matched is your typing rhythm, not the letters.',
+    enrollPrompt: n => `Type the phrase below ${n} times as you normally would.`,
+    enrollRound: (i, n) => `Round ${i} of ${n}`,
+    placeholder: 'Type the phrase above',
+    phraseLabel: 'Phrase to type',
+    inputLabel: 'Type the phrase',
+    cancel: 'Cancel',
+    later: 'Not now',
+    submit: 'Continue',
+    fallback: 'Use another method',
+    close: 'Close',
+    wrongChar: 'A character does not match. Press Backspace to start over.',
+    restarted: 'Started over. Rhythm is measured on a complete entry.',
+    pasteBlocked: 'Pasting is not accepted. Please type the phrase.',
+    suggestion: 'Keyboard word suggestion detected. Type one letter at a time.',
+    incomplete: 'Rhythm was not fully recorded. Type it again without pasting.',
+    mismatchText: 'The text does not match the phrase yet.',
+    again: 'Good. Once more.',
+    tryAgain: (i, n) => `The rhythm did not match. Try again (${i} of ${n}).`,
+    otherKeyboard: 'This keyboard differs from the one used during setup.',
+    capsLock: 'Caps Lock is on.',
+    verified: 'Verified',
+    verifiedSub: 'Thanks. You can continue.',
+    enrolled: 'Verification is ready',
+    enrolledSub: 'Your typing rhythm is stored on this device.',
+    failed: 'Verification failed',
+    failedSub: 'The typing rhythm does not match the account owner.',
+    enrollFailed: 'Rhythm was not consistent',
+    enrollFailedSub: 'Try again later somewhere comfortable.',
+    timeLeft: s => `${s} seconds left`,
+    footer: 'Typing rhythm is matched on this device and never sent anywhere.',
+  },
+};
 
-// Rekam dwell (keydown->keyup) & flight (keyup->keydown berikut) per karakter tampak.
-function attachCapture(input, onDone, expectedLen) {
-  let downAt = null, lastUp = null, tainted = false;
-  const dwell = [], flight = [];
-  function reset() { downAt = null; lastUp = null; dwell.length = 0; flight.length = 0; tainted = false; }
+function pickLang(lang) {
+  if (lang && TEXT[lang]) return lang;
+  try {
+    const l = (document.documentElement.getAttribute('lang') || navigator.language || 'id').toLowerCase();
+    return l.startsWith('en') ? 'en' : 'id';
+  } catch { return 'id'; }
+}
 
-  // C-1: jalur masuk yang TIDAK menghasilkan ritme harus diblokir di sumbernya.
-  // Tanpa ini, menempel frasa memberi teks yang benar dengan nol event ketik.
-  for (const evt of ['paste', 'drop', 'cut']) {
-    input.addEventListener(evt, (e) => {
-      e.preventDefault();
-      tainted = true;
-      input.value = ''; reset();
-      if (input._bgOnTaint) input._bgOnTaint(evt);
-    });
+const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const CSS = `
+:host{all:initial}
+*{box-sizing:border-box}
+.bd{position:fixed;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:rgba(12,16,24,.52);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color:var(--fg);-webkit-font-smoothing:antialiased;
+  letter-spacing:normal;word-spacing:normal;text-transform:none;text-indent:0;text-align:left;text-shadow:none;
+  font-style:normal;font-variant:normal;white-space:normal;direction:ltr;visibility:visible;cursor:auto;
+  pointer-events:auto;user-select:auto;-webkit-user-select:auto;
+  --bg:#ffffff;--fg:#141a24;--mut:#5b6573;--line:#e3e6eb;--soft:#f4f6f8;--ok:#1a7f4b;--bad:#c4312b;--warn:#b35c00;--accent:#1f5fd6;--on-accent:#fff}
+@media (prefers-color-scheme:dark){.bd.auto{--bg:#171b22;--fg:#e8ebf0;--mut:#9aa3af;--line:#2c323c;--soft:#1f242d;--ok:#4cc38a;--bad:#ff7b72;--warn:#e3a14a}}
+.bd.dark{--bg:#171b22;--fg:#e8ebf0;--mut:#9aa3af;--line:#2c323c;--soft:#1f242d;--ok:#4cc38a;--bad:#ff7b72;--warn:#e3a14a}
+.card{position:relative;width:100%;max-width:400px;background:var(--bg);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 24px 64px rgba(0,0,0,.28),0 2px 6px rgba(0,0,0,.08);padding:22px 22px 0;outline:none}
+.hd{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px}
+.ic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--soft);color:var(--accent)}
+.ic.high{color:var(--warn)}
+.ic svg{width:20px;height:20px}
+.tt{margin:0;font-size:16px;font-weight:650;line-height:1.3;letter-spacing:-.005em}
+.st{margin:3px 0 0;color:var(--mut);font-size:13.5px}
+.x{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;border:0;background:transparent;color:var(--mut);cursor:pointer;display:grid;place-items:center}
+.x:hover{background:var(--soft);color:var(--fg)}
+.pr{margin:0 0 8px;font-size:13px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
+.ph{font:600 17px/1.35 ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;letter-spacing:.02em;padding:11px 12px;border-radius:10px;
+  background:var(--soft);border:1px solid var(--line);margin-bottom:10px;user-select:none;-webkit-user-select:none;word-break:break-word}
+.ph span{color:var(--mut);transition:color .08s}
+.ph span.ok{color:var(--fg)}
+.ph span.bad{color:var(--bad);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+.ph span.cur{box-shadow:inset 0 -2px 0 var(--accent)}
+input{width:100%;font:inherit;font-size:15px;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;outline:none}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,95,214,.2);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.msg{min-height:20px;margin:7px 1px 0;font-size:13px;color:var(--mut)}
+.msg.err{color:var(--bad)}.msg.good{color:var(--ok)}
+.dots{display:flex;gap:6px;align-items:center}
+.dots i{width:22px;height:4px;border-radius:4px;background:var(--line)}
+.dots i.on{background:var(--accent)}
+.ft{display:flex;align-items:center;gap:8px;margin:16px 0 0;padding:0 0 18px}
+.sp{flex:1}
+button.b{font:inherit;font-size:14px;font-weight:600;border-radius:9px;padding:8px 15px;cursor:pointer;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button.b:hover{background:var(--soft)}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.pri:hover{filter:brightness(1.07);background:var(--accent)}
+button.lnk{border:0;background:none;padding:8px 2px;color:var(--accent);font-weight:600;cursor:pointer;font:inherit;font-size:13.5px}
+button:focus-visible,.x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.foot{margin:0 -22px;padding:10px 22px 12px;border-top:1px solid var(--line);color:var(--mut);font-size:12px;display:flex;gap:6px;align-items:center}
+.foot svg{width:13px;height:13px;flex:none}
+.res{text-align:center;padding:10px 0 24px}
+.res .big{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;margin:4px auto 12px}
+.res .big svg{width:26px;height:26px}
+.res.ok .big{background:var(--soft);background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.res.bad .big{background:var(--soft);background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+.res h2{margin:0;font-size:16px;font-weight:650}
+.res p{margin:4px 0 0;color:var(--mut);font-size:13.5px}
+.tl{font-size:12px;color:var(--mut)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:420px){.card{padding:18px 16px 0}.foot{margin:0 -16px;padding:10px 16px 12px}}
+`;
+
+const ICON = {
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/><path d="M12 8v4.5M12 16h.01"/></svg>',
+  keys: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>',
+  x: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  cross: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>',
+};
+
+let sheetCache = null;
+function applyStyles(root) {
+  try {
+    if (root.adoptedStyleSheets !== undefined && typeof CSSStyleSheet === 'function') {
+      if (!sheetCache) { sheetCache = new CSSStyleSheet(); sheetCache.replaceSync(CSS); }
+      root.adoptedStyleSheets = [sheetCache];
+      return;
+    }
+  } catch {}
+  const st = document.createElement('style'); st.textContent = CSS; root.appendChild(st);
+}
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;      // hanya dipakai untuk ikon SVG konstan di atas
+  return e;
+}
+
+/**
+ * Perekam ritme untuk satu kolom input. Merekam DUA jalur sekaligus:
+ *  - hard: keydown->keyup (dwell) dan keyup->keydown berikut (flight) - keyboard fisik;
+ *  - soft: waktu tiap karakter bertambah di event `input` - keyboard layar sentuh.
+ * Mode dipilih di akhir: soft hanya bila keyboard memang melaporkan tombol `Unidentified`.
+ */
+function createRecorder(input, hooks) {
+  // Per tombol, bukan "tombol terakhir": pengetik cepat menekan huruf berikut SEBELUM
+  // melepas huruf sebelumnya (rollover). Versi lama menyimpan satu `downAt`, sehingga
+  // rollover mengacaukan pasangan tekan/lepas dan sampel sering tidak utuh.
+  let tainted = false, sawSoft = false, prevLen = 0;
+  const downs = [], ups = [], open = new Map(), softT = [];
+  const reset = () => { tainted = false; prevLen = 0; downs.length = 0; ups.length = 0; open.clear(); softT.length = 0; };
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const isSoftKey = e => e.isComposing || e.keyCode === 229 || e.key === 'Unidentified' || e.key === 'Process';
+
+  const clearAll = why => { input.value = ''; reset(); hooks.onRestart(why); };
+
+  for (const t of ['paste', 'drop']) {
+    input.addEventListener(t, e => { e.preventDefault(); clearAll('paste'); });
   }
+  input.addEventListener('beforeinput', e => {
+    const it = e.inputType || '';
+    if (it === 'insertFromPaste' || it === 'insertFromDrop' || it === 'insertFromYank' || it === 'insertReplacementText') {
+      e.preventDefault(); clearAll(it === 'insertReplacementText' ? 'suggestion' : 'paste');
+    }
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'CapsLock' || (e.getModifierState && e.getModifierState('CapsLock'))) hooks.onCaps(!!(e.getModifierState && e.getModifierState('CapsLock')));
+    if (isSoftKey(e)) { sawSoft = true; return; }
+    if (e.key === 'Enter') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); if (input.value) clearAll('backspace'); return; }
+    if (e.key.length !== 1 || e.repeat) return;
+    // spasi ganda/di depan tidak mengubah teks (dinormalisasi) tapi menambah satu posisi
+    // ritme -> sampel tak sebentuk dengan template. Dicegah di sumbernya.
+    if (e.key === ' ' && (!input.value || input.value.endsWith(' '))) { e.preventDefault(); return; }
+    open.set(e.code || e.key, downs.length);
+    downs.push(now());
+  });
+  input.addEventListener('keyup', e => {
+    if (isSoftKey(e)) return;
+    const id = e.code || e.key;
+    const i = open.get(id);
+    if (i == null) return;
+    open.delete(id);
+    ups[i] = now();
+    hooks.onKeyup();
+  });
+  input.addEventListener('input', e => {
+    const len = input.value.length;
+    const it = e.inputType || '';
+    if (it.startsWith('delete') || len < prevLen) {
+      // Backspace di keyboard layar sentuh tidak lewat keydown yang bisa dicegah
+      if (input.value) { clearAll('backspace'); return; }
+      reset(); hooks.onChange(); return;
+    }
+    if (len === prevLen + 1) softT.push(now());
+    else if (len > prevLen + 1) tainted = true;         // saran kata / isi otomatis beberapa huruf
+    prevLen = len;
+    hooks.onChange();
+  });
 
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); return; }
-    // Ctrl+V / Cmd+V: 'v' lolos filter panjang-1 dan tercatat sebagai satu dwell
-    // palsu. Abaikan setiap penekanan bermodifier.
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key.length !== 1) return;            // abaikan modifier/nav
-    const t = performance.now();
-    if (lastUp != null) flight.push(t - lastUp);
-    downAt = t;
-  });
-  input.addEventListener('keyup', (e) => {
-    if (e.key === 'Backspace' || e.key === 'Delete') { reset(); return; }
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key.length !== 1 || downAt == null) return;
-    const t = performance.now();
-    dwell.push(t - downAt);
-    lastUp = t;
-  });
-  input._bgSample = () => ({ dwell: dwell.slice(), flight: flight.slice() });
-  input._bgReset = reset;
-  // Sampel sah hanya bila SETIAP karakter di kolom berasal dari ketikan dan
-  // tidak pernah ada tempel. Dibandingkan dengan isi kolom (bukan panjang frasa)
-  // supaya beda spasi tidak salah-tolak. Dicek sebelum verify(), bukan
-  // dipercayakan padanya.
-  input._bgIntact = () => {
-    const n = input.value.length;
-    return !tainted && n > 0 && dwell.length === n && flight.length === n - 1;
+  return {
+    reset,
+    sample() {
+      const n = input.value.length;
+      if (tainted) return { error: 'suggestion' };
+      if (sawSoft) {
+        if (softT.length !== n || n < 2) return { error: 'incomplete' };
+        const fl = []; for (let i = 1; i < n; i++) fl.push(softT[i] - softT[i - 1]);
+        return { mode: 'soft', dwell: new Array(n).fill(0), flight: fl };
+      }
+      if (n === 0 || downs.length !== n || open.size) return { error: 'incomplete' };
+      const dwell = [], flight = [];
+      for (let i = 0; i < n; i++) {
+        if (!Number.isFinite(ups[i])) return { error: 'incomplete' };
+        dwell.push(ups[i] - downs[i]);
+        if (i > 0) flight.push(downs[i] - ups[i - 1]);   // negatif = rollover, itu juga ciri orang
+      }
+      return { mode: 'hard', dwell, flight };
+    },
+    pendingKey: () => open.size > 0,
   };
-  input._bgCounts = () => ({ dwell: dwell.length, flight: flight.length, tainted });
 }
 
-function overlay() {
-  const wrap = document.createElement('div');
-  wrap.setAttribute('data-bg-mfa', '');
-  wrap.style.cssText =
-    'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;' +
-    'justify-content:center;background:rgba(15,18,26,.55);backdrop-filter:blur(3px);' +
-    'font:14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0d1117';
-  const card = document.createElement('div');
-  card.style.cssText =
-    'background:#fff;color:#0d1117;max-width:380px;width:calc(100% - 40px);' +
-    'border-radius:14px;padding:22px 22px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35);' +
-    'border:1px solid rgba(0,0,0,.08)';
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    card.style.background = '#161b22'; card.style.color = '#e6edf3';
-    card.style.border = '1px solid #30363d';
-  }
-  wrap.appendChild(card);
-  return { wrap, card };
-}
-
-function runMfaChallenge(opts) {
+/**
+ * @param {object} o
+ *   phrase, template|null, rounds, buildTemplate, verify
+ *   level: 'MEDIUM'|'HIGH' (verifikasi) - menentukan nada teks
+ *   timeoutMs, lang ('id'|'en'), texts (timpa sebagian teks), accent (warna CSS), brand (nama situs)
+ *   allowFallback: tampilkan "Gunakan cara lain" (hanya mode verifikasi)
+ *   title/subtitle: timpa judul/subjudul (kompatibel dengan versi lama)
+ */
+function runMfaChallenge(o) {
   const {
-    phrase, template = null, rounds = 3, buildTemplate, verify,
-    title = 'Verifikasi keamanan',
-    // C-18: TANPA batas waktu, popup yang diabaikan membuat Promise ini tidak
-    // pernah selesai -> `endSession()` menggantung selamanya, dan `_mfaBusy`
-    // tidak pernah direset sehingga SELURUH lapisan step-up mati untuk sisa
-    // hidup halaman. Terlihat di uji live: satu popup terlantar di sesi 11
-    // mematikan MFA untuk semua sesi sesudahnya.
-    timeoutMs = 120000,
-  } = opts;
-  if (typeof document === 'undefined') {
-    return Promise.resolve({ passed: false, cancelled: true, reason: 'no-dom' });
+    phrase: rawPhrase, template = null, rounds = 3, buildTemplate, verify,
+    level = 'MEDIUM', timeoutMs = 120000, lang, texts, accent, brand,
+    allowFallback = false, title, subtitle, theme = 'auto', trigger = 'verdict', reason = null,
+  } = o || {};
+  if (typeof document === 'undefined' || !document.documentElement) {
+    return Promise.resolve({ passed: false, verified: false, cancelled: true, reason: 'no-dom' });
   }
+  const L = { ...TEXT[pickLang(lang)], ...(texts || {}) };
+  const phrase = String(rawPhrase || '').replace(/\s+/g, ' ').trim();
   const enrollMode = !template;
-  const need = enrollMode ? rounds : 1;
+  const need = enrollMode ? Math.max(2, rounds | 0) : 1;
+  const MAX_ATTEMPTS = 3;
   const samples = [];
+  const prevFocus = document.activeElement;
 
-  return new Promise((resolve) => {
-    const { wrap, card } = overlay();
-    const muted = card.style.color === '#e6edf3' ? '#8b949e' : '#57606a';
-    const accent = '#2563eb';
-    card.innerHTML =
-      `<div style="font-weight:700;font-size:16px;margin-bottom:4px">${title}</div>` +
-      `<div id="bg-sub" style="color:${muted};margin-bottom:14px;line-height:1.45"></div>` +
-      `<div style="font-weight:600;letter-spacing:.3px;padding:9px 12px;border-radius:8px;` +
-      `background:${muted}1a;margin-bottom:10px;user-select:none">${phrase}</div>` +
-      `<input id="bg-inp" type="text" autocomplete="off" autocapitalize="off" ` +
-      `spellcheck="false" style="width:100%;box-sizing:border-box;padding:10px 12px;` +
-      `border-radius:8px;border:1.5px solid ${muted}55;background:transparent;color:inherit;` +
-      `font:inherit;outline:none" placeholder="ketik frasa di atas..."/>` +
-      `<div id="bg-msg" style="min-height:18px;font-size:12.5px;margin:8px 2px 12px"></div>` +
-      `<div style="display:flex;gap:8px;justify-content:flex-end">` +
-      `<button id="bg-cancel" style="padding:8px 14px;border-radius:8px;border:1px solid ${muted}55;` +
-      `background:transparent;color:inherit;cursor:pointer">Batal</button>` +
-      `<button id="bg-ok" style="padding:8px 16px;border-radius:8px;border:0;background:${accent};` +
-      `color:#fff;font-weight:600;cursor:pointer">Lanjut</button></div>`;
-    document.body.appendChild(wrap);
+  return new Promise(resolve => {
+    // Host = elemen khusus (bukan <div>) supaya aturan `div{...}` situs tidak mengenainya, dan
+    // gaya inline-nya !important supaya aturan `*{...}` situs yang !important pun kalah. Yang
+    // masih bisa merembes dari host hanyalah properti WARISAN; semuanya diset ulang di .bd.
+    const host = document.createElement('bg-guard-dialog');
+    host.setAttribute('data-bg-mfa', '');
+    host.style.cssText = ['position:fixed', 'top:0', 'right:0', 'bottom:0', 'left:0', 'z-index:2147483647', 'display:block',
+      'margin:0', 'padding:0', 'border:0', 'background:transparent', 'opacity:1', 'visibility:visible', 'transform:none',
+      'filter:none', 'pointer-events:auto', 'width:auto', 'height:auto', 'clip-path:none', 'contain:none']
+      .map(d => d + ' !important').join(';');
+    const root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
+    applyStyles(root);
 
-    const inp = card.querySelector('#bg-inp');
-    const sub = card.querySelector('#bg-sub');
-    const msg = card.querySelector('#bg-msg');
-    const okBtn = card.querySelector('#bg-ok');
-    attachCapture(inp, null, phrase.length);
-    inp.focus();
+    // tema: 'auto' mengikuti OS; situs yang selalu terang/gelap memaksanya supaya dialog
+    // tidak tampil gelap di atas halaman terang (atau sebaliknya)
+    const bd = el('div', 'bd ' + (theme === 'light' || theme === 'dark' ? theme : 'auto'));
+    if (accent) { bd.style.setProperty('--accent', accent); }
+    const card = el('div', 'card');
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-labelledby', 'bg-t');
+    card.setAttribute('aria-describedby', 'bg-s');
+    card.tabIndex = -1;
+    bd.appendChild(card);
+    root.appendChild(bd);
 
-    const setSub = () => {
-      sub.textContent = enrollMode
-        ? `Atur frasa keamananmu — ketik ${rounds}× dengan ritme alamimu (${samples.length + 1}/${rounds}).`
-        : 'Sesi ini tak lazim. Ketik ulang frasa keamananmu untuk melanjutkan.';
+    // ---------- kerangka ----------
+    const hd = el('div', 'hd');
+    const ic = el('div', 'ic' + (level === 'HIGH' && !enrollMode ? ' high' : ''), enrollMode ? ICON.keys : (level === 'HIGH' ? ICON.alert : ICON.shield));
+    const hx = el('div');
+    const tt = el('h2', 'tt'); tt.id = 'bg-t';
+    tt.textContent = title || (enrollMode ? L.enrollTitle : (level === 'HIGH' ? L.verifyTitleHigh : L.verifyTitleMedium));
+    const st = el('p', 'st'); st.id = 'bg-s';
+    // Vonis otomatis menjelaskan PENYIMPANGAN; step-up dari integrator (sebelum transfer,
+    // ganti sandi) belum tentu karena penyimpangan - jangan menuduh "perilakumu berbeda".
+    st.textContent = subtitle || (enrollMode ? L.enrollSub
+      : trigger === 'integrator' ? (reason ? L.verifySubAction(reason) : L.verifySubGeneric)
+      : (level === 'HIGH' ? L.verifySubHigh : L.verifySubMedium));
+    if (brand && !subtitle) st.textContent = `${brand} · ${st.textContent}`;
+    hx.append(tt, st); hd.append(ic, hx);
+    const x = el('button', 'x', ICON.x); x.type = 'button'; x.setAttribute('aria-label', L.close);
+
+    const body = el('div');
+    const pr = el('div', 'pr');
+    const prL = el('span'); prL.textContent = enrollMode ? L.enrollPrompt(need) : L.verifyPrompt;
+    const prR = el('span', 'dots');
+    if (enrollMode) for (let i = 0; i < need; i++) prR.appendChild(el('i'));
+    pr.append(prL, prR);
+
+    const ph = el('div', 'ph'); ph.setAttribute('aria-hidden', 'true');
+    const chars = [...phrase];
+    const spans = chars.map(c => { const s = el('span'); s.textContent = c; ph.appendChild(s); return s; });
+    const phSr = el('span', 'sr'); phSr.textContent = `${L.phraseLabel}: ${phrase}`;
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    for (const [k, v] of Object.entries({ autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false',
+      inputmode: 'text', enterkeyhint: 'done', 'aria-label': L.inputLabel, 'data-lpignore': 'true', 'data-1p-ignore': '', 'data-form-type': 'other' })) inp.setAttribute(k, v);
+    inp.placeholder = L.placeholder;
+
+    const msg = el('div', 'msg'); msg.setAttribute('role', 'status'); msg.setAttribute('aria-live', 'polite');
+    body.append(pr, phSr, ph, inp, msg);
+
+    const ft = el('div', 'ft');
+    const fb = el('button', 'lnk'); fb.type = 'button'; fb.textContent = L.fallback;
+    const tl = el('span', 'tl');
+    const sp = el('span', 'sp');
+    const cancel = el('button', 'b'); cancel.type = 'button'; cancel.textContent = enrollMode ? L.later : L.cancel;
+    const ok = el('button', 'b pri'); ok.type = 'button'; ok.textContent = L.submit;
+    if (allowFallback && !enrollMode) ft.append(fb);
+    ft.append(tl, sp, cancel, ok);
+
+    const foot = el('div', 'foot', ICON.lock);
+    const footT = el('span'); footT.textContent = L.footer; foot.appendChild(footT);
+
+    card.append(hd, x, body, ft, foot);
+
+    // ---------- keadaan ----------
+    let done = false, failed = 0, capsOn = false, autoT = null, killT = null, tickT = null;
+    let deadline = Date.now() + timeoutMs;
+    const say = (text, kind) => { msg.textContent = text || ''; msg.className = 'msg' + (kind ? ' ' + kind : ''); };
+    const paintDots = () => { [...prR.children].forEach((d, i) => d.classList.toggle('on', i < samples.length)); };
+
+    const paint = () => {
+      const v = inp.value.toLowerCase(), p = phrase.toLowerCase();
+      let bad = -1;
+      for (let i = 0; i < chars.length; i++) {
+        const s = spans[i];
+        s.className = '';
+        if (i < v.length) {
+          if (bad < 0 && v[i] === p[i]) s.className = 'ok';
+          else { if (bad < 0) bad = i; s.className = 'bad'; }
+        } else if (i === v.length) s.className = 'cur';
+      }
+      if (v.length > p.length && bad < 0) bad = p.length;
+      return bad;
     };
-    setSub();
 
-    let killTimer = null;
-    function finish(result) {
-      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
-      wrap.remove();
-      resolve(result);
+    const rec = createRecorder(inp, {
+      onRestart(why) {
+        paint();
+        say(why === 'paste' ? L.pasteBlocked : why === 'suggestion' ? L.suggestion : L.restarted, why === 'backspace' ? '' : 'err');
+      },
+      onCaps(on) { capsOn = on; },
+      onKeyup() { scheduleAuto(); },
+      onChange() {
+        const bad = paint();
+        if (bad >= 0) say(L.wrongChar, 'err');
+        else if (capsOn) say(L.capsLock, '');
+        else if (msg.classList.contains('err')) say('');
+        scheduleAuto();
+      },
+    });
+
+    function scheduleAuto() {
+      if (autoT) { clearTimeout(autoT); autoT = null; }
+      if (norm(inp.value) !== norm(phrase)) return;
+      // tunggu keyup huruf terakhir, lalu beri jeda singkat supaya terasa disengaja
+      autoT = setTimeout(() => { autoT = null; if (!rec.pendingKey()) submit(); }, 220);
     }
-    if (timeoutMs > 0) {
-      killTimer = setTimeout(function () {
-        finish({ passed: false, enrolled: false, verified: false,
-                 cancelled: true, timedOut: true });
-      }, timeoutMs);
+
+    function cleanup() {
+      done = true;
+      [autoT, killT].forEach(t => t && clearTimeout(t));
+      if (tickT) clearInterval(tickT);
+      document.removeEventListener('focusin', keepFocus, true);
+      host.remove();
+      try { if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true }); } catch {}
     }
-    let failedAttempts = 0;
-    const MAX_ATTEMPTS = 3;
+    function finish(result, screen) {
+      if (done) return;
+      if (!screen) { cleanup(); resolve(result); return; }
+      // layar hasil singkat: pengguna melihat apa yang terjadi sebelum dialog hilang
+      done = true;
+      [autoT, killT].forEach(t => t && clearTimeout(t));
+      if (tickT) clearInterval(tickT);
+      const r = el('div', 'res ' + screen.kind, `<div class="big">${screen.kind === 'ok' ? ICON.check : ICON.cross}</div>`);
+      const h = el('h2'); h.textContent = screen.title;
+      const p = el('p'); p.textContent = screen.sub;
+      r.append(h, p);
+      body.replaceWith(r); ft.remove(); x.remove();
+      r.setAttribute('role', 'status'); r.setAttribute('aria-live', 'assertive');
+      setTimeout(() => { done = false; cleanup(); resolve(result); }, screen.kind === 'ok' ? 900 : 1600);
+    }
 
     function submit() {
-      if (norm(inp.value) !== norm(phrase)) {
-        msg.style.color = '#d1242f'; msg.textContent = 'Teks tidak cocok — ketik persis frasanya.';
-        inp.value = ''; inp._bgReset(); inp.focus(); return;
+      if (done) return;
+      if (norm(inp.value) !== norm(phrase)) { say(L.mismatchText, 'err'); inp.focus(); return; }
+      const s = rec.sample();
+      if (s.error) {
+        say(s.error === 'suggestion' ? L.suggestion : L.incomplete, 'err');
+        inp.value = ''; rec.reset(); paint(); inp.focus(); return;
       }
-      // C-1: teks benar TIDAK cukup. Setiap karakter harus datang dari ketikan.
-      // Tempel/autofill/isi sebagian berhenti di sini dan tidak pernah mencapai verify().
-      if (!inp._bgIntact()) {
-        const c = inp._bgCounts();
-        msg.style.color = '#d1242f';
-        msg.textContent = c.tainted
-          ? 'Menempel tidak diterima — ketik frasanya secara manual.'
-          : 'Ritme tidak terekam utuh — ketik ulang tanpa menempel.';
-        inp.value = ''; inp._bgReset(); inp.focus();
-        return;
-      }
-      const sample = inp._bgSample();
+      inp.value = ''; rec.reset(); paint();
       if (enrollMode) {
-        samples.push(sample);
-        inp.value = ''; inp._bgReset();
-        if (samples.length >= need) {
-          const tmpl = buildTemplate(samples);
-          if (!tmpl) {
-            // frasa terlalu pendek / sampel tidak konsisten -> jangan simpan template lemah
-            finish({ passed: false, enrolled: false, verified: false, reason: 'template-ditolak' });
-            return;
-          }
-          // PENDAFTARAN BUKAN BUKTI IDENTITAS: verified sengaja false.
-          finish({ passed: true, enrolled: true, verified: false, template: tmpl });
-        } else { setSub(); msg.style.color = muted; msg.textContent = 'Bagus. Sekali lagi.'; inp.focus(); }
-      } else {
-        const res = verify(sample, template);
-        if (res.ok) { finish({ passed: true, enrolled: false, verified: true, reasons: res.reasons || [] }); return; }
-        failedAttempts++;
-        if (failedAttempts >= MAX_ATTEMPTS) {
-          finish({ passed: false, enrolled: false, verified: false, reasons: res.reasons || [], attemptsExhausted: true });
+        samples.push(s); paintDots();
+        if (samples.length < need) {
+          say(`${L.again} ${L.enrollRound(samples.length + 1, need)}`, 'good'); inp.focus(); return;
+        }
+        const tmpl = buildTemplate(samples);
+        if (!tmpl) {
+          finish({ passed: false, enrolled: false, verified: false, reason: 'template-ditolak' },
+                 { kind: 'bad', title: L.enrollFailed, sub: L.enrollFailedSub });
           return;
         }
-        inp.value = ''; inp._bgReset();
-        msg.style.color = '#d1242f';
-        msg.textContent = `Ritme tidak cocok (percobaan ${failedAttempts}/${MAX_ATTEMPTS}).`;
-        inp.focus();
+        // PENDAFTARAN BUKAN BUKTI IDENTITAS: verified sengaja false.
+        finish({ passed: true, enrolled: true, verified: false, template: tmpl },
+               { kind: 'ok', title: L.enrolled, sub: L.enrolledSub });
+        return;
       }
+      const res = verify(s, template);
+      if (res.ok) {
+        finish({ passed: true, enrolled: false, verified: true, reasons: res.reasons || [] },
+               { kind: 'ok', title: L.verified, sub: L.verifiedSub });
+        return;
+      }
+      if (res.modeMismatch) {
+        // keyboard lain dari saat pendaftaran: mencoba lagi tidak akan pernah cocok
+        say(L.otherKeyboard, 'err');
+        if (allowFallback) { fb.focus(); return; }
+        finish({ passed: false, verified: false, modeMismatch: true, reasons: res.reasons || [] },
+               { kind: 'bad', title: L.failed, sub: L.otherKeyboard });
+        return;
+      }
+      failed++;
+      if (failed >= MAX_ATTEMPTS) {
+        finish({ passed: false, enrolled: false, verified: false, reasons: res.reasons || [], attemptsExhausted: true },
+               { kind: 'bad', title: L.failed, sub: L.failedSub });
+        return;
+      }
+      say(L.tryAgain(failed + 1, MAX_ATTEMPTS), 'err'); inp.focus();
     }
-    okBtn.onclick = submit;
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-    card.querySelector('#bg-cancel').onclick = () => finish({ passed: false, enrolled: false, verified: false, cancelled: true });
+
+    const cancelNow = () => finish({ passed: false, enrolled: false, verified: false, cancelled: true });
+    ok.addEventListener('click', submit);
+    cancel.addEventListener('click', cancelNow);
+    x.addEventListener('click', cancelNow);
+    fb.addEventListener('click', () => finish({ passed: false, enrolled: false, verified: false, fallback: true }));
+
+    // fokus terkunci + Esc + Enter; propagasi dihentikan supaya pintasan halaman diam
+    const focusables = () => [...card.querySelectorAll('button,input')].filter(e => !e.disabled && e.isConnected);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); cancelNow(); return; }
+      if (e.key === 'Enter' && e.target === inp) { e.preventDefault(); submit(); return; }
+      if (e.key === 'Tab') {
+        const f = focusables(); if (!f.length) return;
+        const cur = root.activeElement || document.activeElement;
+        const i = f.indexOf(cur);
+        if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && (i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+      }
+    });
+    for (const t of ['keydown', 'keyup', 'keypress', 'input', 'paste', 'beforeinput']) host.addEventListener(t, e => e.stopPropagation());
+    function keepFocus(e) { if (!done && e.target !== host && !host.contains(e.target)) { try { inp.focus(); } catch {} } }
+    document.addEventListener('focusin', keepFocus, true);
+
+    if (timeoutMs > 0) {
+      // C-18: popup yang diabaikan menutup sendiri - kalau tidak, Promise tak pernah
+      // selesai dan seluruh lapisan step-up macet untuk sisa hidup halaman.
+      // Batas waktu dihitung dari KETIDAKAKTIFAN, bukan sejak dialog dibuka: pendaftaran
+      // 3 putaran plus membaca petunjuk bisa melewati 60 detik bagi orang yang mengetik
+      // pelan, dan menutup dialog di tengah ketikan adalah hukuman untuk orang yang patuh.
+      const arm = () => {
+        if (killT) clearTimeout(killT);
+        deadline = Date.now() + timeoutMs;
+        killT = setTimeout(() => finish({ passed: false, enrolled: false, verified: false, cancelled: true, timedOut: true }), timeoutMs);
+      };
+      arm();
+      inp.addEventListener('keydown', () => { if (!done) arm(); });
+      inp.addEventListener('input', () => { if (!done) arm(); });
+      tickT = setInterval(() => {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        tl.textContent = left <= 30 && left > 0 ? L.timeLeft(left) : '';
+      }, 1000);
+    }
+
+    (document.body || document.documentElement).appendChild(host);
+    paint();
+    if (enrollMode) say(L.enrollRound(1, need));
+    setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } }, 30);
   });
 }
 return {runMfaChallenge: runMfaChallenge};
@@ -1594,15 +2015,23 @@ function checkIntegrity(events, opts={}){
   if(evs.length < 20) return {suspected:false, reasons:[]};
   const reasons=[];
   const ts = evs.map(e=>e.timestamp||0);
-  // non-monoton
-  for(let i=1;i<ts.length;i++) if(ts[i] < ts[i-1]-5){ reasons.push('timestamp non-monoton'); break; }
+  // non-monoton. C-45: SATU langkah mundur adalah jam sistem yang disetel (sinkron NTP,
+  // ganti zona waktu, laptop bangun dari tidur) - Date.now() memang bisa mundur, dan dulu
+  // satu kejadian itu langsung BLOCK_SESSION untuk manusia. Urutan yang diacak/disuntik
+  // mundur berkali-kali; ambangnya >= 3 langkah DAN > 1% event.
+  let back=0;
+  for(let i=1;i<ts.length;i++) if(ts[i] < ts[i-1]-5) back++;
+  if(back>=3 && back > 0.01*ts.length) reasons.push(`timestamp non-monoton (${back}x)`);
   const intervals=[];
   for(let i=1;i<ts.length;i++) intervals.push(ts[i]-ts[i-1]);
   const mean = intervals.reduce((a,b)=>a+b,0)/intervals.length;
   const std = Math.sqrt(intervals.reduce((a,b)=>a+(b-mean)**2,0)/intervals.length);
   // A1: cek interval hanya sahih pada aliran yang TIDAK kita throttle.
   if(!throttledStream && std < 3) reasons.push(`interval konstan std=${std.toFixed(2)}ms`);
-  const holds = evs.filter(e=>e.hold_time!=null).map(e=>e.hold_time);
+  // C-45: tombol dari keyboard layar sentuh (`soft`) tidak punya waktu tahan yang bermakna -
+  // Android menembakkan keydown/keyup berdempetan untuk tiap huruf, jadi tahannya ~0 ms
+  // SERAGAM. Dulu itu terbaca "hold identik" -> pengguna ponsel diblokir sebagai bot.
+  const holds = evs.filter(e=>e.hold_time!=null && !e.soft).map(e=>e.hold_time);
   if(holds.length>=10){
     const hm = holds.reduce((a,b)=>a+b,0)/holds.length;
     const hs = Math.sqrt(holds.reduce((a,b)=>a+(b-hm)**2,0)/holds.length);
@@ -1671,6 +2100,14 @@ async function getFingerprint(){
     parts.push(c.toDataURL().slice(-64));
   }catch{}
   const raw=parts.join('||');
+  // C-45: di http (bukan konteks aman) crypto.subtle tidak ada. Dulu sidiknya jadi
+  // 'unknown' untuk semua orang -> ganti perangkat tak pernah terdeteksi. Sidik bukan
+  // rahasia, jadi hash non-kriptografis (FNV-1a 2x32 bit) cukup untuk membedakan perangkat.
+  if(!(globalThis.crypto && globalThis.crypto.subtle)){
+    let h1=0x811c9dc5, h2=0x01000193 ^ raw.length;
+    for(let i=0;i<raw.length;i++){ const c=raw.charCodeAt(i); h1=Math.imul(h1^c, 16777619)>>>0; h2=Math.imul(h2^c, 2246822507)>>>0; }
+    return (h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0')).repeat(2);
+  }
   const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
 }
@@ -1849,11 +2286,22 @@ function idbDel(key){
 }
 
 const mem=new Map();
+// C-45: `crypto.subtle` HANYA ada di konteks aman (https / localhost). Di situs http biasa -
+// masih umum untuk intranet dan situs kecil - seal() dulu melempar, jadi SETIAP _persist()
+// gagal, jalur vonis ikut melempar, dan endSession() (yang dipanggil jam dengan .catch
+// kosong) diam: pustaka terpasang tapi tidak pernah memberi satu vonis pun, tanpa pesan.
+// HMAC di sini hanya penanda-rusak (kuncinya berasal dari nama kunci penyimpanan, bukan
+// rahasia), jadi tanpa crypto data disimpan tanpa tanda tangan ('nosig:') - dan format itu
+// hanya DITERIMA di konteks yang memang tidak punya crypto, supaya di https tidak melemah.
+const hasSubtle=()=>{ try{ return !!(globalThis.crypto && globalThis.crypto.subtle); }catch{ return false; } };
+let warnedInsecure=false;
+function warnInsecure(){ if(warnedInsecure) return; warnedInsecure=true; try{ console.warn('[BG] konteks tidak aman (bukan https/localhost): profil disimpan tanpa tanda tangan anti-rusak. Pasang situs di https.'); }catch{} }
 // enkripsi ringan: XOR + base64 + HMAC (anti-tamper)
 async function hmacKey(k){ const hk=await crypto.subtle.importKey('raw', new TextEncoder().encode(k.slice(0,16).padEnd(16,'0')), {name:'HMAC',hash:'SHA-256'}, false, ['sign']); return hk; }
 async function seal(obj, keyHint='bg-key'){
   const json=JSON.stringify(obj);
   const b64=btoa(unescape(encodeURIComponent(json)));
+  if(!hasSubtle()){ warnInsecure(); return `nosig:${b64}`; }
   const hk=await hmacKey(keyHint);
   const sig=await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode(b64));
   const hex=Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
@@ -1862,6 +2310,8 @@ async function seal(obj, keyHint='bg-key'){
 async function open(sealed, keyHint='bg-key'){
   try{
     const [hex,b64]=sealed.split(':');
+    if(hex==='nosig') return hasSubtle() ? null : JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if(!hasSubtle()) return null;
     const hk=await hmacKey(keyHint);
     const exp=await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode(b64));
     const eh=Array.from(new Uint8Array(exp)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
@@ -1951,6 +2401,10 @@ const { checkCollect } = __M["core/ratelimit.js"];
 const { buildTemplate, verify: verifyChallenge } = __M["core/challenge.js"];
 const { runMfaChallenge } = __M["core/mfa.js"];
 
+const VERSION = '2.1.0';
+// C-45: structuredClone baru ada sejak Chrome 98 / Safari 15.4; di browser lebih tua pustaka
+// dulu melempar saat dimuat. DEFAULTS murni data (tanpa fungsi), jadi JSON sudah cukup.
+const clone = o => (typeof structuredClone==='function') ? structuredClone(o) : JSON.parse(JSON.stringify(o));
 const ns = id => `bg:${id}`;
 // A4: `bg:pending` DULU kunci GLOBAL, tidak seperti sesi yang sudah ber-ruang-nama.
 // Akibatnya di browser bersama: pengguna A menutup halaman -> ekornya tersimpan ->
@@ -1961,9 +2415,21 @@ const nsPending = id => `bg:pending:${id}`;
 const LEGACY_PENDING = 'bg:pending';
 
 class BehaviorGuard {
-  constructor(){ this.cfg=structuredClone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
-  async init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, userToken, mfa, session, idle, aggregateWindows, calibrationHoldout, calibration}={}){
+  constructor(){ this.cfg=clone(DEFAULTS); this.userId=null; this.onRisk=null; this.capture=null; this.model=null; this.stats=null; this.sessions=[]; this.inited=false; this.lastRisk='LOW'; this.fingerprint=null; this.secret=null; this.challengeTemplate=null; }
+  // C-45: init() yang dipanggil dua kali tanpa saling menunggu (auto-boot data-user DAN
+  // init manual, atau SPA yang memanggilnya di dua efek) dulu berjalan BERSAMAAN: yang
+  // pertama masih menunggu sidik perangkat saat yang kedua sudah memasang capture, lalu yang
+  // pertama memasang capture KEDUA -> tiap event tercatat dua kali (dan dua kembaran itu
+  // dibuang sebagai duplikat, jadi bukti menyusut). Kini diantrekan: satu per satu.
+  init(opts={}){
+    if(!opts || !opts.userId) return Promise.reject(new Error('BehaviorGuard.init: userId wajib'));
+    const run=()=> this._init(opts);
+    this._initChain=(this._initChain||Promise.resolve()).then(run, run);
+    return this._initChain;
+  }
+  async _init({userId, onRisk, storage: storageOpt, weights, baseline, retrainEvery, features, thresholds, pk, endpoint, userToken, mfa, session, idle, aggregateWindows, calibrationHoldout, calibration}={}){
     if(!userId) throw new Error('BehaviorGuard.init: userId wajib');
+    this.inited=false;
     // C-38: init() ULANG (SPA ganti rute, atau logout A -> login B di tab yang sama) DULU
     // mewarisi seluruh state di memori: kalau B belum punya data tersimpan, blok
     // `if(saved)` di bawah tidak jalan, sehingga B dinilai dengan MODEL A, sesinya melatih
@@ -1974,7 +2440,7 @@ class BehaviorGuard {
     if(this.capture){ try{ this.capture.detach(); }catch{} this.capture=null; }
     // opsi init() sebelumnya (mis. mfa.enabled:false milik integrasi lain) juga tidak
     // boleh terbawa ke init() berikutnya
-    if(this.inited) this.cfg=structuredClone(DEFAULTS);
+    this.cfg=clone(DEFAULTS);
     this.userId=userId; this.onRisk=onRisk||(()=>{});
     // HYBRID cloud mode: baseline per tenant+userId hidup di VPS (lintas-device),
     // event mentah TETAP di device. Aktif kalau pk+endpoint diisi.
@@ -1996,6 +2462,11 @@ class BehaviorGuard {
     // knob yang didokumentasikan tapi tidak pernah ada. Digabung, bukan ditimpa,
     // supaya konfigurasi parsial ({enabled:false}) tetap mewarisi default lainnya.
     if(mfa && typeof mfa==='object') this.cfg.mfa={...this.cfg.mfa, ...mfa};
+    // C-45: frasa < 8 karakter tidak pernah bisa jadi template (challenge.js MIN_DWELL_POINTS)
+    // -> pendaftaran selalu gagal dan MFA bawaan tak pernah tersedia, tanpa pesan apa pun.
+    if(this.cfg.mfa && this.cfg.mfa.enabled && String(this.cfg.mfa.phrase||'').replace(/\s+/g,' ').trim().length < 8){
+      try{ console.warn('[BG] mfa.phrase terlalu pendek (minimal 8 karakter) - verifikasi irama ketik tidak akan bisa didaftarkan'); }catch{}
+    }
     // C-23: sama pola dengan `mfa` — digabung, bukan ditimpa, supaya konfigurasi
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
     if(session && typeof session==='object') this.cfg.session={...this.cfg.session, ...session};
@@ -2028,6 +2499,7 @@ class BehaviorGuard {
       // vonis) dan tak punya MFA bawaan tidak pernah turun dari MEDIUM, selamanya.
       this._lowStreak=saved.lowStreak||0;
       this._mfaEnrollSnoozeUntil=saved.mfaEnrollSnoozeUntil||0;
+      this._mfaFailStreak=saved.mfaFailStreak||0;
       // C-43: masa berlaku step-up melintasi muat-halaman (situs multi-halaman memuat
       // ulang tiap klik) tapi TIDAK melintasi absen: jeda >= awaySec sejak vonis terakhir
       // yang tersimpan mencabutnya.
@@ -2106,6 +2578,16 @@ class BehaviorGuard {
     this.inited=true;
     return this;
   }
+  // C-45: SATU pintu keluar vonis. Dulu event DOM `behaviorguard:risk` hanya disiarkan oleh
+  // auto-boot bundel (data-user), jadi integrator yang memanggil init() sendiri - cara yang
+  // didokumentasikan untuk SPA - tidak pernah menerimanya, dan status() tidak punya "vonis
+  // terakhir" untuk ditampilkan.
+  _emit(evt){
+    if(!evt) return;
+    this._lastEvt={...evt, at: evt.at || Date.now()};
+    try{ this.onRisk(evt); }catch(e){ try{ console.error('[BG] onRisk melempar', e); }catch{} }
+    try{ if(typeof window!=='undefined' && typeof CustomEvent==='function') window.dispatchEvent(new CustomEvent('behaviorguard:risk', {detail: evt})); }catch{}
+  }
   // C-23: satu-satunya sumber kebenaran "kapan pengguna terakhir memberi input".
   // Jeda antar-input yang melewati `idle.awaySec` dicatat sebagai ABSEN; input
   // berikutnya sesudah itu adalah KEMBALI dari absen — dan orang yang kembali
@@ -2114,6 +2596,7 @@ class BehaviorGuard {
     const ts=e&&e.timestamp || Date.now();
     const prev=this._lastEventAt;
     this._lastEventAt=ts;
+    if(e && e.event_type==='KEYSTROKE') this._lastKeyAt=ts;
     if(!prev) return;
     const gap=ts-prev;
     if(gap >= this.cfg.idle.awaySec*1000) this._markAwayReturn(gap, 'tanpa-input', ts);
@@ -2134,26 +2617,44 @@ class BehaviorGuard {
     const K=`bg:leader:${this.userId}`, TTL=25000;
     try{
       const now=Date.now();
+      // C-45: pemimpin dulu = siapa pun yang pertama, walau tabnya di LATAR. Dialog step-up
+      // hanya muncul di tab pemimpin, jadi pengguna yang sedang bekerja di tab lain tidak
+      // pernah melihatnya; dialog kedaluwarsa dan vonisnya jadi MFA_FAILED. Tab yang
+      // TERLIHAT kini merebut kepemimpinan dari pemimpin yang tersembunyi.
+      const vis=typeof document==='undefined' || document.visibilityState!=='hidden';
       const cur=JSON.parse(localStorage.getItem(K)||'null');
-      if(!cur || !cur.ts || now-cur.ts > TTL || cur.id===this.tabId){
-        localStorage.setItem(K, JSON.stringify({id:this.tabId, ts:now}));
+      if(!cur || !cur.ts || now-cur.ts > TTL || cur.id===this.tabId || (vis && cur.vis===false)){
+        localStorage.setItem(K, JSON.stringify({id:this.tabId, ts:now, vis}));
         return true;
       }
       return false;
     }catch{ return true; }   // tanpa localStorage, anggap tab tunggal
   }
-  _wireAuto(){
-    if(this._wired) return; this._wired=true;
+  // C-45: jam penilaian dipisah dari pemasangan pendengar. pagehide menghentikannya, tapi
+  // halaman yang dipulihkan dari back/forward cache (tombol Kembali) TIDAK memuat ulang
+  // skrip - dulu jamnya mati selamanya di halaman itu dan tak ada vonis lagi. stop() juga
+  // memakainya.
+  _startTimer(){
+    if(this._autoTimer) return;
     this._autoTimer=setInterval(()=>{
+      if(!this.inited) return;
       // Tab pengikut tetap MENANGKAP (ekornya dibank dan diambil nanti), hanya tidak
       // menilai — jadi datanya tidak hilang, cuma tidak ada dua penulis bersamaan.
       if(!this._isLeader()){ this._bankTail(); return; }
       this.endSession().catch(()=>{});
     }, this.cfg.session.windowSec*1000);
+  }
+  _stopTimer(){ if(this._autoTimer){ clearInterval(this._autoTimer); this._autoTimer=null; } }
+  _wireAuto(){
+    this._startTimer();
+    if(this._wired) return; this._wired=true;
     try{
       const self=this;
+      window.addEventListener('pageshow', e=>{ if(e && e.persisted && self.inited && self.capture) self._startTimer(); });
       document.addEventListener('visibilitychange', ()=>{
+        if(!self.inited) return;
         if(document.visibilityState!=='hidden'){
+          try{ self._isLeader(); }catch{}
           // C-23: kembali terlihat. Tab tersembunyi lama = kursi mungkin kosong,
           // dan ini sinyal yang TIDAK terlihat dari jeda antar-event (tab latar
           // memang tidak mengirim event apa pun, jadi keduanya perlu dicek).
@@ -2180,8 +2681,10 @@ class BehaviorGuard {
       // R4/C-21: pada leave terminal, bank ekor ke pending SECARA SINKRON (skor async
       // tak sempat flush saat halaman mati). pagehide + beforeunload dua-duanya bank;
       // `_bankTail` idempoten (drain setelah simpan) jadi aman dipanggil berkali-kali.
-      window.addEventListener('pagehide', ()=>{ try{ self._bankTail(); clearInterval(self._autoTimer); }catch{} });
-      window.addEventListener('beforeunload', ()=>{ try{ self._bankTail(); clearInterval(self._autoTimer); }catch{} });
+      // beforeunload bisa DIBATALKAN (dialog "tinggalkan situs?"), jadi ia hanya membank;
+      // jam penilaian dihentikan di pagehide saja, dan pageshow menghidupkannya lagi.
+      window.addEventListener('pagehide', ()=>{ try{ self._bankTail(); self._stopTimer(); }catch{} });
+      window.addEventListener('beforeunload', ()=>{ try{ self._bankTail(); }catch{} });
     }catch{}
   }
   // C-21: simpan ekor buffer yang belum jadi sesi ke akumulator lintas-halaman
@@ -2230,7 +2733,8 @@ class BehaviorGuard {
     await storage.set(ns(this.userId), {sessions:this.sessions, stats:this.stats, fingerprint:this.fingerprint, fpv:FP_VERSION,
       lastRisk:this.lastRisk, highRun:this._highRun, challengeTemplate:this.challengeTemplate,
       lowStreak:this._lowStreak||0, enrollPrefix:this._enrollPrefix(),
-      mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0, mfaPassedAt:this._mfaPassedAt||null, lastActiveAt:Date.now()});
+      mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0, mfaPassedAt:this._mfaPassedAt||null, lastActiveAt:Date.now(),
+      mfaFailStreak:this._mfaFailStreak||0});
   }
   // C-35: sesi tersimpan terdekat dalam ruang terstandar, tanpa fitur temporal.
   // C-44: juga tanpa 6 fitur ritme ketik baru. Median & IQR jeda adalah statistik urutan
@@ -2389,7 +2893,7 @@ class BehaviorGuard {
       // tahu sesi diblokir rate-limit (jalur integrity di bawah memanggilnya).
       const rlEvt={...M, level:'HIGH', score:-2, action:'BLOCK_SESSION', blocked:true, reasons:[rl.reason], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, eligible:false, rateLimited:true};
       this._cloudLog(rlEvt);
-      try{ this.onRisk(rlEvt); }catch{}
+      this._emit(rlEvt);
       return rlEvt;
     }
     // integrity (bot/replay) - jika events tersedia
@@ -2404,7 +2908,7 @@ class BehaviorGuard {
         this.lastRisk='HIGH'; this._lowStreak=0;
         await this._persist();
         this._cloudLog(evt);
-        try{ this.onRisk(evt); }catch{}
+        this._emit(evt);
         return evt;
       }
     }
@@ -2431,7 +2935,7 @@ class BehaviorGuard {
       enrollEvt.enrollment = { selesai: this.sessions.filter(s=>s.eligible!==false).length,
                                perlu: this.cfg.baseline, siap: doneEnroll };
       enrollEvt.action = 'ALLOW_SESSION';
-      try{ this.onRisk(enrollEvt); }catch{}
+      this._emit(enrollEvt);
       return enrollEvt;
     }
     if(!this.model) this._rebuildModel();
@@ -2458,7 +2962,7 @@ class BehaviorGuard {
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:null, eligible:false});
       await this._persist();
       this._cloudLog(badEvt);
-      try{ this.onRisk(badEvt); }catch{}
+      this._emit(badEvt);
       return badEvt;
     }
     // C-24 (opt-in): AGREGASI BUKTI. Jendela kanonik lebih pendek dari sesi utuh,
@@ -2479,7 +2983,7 @@ class BehaviorGuard {
           topFeatures:[], features:feat, thresholds:{...this.cfg.thresholds},
           eligible, aggregating:{have:this._aggBuf.length, need:AGG}};
         this._cloudLog(pend);
-        try{ this.onRisk(pend); }catch{}
+        this._emit(pend);
         return pend;
       }
       aggMembers=this._aggBuf; this._aggBuf=[];
@@ -2639,6 +3143,13 @@ class BehaviorGuard {
     // R2: HAPUS push own non-LOW ke bg:cohort - cohort harus seed dari luar (reproduce_db), bukan diri sendiri
     this._cloudLog(evt);                    // verdict -> VPS (dashboard per akun)
     if(shouldRetrain && level==='LOW') this._cloudPush(); // baseline tumbuh (hanya LOW) -> sinkron ke VPS
+    // C-45: nomor vonis, supaya event awal & event akhir satu vonis bisa dipasangkan.
+    evt.id=(this._verdictSeq=(this._verdictSeq||0)+1);
+    // C-45: dulu onRisk baru terpanggil SESUDAH dialog ditutup - bisa 2 menit lebih. Selama
+    // itu integrator buta: log keamanan kosong, status di layar masih "aman", dasbor diam.
+    // Kini, bila dialog memang akan tampil, vonisnya diumumkan SEKETIKA dengan
+    // mfa.awaiting=true (aksi belum final), lalu diumumkan lagi dengan hasil verifikasinya.
+    if(this._mfaWillShow(evt)) this._emit({...evt, mfa:{ awaiting:true }, stage:'awaiting-mfa'});
     // MFA behavioral BAWAAN: popup step-up sebelum kabari integrator (evt diperbarui hasil MFA)
     await this._maybeMfa(evt);          // verifikasi: vonis bergantung hasilnya, jadi ditunggu
     // C-18: pendaftaran template TIDAK ditunggu. Ini prompt penyiapan di sesi
@@ -2646,62 +3157,164 @@ class BehaviorGuard {
     // baru selesai setelah pengguna mengetik frasa 3x — dan tidak pernah selesai
     // kalau popupnya diabaikan.
     this._maybeEnrollMfa(evt).catch(()=>{});
-    try{ this.onRisk(evt); }catch{}
+    evt.stage='final';
+    this._emit(evt);
     return evt;
   }
+  // Apakah vonis ini akan memunculkan dialog verifikasi (bawaan atau cadangan integrator)?
+  // Harus sejalan dengan syarat-syarat awal _maybeMfa.
+  _mfaWillShow(evt){
+    const m=this.cfg.mfa;
+    if(!m || !m.enabled || typeof document==='undefined') return false;
+    if(!m.triggerOn.includes(evt.level) || this._mfaBusy) return false;
+    if(m.cooldownMs && this._mfaPassedAt && Date.now()-this._mfaPassedAt < m.cooldownMs) return false;
+    return !!(this.challengeTemplate || typeof m.onFallback==='function');
+  }
 
+  // Opsi tampilan dialog yang sama untuk semua jalur (vonis otomatis, stepUp(), daftar).
+  _mfaUi(extra){
+    const m=this.cfg.mfa||{};
+    return { phrase: m.phrase, rounds: m.rounds, buildTemplate, verify: verifyChallenge,
+             lang: m.lang, texts: m.texts, accent: m.accent, brand: m.brand, theme: m.theme, ...extra };
+  }
+  // C-45: dialog di tab TERSEMBUNYI tidak dilihat siapa pun; batas waktunya habis dan
+  // pemilik tercatat gagal verifikasi. Tunggu tab terlihat (maks timeoutMs) dulu.
+  _whenVisible(maxMs){
+    if(typeof document==='undefined' || document.visibilityState!=='hidden') return Promise.resolve(true);
+    return new Promise(res=>{
+      let t=null;
+      const on=()=>{ if(document.visibilityState!=='hidden'){ document.removeEventListener('visibilitychange', on); clearTimeout(t); res(true); } };
+      document.addEventListener('visibilitychange', on);
+      t=setTimeout(()=>{ document.removeEventListener('visibilitychange', on); res(false); }, maxMs||120000);
+    });
+  }
+  /**
+   * C-45: jalur verifikasi CADANGAN milik integrator (`mfa.onFallback`), mis. OTP SMS/email
+   * atau WebAuthn yang DIVERIFIKASI DI SERVER. Dipakai bila pengguna memilih "Gunakan cara
+   * lain", bila template irama belum ada, atau bila keyboardnya berbeda dari saat daftar.
+   * Tanpanya, pemilik yang tidak bisa mengetik frasa tidak punya jalan keluar selain diblokir.
+   * Kontrak: onFallback({level, reasons, trigger, why}) -> Promise<boolean>. true HANYA bila
+   * server integrator sudah memverifikasi faktornya (batas kepercayaan = reportStepUp).
+   */
+  async _runFallback(ctx){
+    const f=this.cfg.mfa && this.cfg.mfa.onFallback;
+    if(typeof f!=='function') return null;
+    try{ return (await f(ctx))===true; }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+  }
   // Popup MFA otomatis saat vonis MEDIUM/HIGH (bila cfg.mfa.enabled & ada DOM).
-  // Pertama kali -> DAFTAR frasa (ketik 3x). Selanjutnya -> VERIFIKASI ritme.
+  // Verifikasi memakai template irama; tanpa template -> jalur cadangan integrator.
   async _maybeMfa(evt){
     const m=this.cfg.mfa;
     if(!m || !m.enabled || typeof document==='undefined') return;
-    if(!m.triggerOn.includes(evt.level) || this._mfaBusy) return;
-    // C-2: TIDAK PERNAH mendaftarkan template saat sesi sedang dicurigai.
-    // Versi lama memanggil runMfaChallenge dengan template=null -> mode DAFTAR,
-    // sehingga penyusup di perangkat baru (storage kosong) cukup mengetik frasa
-    // 3x untuk MEMBUAT template miliknya sendiri, lalu dinyatakan "MFA_PASSED",
-    // _highRun direset, dan sesinya masuk kolam latih. Itu jalur ATO utuh.
-    // Pendaftaran kini hanya terjadi di sesi TEPERCAYA (lihat _maybeEnrollMfa).
-    if(!this.challengeTemplate){
-      evt.mfa={ shown:false, unavailable:'belum ada template ritme (pendaftaran hanya di sesi LOW tepercaya)' };
-      return;                                   // gagal-tertutup: aksi risiko tetap berlaku
-    }
+    if(!m.triggerOn.includes(evt.level)) return;
+    // C-45: vonis yang jatuh saat dialog lain masih terbuka dulu pergi TANPA keterangan
+    // apa pun - integrator tidak bisa membedakan "tidak ada MFA" dari "MFA sedang berjalan".
+    // busy: hasil verifikasi yang sedang berjalan yang menentukan; jangan bertindak sendiri.
+    if(this._mfaBusy){ evt.mfa={ busy:true }; return; }
     const now=Date.now();
     if(m.cooldownMs && this._mfaPassedAt && now-this._mfaPassedAt < m.cooldownMs){ evt.mfa={skipped:'cooldown'}; return; }
+    const r=await this._stepUpFlow({ level: evt.level, reasons: evt.reasons||[], trigger:'verdict' });
+    evt.mfa=r.mfa;
+    if(r.verified) this._applyMfaVerified(evt, now);
+    else if(!r.unavailable) evt.action = evt.blocked ? 'BLOCK_SESSION' : 'MFA_FAILED';
+    // unavailable: tak ada template DAN tak ada cadangan -> aksi vonis tetap berlaku
+    // (gagal-tertutup), integrator yang memutuskan lewat onRisk.
+    if(!r.unavailable) await this._persist();
+  }
+  /**
+   * Inti step-up, dipakai vonis otomatis DAN BehaviorGuard.stepUp(). Tidak menyentuh state
+   * vonis; pemanggil yang menerapkan hasilnya.
+   * -> { verified, method:'rhythm'|'fallback'|null, mfa:{...}, unavailable? }
+   */
+  async _stepUpFlow({ level='MEDIUM', reasons=[], trigger='verdict' }={}){
+    const m=this.cfg.mfa||{};
+    // C-2: TIDAK PERNAH mendaftarkan template saat sesi sedang dicurigai. Versi lama
+    // memanggil runMfaChallenge dengan template=null -> mode DAFTAR, sehingga penyusup di
+    // perangkat baru cukup mengetik frasa 3x untuk MEMBUAT template miliknya sendiri lalu
+    // dinyatakan "MFA_PASSED". Pendaftaran hanya di sesi TEPERCAYA (_maybeEnrollMfa).
+    const hasFallback=typeof m.onFallback==='function';
+    if(!this.challengeTemplate){
+      if(!hasFallback) return { verified:false, method:null, unavailable:true,
+        mfa:{ shown:false, unavailable:'belum ada template irama (pendaftaran hanya di sesi LOW tepercaya) dan mfa.onFallback tidak diisi' } };
+      this._mfaBusy=true;
+      try{
+        const ok=await this._runFallback({ level, reasons, trigger, why:'no-template' });
+        return { verified:ok, method:'fallback', mfa:{ shown:false, fallback:true, verified:ok } };
+      } finally { this._mfaBusy=false; }
+    }
+    // C-45: batas gagal BERUNTUN lintas kunjungan. Tiap dialog memberi 3 percobaan, dan tiap
+    // vonis baru membuka dialog baru - tanpa batas, penyusup yang terus kembali mendapat
+    // percobaan tak terhingga untuk menebak irama pemilik. Sesudah `lockAfterFailures` dialog
+    // gagal berturut, jalur irama dikunci sampai verifikasi lewat jalur cadangan berhasil.
+    const lockN=(m.lockAfterFailures ?? 3);
+    if(lockN>0 && (this._mfaFailStreak||0) >= lockN){
+      if(!hasFallback) return { verified:false, method:null, unavailable:true,
+        mfa:{ shown:false, locked:true, unavailable:'verifikasi irama dikunci sesudah gagal berturut - perlu jalur cadangan (mfa.onFallback)' } };
+      this._mfaBusy=true;
+      try{
+        const ok=await this._runFallback({ level, reasons, trigger, why:'rhythm-locked' });
+        return { verified:ok, method:'fallback', mfa:{ shown:false, fallback:true, locked:true, verified:ok } };
+      } finally { this._mfaBusy=false; }
+    }
     this._mfaBusy=true;
     try{
-      const res=await runMfaChallenge({
-        phrase: m.phrase, rounds: m.rounds,
-        template: this.challengeTemplate,
-        buildTemplate, verify: verifyChallenge,
-        title: evt.level==='HIGH' ? 'Verifikasi keamanan — sesi berisiko' : 'Verifikasi cepat',
-        timeoutMs: m.timeoutMs,
-      });
-      evt.mfa={ shown:true, passed:!!res.passed, verified:!!res.verified, cancelled:!!res.cancelled,
-                attemptsExhausted:!!res.attemptsExhausted, reasons:res.reasons||[] };
+      const visible=await this._whenVisible(m.timeoutMs);
+      if(!visible) return { verified:false, method:null, mfa:{ shown:false, timedOut:true, hidden:true } };
+      const res=await runMfaChallenge(this._mfaUi({ template:this.challengeTemplate, level,
+        timeoutMs:m.timeoutMs, allowFallback:hasFallback, trigger,
+        reason: trigger==='integrator' && reasons.length ? reasons[0] : null }));
+      const mfa={ shown:true, passed:!!res.passed, verified:!!res.verified, cancelled:!!res.cancelled,
+                  timedOut:!!res.timedOut, attemptsExhausted:!!res.attemptsExhausted,
+                  modeMismatch:!!res.modeMismatch, reasons:res.reasons||[] };
       // Hanya VERIFIKASI sungguhan (res.verified) yang membuktikan identitas.
       // res.passed sendirian bisa berasal dari mode daftar -> tidak cukup.
-      if(res.verified){
-        this._applyMfaVerified(evt, now);
-      } else {
-        evt.action = evt.blocked ? 'BLOCK_SESSION' : 'MFA_FAILED';
+      if(res.verified) return { verified:true, method:'rhythm', mfa };
+      if(res.attemptsExhausted){ this._mfaFailStreak=(this._mfaFailStreak||0)+1; mfa.failStreak=this._mfaFailStreak; }
+      if(res.fallback && hasFallback){
+        const ok=await this._runFallback({ level, reasons, trigger, why:'user-choice' });
+        return { verified:ok, method:'fallback', mfa:{ ...mfa, fallback:true, verified:ok } };
       }
-      await this._persist();
-    }catch(e){ evt.mfa={ shown:true, error:String(e&&e.message||e) }; }
+      return { verified:false, method:null, mfa };
+    }catch(e){ return { verified:false, method:null, mfa:{ shown:true, error:String(e&&e.message||e) } }; }
     finally{ this._mfaBusy=false; }
+  }
+  /**
+   * C-45: step-up SESUAI PERMINTAAN integrator - sebelum transfer, ganti email/sandi, atau
+   * saat pengguna menekan "verifikasi sekarang" sesudah membatalkan dialog. Dulu dialog
+   * bawaan hanya bisa muncul dari vonis otomatis; integrator yang ingin memverifikasi di
+   * momen sensitif harus membangun UI sendiri.
+   * -> { verified, method, cancelled?, unavailable? }. Lolos = efek yang sama dengan MFA
+   *    bawaan (lantai lengket dibersihkan, masa berlaku graceSec dimulai).
+   */
+  async stepUp({ level='MEDIUM', reason }={}){
+    if(!this.inited || !this.userId) return { verified:false, method:null, unavailable:true, reason:'belum init' };
+    if(this._mfaBusy) return { verified:false, method:null, busy:true };
+    const r=await this._stepUpFlow({ level, reasons: reason?[reason]:[], trigger:'integrator' });
+    if(r.verified){ const evt={}; this._applyMfaVerified(evt); await this._persist(); }
+    return { verified:!!r.verified, method:r.method, unavailable:!!r.unavailable,
+             cancelled:!!(r.mfa && r.mfa.cancelled), timedOut:!!(r.mfa && r.mfa.timedOut),
+             attemptsExhausted:!!(r.mfa && r.mfa.attemptsExhausted) };
   }
 
   // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya tools/eval_sdk.mjs
   // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini — bukan
   // tiruan tangan yang lama-lama menyimpang (C-29).
   _applyMfaVerified(evt={}, now=Date.now()){
-    this._mfaPassedAt=now; this._highRun=0;
+    // `now` = saat vonis dinilai (kesegaran jendela di bawah); masa berlaku dihitung dari saat
+    // verifikasi LOLOS, yang bisa semenit lebih kemudian kalau pengguna lama di dialog.
+    this._mfaPassedAt=Math.max(now, Date.now()); this._highRun=0;
     this.lastRisk='LOW'; this._lowStreak=0;   // C-3: bersihkan lantai lengket,
                                               // kalau tidak sesi berikutnya dipaksa HIGH terus
+    this._awayReturn=null;                    // absen yang tertunda sudah dijawab verifikasi ini
+    this._mfaFailStreak=0;
     evt.action='MFA_PASSED'; evt.blocked=false; evt.mfaVerified=true;
     // TRUST-LOOP: hanya sesi terverifikasi yang boleh mengajari model.
+    // C-45: dan hanya sesi yang BARU SAJA dinilai. Verifikasi membuktikan siapa yang duduk
+    // SEKARANG; jendela berumur 10 menit (stepUp() dari halaman transfer) bisa milik orang
+    // lain yang duduk di kursi yang sama sebelumnya. Ia tidak ikut dilatihkan.
     const last=this.sessions[this.sessions.length-1];
-    if(last){ last.mfaVerified=true; this._rebuildModel(); }
+    const fresh= last && Number.isFinite(last.ts) && Math.abs(now-last.ts) <= 2*this.cfg.session.windowSec*1000;
+    if(last && fresh && !last.mfaVerified && last.vector){ last.mfaVerified=true; this._rebuildModel(); }
   }
   /**
    * C-32: laporan hasil step-up MILIK INTEGRATOR (OTP, WebAuthn, email, telepon).
@@ -2721,6 +3334,7 @@ class BehaviorGuard {
   // C-39: token pengguna berumur pendek; server integrator memperbaruinya.
   setUserToken(token){ this.userToken=token||null; this.cloud=!!(this.pk&&this.endpoint&&this.userToken); }
   async reportStepUp({ passed } = {}){
+    if(!this.userId) return { applied:false, lastRisk:this.lastRisk, reason:'belum init' };
     const evt={};
     if(passed===true){ this._applyMfaVerified(evt); await this._persist(); }
     else { this._stepUpFailures=(this._stepUpFailures||0)+1; }
@@ -2741,7 +3355,13 @@ class BehaviorGuard {
    */
   assessNow({ minEvents=30 }={}){
     const S=this.cfg.session;
-    const base={ at: Date.now(), sensitive:true };
+    // C-45: integrator perlu tahu apakah pengguna BARU SAJA lolos verifikasi (masa berlaku
+    // graceSec), supaya dua transfer berturut tidak meminta verifikasi dua kali - tapi
+    // keputusannya milik integrator, jadi level tetap jujur dan tidak diredam di sini.
+    const graceMs=((this.cfg.mfa && this.cfg.mfa.graceSec) || 0)*1000;
+    const vr= !!(this._mfaPassedAt && Date.now()-this._mfaPassedAt < graceMs);
+    const base={ at: Date.now(), sensitive:true, verifiedRecently: vr,
+      verifiedAgoSec: this._mfaPassedAt ? Math.round((Date.now()-this._mfaPassedAt)/1000) : null };
     const eligibleCount=this.sessions.filter(s=>s.eligible!==false).length;
     if(!this.model || eligibleCount < this.cfg.baseline){
       return {...base, level:'UNKNOWN', action:'REQUIRE_STEPUP', enrollment:true,
@@ -2773,6 +3393,9 @@ class BehaviorGuard {
   async _maybeEnrollMfa(evt){
     const m=this.cfg.mfa;
     if(!m || !m.enabled || typeof document==='undefined') return;
+    // C-45: integrator boleh menaruh pendaftaran di halaman pengaturannya sendiri
+    // (enrollMfa()) alih-alih dialog yang muncul tanpa diminta.
+    if(m.autoEnroll===false) return;
     if(this.challengeTemplate || this._mfaBusy) return;
     if(evt.level!=='LOW' || evt.eligible===false || !this.model) return;
     // C-37: popup pendaftaran DULU muncul di SETIAP vonis LOW selama template belum ada.
@@ -2781,26 +3404,64 @@ class BehaviorGuard {
     // `mfa.enrollSnoozeMs` (default 24 jam) sesudah ditutup/diabaikan, dan tersimpan
     // lintas muat-halaman.
     if(this._mfaEnrollSnoozeUntil && Date.now() < this._mfaEnrollSnoozeUntil) return;
+    // C-45: jangan merebut fokus dari orang yang SEDANG mengetik (mengisi formulir, menulis
+    // pesan) atau dari tab yang tidak dilihat. Ini tawaran opsional: ditunda ke vonis LOW
+    // berikutnya, bukan di-snooze - pengguna belum menolak apa pun.
+    if(document.visibilityState==='hidden') return;
+    if(this._lastKeyAt && Date.now()-this._lastKeyAt < 4000) return;
+    const res=await this._enrollFlow();
+    evt.mfa=res.enrolled ? { enrolled:true, verified:false } : { enrolled:false, reason:res.reason };
+    if(!res.enrolled && !res.busy){
+      this._mfaEnrollSnoozeUntil=Date.now()+(m.enrollSnoozeMs ?? 86_400_000);
+      await this._persist();
+    }
+  }
+  async _enrollFlow(){
+    const m=this.cfg.mfa||{};
+    if(this._mfaBusy) return { enrolled:false, busy:true, reason:'dialog lain sedang terbuka' };
     this._mfaBusy=true;
     try{
-      const res=await runMfaChallenge({
-        phrase: m.phrase, rounds: m.rounds,
-        template: null,                          // mode DAFTAR, di saat yang aman
-        buildTemplate, verify: verifyChallenge,
-        title: 'Atur verifikasi keamanan',
-        timeoutMs: m.enrollTimeoutMs,
-      });
+      const res=await runMfaChallenge(this._mfaUi({ template:null, timeoutMs:m.enrollTimeoutMs }));
       if(res.enrolled && res.template){
         this.challengeTemplate=res.template;
-        evt.mfa={ enrolled:true, verified:false };
         await this._persist();
-      } else {
-        evt.mfa={ enrolled:false, reason:res.reason||'dibatalkan' };
-        this._mfaEnrollSnoozeUntil=Date.now()+(m.enrollSnoozeMs ?? 86_400_000);
-        await this._persist();
+        return { enrolled:true, mode: res.template.mode||'hard' };
       }
-    }catch(e){ evt.mfa={ enrolled:false, error:String(e&&e.message||e) }; }
+      return { enrolled:false, reason: res.reason || (res.timedOut ? 'waktu habis' : 'dibatalkan') };
+    }catch(e){ return { enrolled:false, reason:String(e&&e.message||e) }; }
     finally{ this._mfaBusy=false; }
+  }
+  /**
+   * C-45: pendaftaran verifikasi irama ketik atas permintaan (tombol di halaman keamanan).
+   * Tetap hanya di keadaan TEPERCAYA (C-2): vonis terakhir LOW, tidak ada absen yang belum
+   * dijawab, dan tidak sedang dicurigai. Selama pendaftaran perilaku awal (belum ada model)
+   * kepercayaannya sama dengan baseline itu sendiri - trust-on-first-use perangkat ini.
+   * Template yang sudah ada TIDAK bisa ditimpa dari sini: menggantinya lewat forgetMfa()
+   * yang menuntut verifikasi lebih dulu.
+   */
+  async enrollMfa(){
+    if(!this.inited || !this.userId) return { enrolled:false, reason:'belum init' };
+    if(typeof document==='undefined') return { enrolled:false, reason:'tanpa DOM' };
+    if(this.challengeTemplate) return { enrolled:false, already:true, reason:'sudah terdaftar' };
+    const last=this._lastEvt;
+    const suspicious= this.lastRisk!=='LOW' || (this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000)
+      || (last && !last.enrollment && !last.abstain && last.level && last.level!=='LOW' && last.level!=='UNKNOWN');
+    if(suspicious) return { enrolled:false, reason:'sesi sedang dicurigai - verifikasi dulu (stepUp)' };
+    const r=await this._enrollFlow();
+    if(r.enrolled){ this._mfaEnrollSnoozeUntil=0; await this._persist(); }
+    return r;
+  }
+  /**
+   * C-45: hapus template irama (ganti keyboard, pindah ke ponsel). Menuntut step-up LOLOS
+   * lebih dulu - kalau tidak, penyusup yang duduk di sesi pemilik bisa menghapusnya lalu
+   * mendaftarkan iramanya sendiri.
+   */
+  async forgetMfa(){
+    if(!this.inited || !this.challengeTemplate) return { removed:false, reason: this.challengeTemplate ? 'belum init' : 'belum terdaftar' };
+    const v=await this.stepUp({ level:'MEDIUM', reason:'hapus verifikasi irama ketik' });
+    if(!v.verified) return { removed:false, reason:'verifikasi tidak lolos' };
+    this.challengeTemplate=null; await this._persist();
+    return { removed:true };
   }
   async endSession(){
     if(!this.capture) return null;
@@ -2813,7 +3474,7 @@ class BehaviorGuard {
    * C-23: satu jalur penilaian untuk buffer live MAUPUN akumulator `bg:pending`.
    * Aliran event dipecah pada tiap jeda idle lebih dulu, lalu TIAP segmen kontigu
    * dinilai sendiri-sendiri. Yang berubah hanya apa yang disuapkan ke `extractF4`;
-   * rumus fiturnya (core/SPEC.md) tidak disentuh, jadi golden tetap 227/227.
+   * rumus fiturnya (core/SPEC.md) tidak disentuh, jadi golden tetap hijau.
    *
    * Versi lama: `drain()` dulu MEMBUANG buffer < minEventsAssess tanpa jejak. Dua
    * akibatnya sekaligus diperbaiki di sini — ekor yang masih hidup dikembalikan ke
@@ -2956,7 +3617,9 @@ class BehaviorGuard {
     const fresh=seg.context ? events.slice(seg.context) : events;
     const nKey=fresh.reduce((n,e)=> n+(e.event_type==='KEYSTROKE'?1:0), 0);
     const nPaste=fresh.reduce((n,e)=> n+(e.event_type==='PASTE'?1:0), 0);
-    const nFocus=fresh.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS'?1:0), 0);
+    // C-45: hanya fokus ke kolom KETIK yang dihitung (txt:false = select/centang/radio).
+    // Event tanpa penanda (data riset, versi lama) diperlakukan seperti dulu.
+    const nFocus=fresh.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS' && e.txt!==false ?1:0), 0);
     const keystrokeBypassed = nPaste>0 || (nFocus>0 && nKey===0);
     // Sesi yang blok keystroke-nya dialihkan TIDAK PERNAH melatih: kedelapan fiturnya
     // nol secara STRUKTURAL — karena memang tidak ada yang diketik — bukan karena
@@ -2998,7 +3661,7 @@ class BehaviorGuard {
              segments:acct.segments, droppedSegments:dropped.length, events:n,
              windowsWithoutVerdict:this._noAssessRuns }
     };
-    try{ this.onRisk(evt); }catch{}
+    this._emit(evt);
     return evt;   // sengaja TIDAK di-_cloudLog: ini keadaan lokal, bukan vonis akun
   }
   // A5: `features.js` menghitung navEv = NAVIGATION | PAGE_STEP, dan basis data riset
@@ -3031,7 +3694,7 @@ class BehaviorGuard {
     const score=this.model.scoreOne(xstd);
     return {score, level: toRisk(score, this.cfg.thresholds)};
   }
-  // mode collector: ambil vektor 28-fitur dari perilaku yang tertangkap SEKARANG,
+  // mode collector: ambil vektor 34-fitur dari perilaku yang tertangkap SEKARANG,
   // tanpa skor lokal & tanpa mengosongkan buffer. Dipakai untuk dikirim ke backend.
   getVector(){
     if(!this.capture) return null;
@@ -3043,6 +3706,68 @@ class BehaviorGuard {
     if(cs>0) events=compressIdle(events, cs*1000);
     const feat=extractF4(events);
     return { vector: featuresToVector(feat), features: feat, n: events.length };
+  }
+  /**
+   * C-45: keadaan yang boleh ditampilkan integrator (halaman keamanan, lencana status).
+   * Dulu satu-satunya jalan adalah getState(), yang membeberkan seluruh riwayat vektor dan
+   * konfigurasi internal - bukan antarmuka, melainkan isi perut.
+   */
+  status(){
+    const B=this.cfg.baseline;
+    const eligible=this.sessions.filter(s=>s.eligible!==false).length;
+    const graceMs=((this.cfg.mfa && this.cfg.mfa.graceSec) || 0)*1000;
+    const graceLeft=this._mfaPassedAt ? Math.max(0, graceMs-(Date.now()-this._mfaPassedAt)) : 0;
+    const e=this._lastEvt;
+    return {
+      version: VERSION,
+      ready: !!this.inited, userId: this.userId,
+      phase: !this.inited ? 'off' : (eligible < B ? 'learning' : 'protecting'),
+      enrollment: { done: Math.min(eligible, B), need: B },
+      risk: this.lastRisk,
+      lastVerdict: e ? { level:e.level, action:e.action, score:e.score, blocked:!!e.blocked, at:e.at,
+                         reasons:(e.reasons||[]).slice(0,3), mfa:e.mfa||null } : null,
+      evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess },
+      mfa: { enabled: !!(this.cfg.mfa && this.cfg.mfa.enabled), enrolled: !!this.challengeTemplate,
+             mode: this.challengeTemplate ? (this.challengeTemplate.mode||'hard') : null,
+             fallback: !!(this.cfg.mfa && typeof this.cfg.mfa.onFallback==='function'),
+             verifiedAt: this._mfaPassedAt||null, graceLeftSec: Math.round(graceLeft/1000), busy: !!this._mfaBusy,
+             failStreak: this._mfaFailStreak||0,
+             locked: ((this.cfg.mfa && (this.cfg.mfa.lockAfterFailures ?? 3)) || 0) > 0 && (this._mfaFailStreak||0) >= ((this.cfg.mfa && (this.cfg.mfa.lockAfterFailures ?? 3)) || 0) },
+      cloud: !!this.cloud,
+    };
+  }
+  /**
+   * C-45: LOGOUT. Dulu tidak ada cara berhenti selain menutup tab: sesudah pengguna keluar,
+   * pustaka terus menangkap perilaku di halaman login dan terus menilai atas nama akun yang
+   * sudah keluar. stop() membank ekor bukti milik pengguna ini, melepas semua penangkap,
+   * menghentikan jam, dan MENCABUT masa berlaku step-up (login berikutnya adalah
+   * autentikasi baru). Profil perilakunya tetap tersimpan - itu gunanya forget().
+   */
+  async stop(){
+    if(!this.userId) return;
+    const uid=this.userId;
+    try{ this._bankTail(); }catch{}
+    this._stopTimer();
+    if(this.capture){ try{ this.capture.detach(); }catch{} this.capture=null; }
+    this.inited=false;
+    this._mfaPassedAt=null;
+    try{ await this._persist(); }catch{}
+    try{ const K=`bg:leader:${uid}`; const cur=JSON.parse(localStorage.getItem(K)||'null'); if(cur && cur.id===this.tabId) localStorage.removeItem(K); }catch{}
+    this._resetUserState(); this.userId=null;
+  }
+  /**
+   * Hak pengguna atas datanya (UU PDP / GDPR): hapus SEMUA yang disimpan pustaka ini
+   * tentang pengguna di perangkat ini - profil perilaku, template irama, ekor bukti,
+   * rahasia token. Pendaftaran mulai dari nol di kunjungan berikutnya.
+   */
+  async forget(){
+    const uid=this.userId;
+    if(!uid) return { removed:false };
+    await this.clear();
+    try{ await storage.del(`bg:secret:${uid}`); }catch{}
+    try{ localStorage.removeItem(`bg:leader:${uid}`); }catch{}
+    if(this.cloud) this._http('DELETE','/baseline');
+    return { removed:true };
   }
   // untuk demo pemantau: expose
   getState(){ return {userId:this.userId, sessions:this.sessions, cfg:this.cfg, hasModel:!!this.model, thresholds: this.cfg.thresholds}; }
@@ -3057,6 +3782,7 @@ class BehaviorGuard {
     this._aggBuf=[]; this._aggThresholds=null;   // C-24: bukti separuh terkumpul milik pengguna lama
     this._newSinceRebuild=0; this._mfaEnrollSnoozeUntil=0; this._stepUpFailures=0;
     this._pendingEvents=null; this._ctx=[];
+    this._lastEvt=null; this._lastKeyAt=0; this._mfaFailStreak=0;
   }
   async clear(){
     // C-7: dulu challengeTemplate/_highRun/_mfaPassedAt tetap hidup di memori
@@ -3070,15 +3796,35 @@ class BehaviorGuard {
 
 // singleton global untuk loader 3-baris
 const singleton=new BehaviorGuard();
-if(typeof window!=='undefined'){
+// C-45: skrip yang dimuat DUA kali (tag manager + tag manual, atau dua bundel) dulu menimpa
+// window.BehaviorGuard dengan singleton kedua - dua penangkap jalan bersamaan, dan init() yang
+// dipanggil integrator mengenai instance yang berbeda dari yang memegang profil. Yang pertama
+// dimuat yang dipakai; yang kedua diam.
+if(typeof window!=='undefined' && window.BehaviorGuard && window.BehaviorGuard._instance){
+  try{ console.warn('[BG] behaviorguard.js dimuat lebih dari sekali - salinan kedua diabaikan'); }catch{}
+} else if(typeof window!=='undefined'){
   window.BehaviorGuard={
+    version: VERSION,
     init: (opts)=> singleton.init(opts),
     endSession: ()=> singleton.endSession(),
     markStep: (name)=> singleton.markStep(name),
     reportStepUp: (r)=> singleton.reportStepUp(r),
     assessNow: (o)=> singleton.assessNow(o),
+    stepUp: (o)=> singleton.stepUp(o),
+    enrollMfa: ()=> singleton.enrollMfa(),
+    forgetMfa: ()=> singleton.forgetMfa(),
+    status: ()=> singleton.status(),
+    stop: ()=> singleton.stop(),
+    forget: ()=> singleton.forget(),
     setUserToken: (t)=> singleton.setUserToken(t),
     getVector: ()=> singleton.getVector(),
+    // berlangganan vonis tanpa menimpa onRisk: BehaviorGuard.on('risk', fn) -> fungsi berhenti
+    on: (name, fn)=>{
+      if(name!=='risk' || typeof fn!=='function') return ()=>{};
+      const h=e=>{ try{ fn(e.detail); }catch(err){ try{ console.error(err); }catch{} } };
+      window.addEventListener('behaviorguard:risk', h);
+      return ()=> window.removeEventListener('behaviorguard:risk', h);
+    },
     _instance: singleton,
     // untuk reproduce/tools
     _core: { extractF4, IsolationForest, OCSVM, Ensemble, computeStats, standardize }
@@ -3088,62 +3834,50 @@ return {BehaviorGuard: BehaviorGuard, singleton: singleton};
 })();
 
 
-/* ---- panel status bawaan (opsional, aktif via cfg.panel:true / data-panel) ---- */
+/* ---- panel status bawaan (opsional, aktif via cfg.panel:true / data-panel) ----
+   C-45: Shadow DOM (CSS situs tidak bisa merusaknya, CSP style-src aman), tanpa emoji,
+   teks lewat textContent, progres pendaftaran dari evt.enrollment (bukan regex alasan). */
 function __bgMountPanel(){
-  if(document.getElementById('bg-panel')) return function(){};
-  var wrap=document.createElement('div');
-  wrap.id='bg-panel';
-  wrap.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483000;width:230px;'+
-    'font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:#fff;color:#0f1729;'+
-    'border:1px solid #e6e9ee;border-left:5px solid #94a3b8;border-radius:12px;'+
-    'box-shadow:0 10px 30px rgba(15,23,41,.18);overflow:hidden;transition:border-color .2s';
-  wrap.innerHTML=
-    '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #eef2f7">'+
-      '<span style="font-size:15px">🛡️</span>'+
-      '<b style="flex:1;font-size:13px">BehaviorGuard</b>'+
-      '<span id="bg-p-dot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>'+
-    '</div>'+
-    '<div style="padding:12px">'+
-      '<div style="display:flex;align-items:baseline;gap:8px">'+
-        '<span id="bg-p-lvl" style="font-size:20px;font-weight:800;color:#64748b">MENGENALI…</span>'+
-      '</div>'+
-      '<div id="bg-p-score" style="color:#64748b;font-size:12px;margin-top:2px">menunggu aktivitas…</div>'+
-      '<div id="bg-p-bar" style="display:none;height:6px;border-radius:99px;background:#e6e9ee;margin-top:9px;overflow:hidden">'+
-        '<i id="bg-p-fill" style="display:block;height:100%;width:0%;background:#64748b;border-radius:99px;transition:width .3s"></i></div>'+
-      '<div id="bg-p-reason" style="color:#94a3b8;font-size:11px;margin-top:8px;line-height:1.35"></div>'+
-    '</div>';
-  (document.body||document.documentElement).appendChild(wrap);
-  var C={LOW:{c:'#059669',t:'AMAN'},MEDIUM:{c:'#d97706',t:'WASPADA'},HIGH:{c:'#dc2626',t:'BAHAYA'}};
+  if(document.querySelector('[data-bg-panel]')) return function(){};
+  var host=document.createElement('div');
+  host.setAttribute('data-bg-panel','');
+  host.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483000';
+  var root=host.attachShadow?host.attachShadow({mode:'open'}):host;
+  var css=':host{all:initial}*{box-sizing:border-box}'+
+    '.p{width:236px;font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#fff;color:#141a24;'+
+    'border:1px solid #e3e6eb;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,41,.14);overflow:hidden}'+
+    '.h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #eef0f3;font-weight:650;font-size:12.5px}'+
+    '.h svg{width:15px;height:15px;color:#1f5fd6}.h b{flex:1;font-weight:650}'+
+    '.d{width:8px;height:8px;border-radius:50%;background:#9aa3af}'+
+    '.b{padding:11px 12px 12px}.l{font-size:17px;font-weight:700;letter-spacing:-.01em}'+
+    '.s{color:#5b6573;font-size:12px;margin-top:2px}.r{color:#8a93a0;font-size:11.5px;margin-top:7px}'+
+    '.bar{height:5px;border-radius:9px;background:#eef0f3;margin-top:9px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:#1f5fd6;transition:width .3s}'+
+    '@media (prefers-color-scheme:dark){.p{background:#171b22;color:#e8ebf0;border-color:#2c323c}.h{border-color:#2c323c}.s{color:#9aa3af}.bar{background:#2c323c}}';
+  try{ if(root.adoptedStyleSheets!==undefined && typeof CSSStyleSheet==='function'){ var sh=new CSSStyleSheet(); sh.replaceSync(css); root.adoptedStyleSheets=[sh]; } else throw 0; }
+  catch(_){ var st=document.createElement('style'); st.textContent=css; root.appendChild(st); }
+  var p=document.createElement('div'); p.className='p';
+  p.innerHTML='<div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/></svg><b>BehaviorGuard</b><span class="d"></span></div>'+
+    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div></div>';
+  root.appendChild(p);
+  (document.body||document.documentElement).appendChild(host);
+  var q=function(c){ return p.querySelector(c); };
+  var L=q('.l'), S=q('.s'), R=q('.r'), D=q('.d'), BAR=q('.bar'), FILL=q('.bar i');
+  L.textContent='Mengenali...'; S.textContent='menunggu aktivitas';
+  var C={LOW:['#1a7f4b','Aman'],MEDIUM:['#b35c00','Perlu verifikasi'],HIGH:['#c4312b','Berisiko'],UNKNOWN:['#6b7380','Belum cukup bukti']};
   return function(e){
-    var lvl=document.getElementById('bg-p-lvl');
-    var skor=document.getElementById('bg-p-score');
-    var bar=document.getElementById('bg-p-bar');
-    var fill=document.getElementById('bg-p-fill');
-    var alasan=document.getElementById('bg-p-reason');
-
-    // Fase pendaftaran: tampilkan PROGRES, bukan cuma "MENGENALI...". Tanpa ini
-    // penonton tidak punya cara tahu sistemnya sedang berjalan atau menggantung.
-    var m=(e.reasons&&e.reasons[0]||'').match(/enrollment\s+(\d+)\s*\/\s*(\d+)/);
-    if(m){
-      var kini=+m[1], perlu=+m[2];
-      wrap.style.borderLeftColor='#6366f1';
-      document.getElementById('bg-p-dot').style.background='#6366f1';
-      lvl.textContent='MENGENALI '+kini+'/'+perlu; lvl.style.color='#4f46e5'; lvl.style.fontSize='18px';
-      skor.textContent='membangun profil pemilik…';
-      bar.style.display='block'; fill.style.width=Math.round(kini/perlu*100)+'%'; fill.style.background='#6366f1';
-      alasan.textContent = kini>=perlu ? 'profil siap — sesi berikutnya sudah dinilai'
-                                       : 'butuh '+(perlu-kini)+' sesi lagi sebelum bisa menilai';
+    if(e.enrollment){
+      var k=e.enrollment.selesai, n=e.enrollment.perlu;
+      D.style.background='#1f5fd6'; L.style.color='#1f5fd6';
+      L.textContent='Mengenali '+k+'/'+n; S.textContent='membangun profil pemilik';
+      BAR.hidden=false; FILL.style.width=Math.round(k/n*100)+'%';
+      R.textContent= k>=n ? 'Profil siap. Jendela berikutnya dinilai.' : 'Butuh '+(n-k)+' jendela aktivitas lagi.';
       return;
     }
-
-    var s=C[e.level]||C.LOW;
-    wrap.style.borderLeftColor=s.c;
-    document.getElementById('bg-p-dot').style.background=s.c;
-    lvl.textContent=e.level+' · '+s.t; lvl.style.color=s.c; lvl.style.fontSize='20px';
-    bar.style.display='none';
-    skor.textContent='skor perilaku: '+(e.score!=null?e.score.toFixed(2):'-');
-    var r=(e.reasons&&e.reasons.length)?('Sinyal: '+e.reasons.slice(0,2).join(', ')):'';
-    alasan.textContent=r;
+    var c=C[e.level]||C.UNKNOWN;
+    BAR.hidden=true; D.style.background=c[0]; L.style.color=c[0];
+    L.textContent=c[1];
+    S.textContent=(e.action||'')+(e.score!=null&&isFinite(e.score)?' · skor '+e.score.toFixed(2):'');
+    R.textContent=(e.reasons&&e.reasons.length)?e.reasons.slice(0,2).join(' · '):'';
   };
 }
 
@@ -3163,8 +3897,8 @@ try{
     var onRisk = function(e){
       try{ if(panelUpdate) panelUpdate(e); }catch(_){}
       if(typeof userOnRisk==='function'){ try{ userOnRisk(e); }catch(_){}}
-      // event DOM tetap disiarkan untuk integrasi lanjutan
-      try{ window.dispatchEvent(new CustomEvent('behaviorguard:risk',{detail:e})); }catch(_){}
+      // C-45: event DOM `behaviorguard:risk` kini disiarkan oleh inti untuk SEMUA integrasi;
+      // menyiarkannya lagi di sini membuat pendengar auto-boot menerima tiap vonis dua kali.
     };
     var opts = {userId:userId, onRisk:onRisk};
     // HYBRID cloud: pk (kunci tenant) + endpoint (VPS) -> baseline lintas-device + log verdict

@@ -25,15 +25,23 @@ export function checkIntegrity(events, opts={}){
   if(evs.length < 20) return {suspected:false, reasons:[]};
   const reasons=[];
   const ts = evs.map(e=>e.timestamp||0);
-  // non-monoton
-  for(let i=1;i<ts.length;i++) if(ts[i] < ts[i-1]-5){ reasons.push('timestamp non-monoton'); break; }
+  // non-monoton. C-45: SATU langkah mundur adalah jam sistem yang disetel (sinkron NTP,
+  // ganti zona waktu, laptop bangun dari tidur) - Date.now() memang bisa mundur, dan dulu
+  // satu kejadian itu langsung BLOCK_SESSION untuk manusia. Urutan yang diacak/disuntik
+  // mundur berkali-kali; ambangnya >= 3 langkah DAN > 1% event.
+  let back=0;
+  for(let i=1;i<ts.length;i++) if(ts[i] < ts[i-1]-5) back++;
+  if(back>=3 && back > 0.01*ts.length) reasons.push(`timestamp non-monoton (${back}x)`);
   const intervals=[];
   for(let i=1;i<ts.length;i++) intervals.push(ts[i]-ts[i-1]);
   const mean = intervals.reduce((a,b)=>a+b,0)/intervals.length;
   const std = Math.sqrt(intervals.reduce((a,b)=>a+(b-mean)**2,0)/intervals.length);
   // A1: cek interval hanya sahih pada aliran yang TIDAK kita throttle.
   if(!throttledStream && std < 3) reasons.push(`interval konstan std=${std.toFixed(2)}ms`);
-  const holds = evs.filter(e=>e.hold_time!=null).map(e=>e.hold_time);
+  // C-45: tombol dari keyboard layar sentuh (`soft`) tidak punya waktu tahan yang bermakna -
+  // Android menembakkan keydown/keyup berdempetan untuk tiap huruf, jadi tahannya ~0 ms
+  // SERAGAM. Dulu itu terbaca "hold identik" -> pengguna ponsel diblokir sebagai bot.
+  const holds = evs.filter(e=>e.hold_time!=null && !e.soft).map(e=>e.hold_time);
   if(holds.length>=10){
     const hm = holds.reduce((a,b)=>a+b,0)/holds.length;
     const hs = Math.sqrt(holds.reduce((a,b)=>a+(b-hm)**2,0)/holds.length);

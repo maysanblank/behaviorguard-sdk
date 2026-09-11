@@ -53,6 +53,14 @@ export function createCapture(onEvent){
     // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
     // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
     // direkam: menggerakkan mouse ke popup adalah gerakan tangan yang wajar.
+    const NON_TEXT=new Set(['checkbox','radio','button','submit','reset','range','color','file','image','hidden']);
+    const isTextEntry=t=>{
+      try{
+        if(t.isContentEditable || t.tagName==='TEXTAREA') return true;
+        if(t.tagName!=='INPUT') return false;          // SELECT dan lainnya
+        return !NON_TEXT.has(String(t.type||'text').toLowerCase());
+      }catch{ return true; }
+    };
     const fromBg=e=>{ try{ return !!(e && e.target && e.target.closest && e.target.closest('[data-bg-mfa]')); }catch{ return false; } };
     let lastScrollY=window.scrollY;
     // C-16/C-17: `velocity` DULU TIDAK PERNAH DIISI di sini, padahal dua tempat
@@ -86,8 +94,12 @@ export function createCapture(onEvent){
       // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
       // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
       kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
-      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; push(ev); },
-      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; if(e.key==='Unidentified' || e.keyCode===229 || e.isComposing) ev.soft=true; push(ev); },
+      // C-45: `txt` = kolom yang MEMANG diisi dengan mengetik. Fokus ke <select>, kotak
+      // centang, atau tombol radio tidak pernah menghasilkan ketikan, dan dulu terbaca sebagai
+      // "form tersentuh tapi tidak diketik" (A3, autofill) -> jendelanya tak layak melatih dan
+      // ditandai bukti sebagian. Fiturnya (form_focus_count) tidak berubah: event yang sama.
+      focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', txt: isTextEntry(e.target), page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
       // A3: form yang diisi password manager / autofill / tempel TIDAK menghasilkan

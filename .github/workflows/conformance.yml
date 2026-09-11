@@ -1,7 +1,7 @@
 name: conformance
 
 # Membuktikan "satu otak, banyak bahasa": tiap runtime wajib lulus core/golden.json
-# yang SAMA (255 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
+# yang SAMA (319 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
 
 on:
   push:
@@ -49,6 +49,18 @@ jobs:
         run: node core/ensemble.test.mjs
       - name: Uji regresi heuristik integrity (C-16)
         run: node core/integrity.test.mjs
+      - name: Siklus hidup & API integrator (C-31..C-43)
+        run: node core/lifecycle.test.mjs
+      - name: Privasi penangkapan (C-30, C-44)
+        run: node core/privacy.test.mjs
+      - name: Step-up versi produksi & kondisi nyata (C-45)
+        run: node core/stepup.test.mjs
+      - name: Idle, kompresi, invariansi (C-23, C-24, C-28)
+        run: |
+          node core/idle.test.mjs
+          node core/idle.live.test.mjs
+          node core/compress.test.mjs
+          node core/invariance.test.mjs
 
   sync:
     # C-9: sdk/ adalah satu-satunya sumber; extension/ hanya salinan. Kalau keduanya

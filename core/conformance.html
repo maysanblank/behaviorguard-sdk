@@ -60,7 +60,7 @@ const close = (a, b, tol) =>
   let passed = 0, failed = 0;
   const problems = [];
 
-  // --- SPEC v1.1: ekstraksi fitur (event mentah -> vektor 28-float) ---
+  // --- SPEC v1.1: ekstraksi fitur (event mentah -> vektor 34-float) ---
   for (const fc of (g.feature_cases || [])) {
     const gotVec = featuresToVector(extractF4(fc.events, fc.session_start_ts));
     fc.expect_vector.forEach((want, i) => {

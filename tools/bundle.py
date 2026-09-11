@@ -79,62 +79,50 @@ def main():
 
     # bootstrap plug-and-play: config via data-* attribute ATAU window.BehaviorGuardConfig
     parts.append(r'''
-/* ---- panel status bawaan (opsional, aktif via cfg.panel:true / data-panel) ---- */
+/* ---- panel status bawaan (opsional, aktif via cfg.panel:true / data-panel) ----
+   C-45: Shadow DOM (CSS situs tidak bisa merusaknya, CSP style-src aman), tanpa emoji,
+   teks lewat textContent, progres pendaftaran dari evt.enrollment (bukan regex alasan). */
 function __bgMountPanel(){
-  if(document.getElementById('bg-panel')) return function(){};
-  var wrap=document.createElement('div');
-  wrap.id='bg-panel';
-  wrap.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483000;width:230px;'+
-    'font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:#fff;color:#0f1729;'+
-    'border:1px solid #e6e9ee;border-left:5px solid #94a3b8;border-radius:12px;'+
-    'box-shadow:0 10px 30px rgba(15,23,41,.18);overflow:hidden;transition:border-color .2s';
-  wrap.innerHTML=
-    '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #eef2f7">'+
-      '<span style="font-size:15px">🛡️</span>'+
-      '<b style="flex:1;font-size:13px">BehaviorGuard</b>'+
-      '<span id="bg-p-dot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>'+
-    '</div>'+
-    '<div style="padding:12px">'+
-      '<div style="display:flex;align-items:baseline;gap:8px">'+
-        '<span id="bg-p-lvl" style="font-size:20px;font-weight:800;color:#64748b">MENGENALI…</span>'+
-      '</div>'+
-      '<div id="bg-p-score" style="color:#64748b;font-size:12px;margin-top:2px">menunggu aktivitas…</div>'+
-      '<div id="bg-p-bar" style="display:none;height:6px;border-radius:99px;background:#e6e9ee;margin-top:9px;overflow:hidden">'+
-        '<i id="bg-p-fill" style="display:block;height:100%;width:0%;background:#64748b;border-radius:99px;transition:width .3s"></i></div>'+
-      '<div id="bg-p-reason" style="color:#94a3b8;font-size:11px;margin-top:8px;line-height:1.35"></div>'+
-    '</div>';
-  (document.body||document.documentElement).appendChild(wrap);
-  var C={LOW:{c:'#059669',t:'AMAN'},MEDIUM:{c:'#d97706',t:'WASPADA'},HIGH:{c:'#dc2626',t:'BAHAYA'}};
+  if(document.querySelector('[data-bg-panel]')) return function(){};
+  var host=document.createElement('div');
+  host.setAttribute('data-bg-panel','');
+  host.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483000';
+  var root=host.attachShadow?host.attachShadow({mode:'open'}):host;
+  var css=':host{all:initial}*{box-sizing:border-box}'+
+    '.p{width:236px;font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#fff;color:#141a24;'+
+    'border:1px solid #e3e6eb;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,41,.14);overflow:hidden}'+
+    '.h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #eef0f3;font-weight:650;font-size:12.5px}'+
+    '.h svg{width:15px;height:15px;color:#1f5fd6}.h b{flex:1;font-weight:650}'+
+    '.d{width:8px;height:8px;border-radius:50%;background:#9aa3af}'+
+    '.b{padding:11px 12px 12px}.l{font-size:17px;font-weight:700;letter-spacing:-.01em}'+
+    '.s{color:#5b6573;font-size:12px;margin-top:2px}.r{color:#8a93a0;font-size:11.5px;margin-top:7px}'+
+    '.bar{height:5px;border-radius:9px;background:#eef0f3;margin-top:9px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:#1f5fd6;transition:width .3s}'+
+    '@media (prefers-color-scheme:dark){.p{background:#171b22;color:#e8ebf0;border-color:#2c323c}.h{border-color:#2c323c}.s{color:#9aa3af}.bar{background:#2c323c}}';
+  try{ if(root.adoptedStyleSheets!==undefined && typeof CSSStyleSheet==='function'){ var sh=new CSSStyleSheet(); sh.replaceSync(css); root.adoptedStyleSheets=[sh]; } else throw 0; }
+  catch(_){ var st=document.createElement('style'); st.textContent=css; root.appendChild(st); }
+  var p=document.createElement('div'); p.className='p';
+  p.innerHTML='<div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/></svg><b>BehaviorGuard</b><span class="d"></span></div>'+
+    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div></div>';
+  root.appendChild(p);
+  (document.body||document.documentElement).appendChild(host);
+  var q=function(c){ return p.querySelector(c); };
+  var L=q('.l'), S=q('.s'), R=q('.r'), D=q('.d'), BAR=q('.bar'), FILL=q('.bar i');
+  L.textContent='Mengenali...'; S.textContent='menunggu aktivitas';
+  var C={LOW:['#1a7f4b','Aman'],MEDIUM:['#b35c00','Perlu verifikasi'],HIGH:['#c4312b','Berisiko'],UNKNOWN:['#6b7380','Belum cukup bukti']};
   return function(e){
-    var lvl=document.getElementById('bg-p-lvl');
-    var skor=document.getElementById('bg-p-score');
-    var bar=document.getElementById('bg-p-bar');
-    var fill=document.getElementById('bg-p-fill');
-    var alasan=document.getElementById('bg-p-reason');
-
-    // Fase pendaftaran: tampilkan PROGRES, bukan cuma "MENGENALI...". Tanpa ini
-    // penonton tidak punya cara tahu sistemnya sedang berjalan atau menggantung.
-    var m=(e.reasons&&e.reasons[0]||'').match(/enrollment\s+(\d+)\s*\/\s*(\d+)/);
-    if(m){
-      var kini=+m[1], perlu=+m[2];
-      wrap.style.borderLeftColor='#6366f1';
-      document.getElementById('bg-p-dot').style.background='#6366f1';
-      lvl.textContent='MENGENALI '+kini+'/'+perlu; lvl.style.color='#4f46e5'; lvl.style.fontSize='18px';
-      skor.textContent='membangun profil pemilik…';
-      bar.style.display='block'; fill.style.width=Math.round(kini/perlu*100)+'%'; fill.style.background='#6366f1';
-      alasan.textContent = kini>=perlu ? 'profil siap — sesi berikutnya sudah dinilai'
-                                       : 'butuh '+(perlu-kini)+' sesi lagi sebelum bisa menilai';
+    if(e.enrollment){
+      var k=e.enrollment.selesai, n=e.enrollment.perlu;
+      D.style.background='#1f5fd6'; L.style.color='#1f5fd6';
+      L.textContent='Mengenali '+k+'/'+n; S.textContent='membangun profil pemilik';
+      BAR.hidden=false; FILL.style.width=Math.round(k/n*100)+'%';
+      R.textContent= k>=n ? 'Profil siap. Jendela berikutnya dinilai.' : 'Butuh '+(n-k)+' jendela aktivitas lagi.';
       return;
     }
-
-    var s=C[e.level]||C.LOW;
-    wrap.style.borderLeftColor=s.c;
-    document.getElementById('bg-p-dot').style.background=s.c;
-    lvl.textContent=e.level+' · '+s.t; lvl.style.color=s.c; lvl.style.fontSize='20px';
-    bar.style.display='none';
-    skor.textContent='skor perilaku: '+(e.score!=null?e.score.toFixed(2):'-');
-    var r=(e.reasons&&e.reasons.length)?('Sinyal: '+e.reasons.slice(0,2).join(', ')):'';
-    alasan.textContent=r;
+    var c=C[e.level]||C.UNKNOWN;
+    BAR.hidden=true; D.style.background=c[0]; L.style.color=c[0];
+    L.textContent=c[1];
+    S.textContent=(e.action||'')+(e.score!=null&&isFinite(e.score)?' · skor '+e.score.toFixed(2):'');
+    R.textContent=(e.reasons&&e.reasons.length)?e.reasons.slice(0,2).join(' · '):'';
   };
 }
 
@@ -154,8 +142,8 @@ try{
     var onRisk = function(e){
       try{ if(panelUpdate) panelUpdate(e); }catch(_){}
       if(typeof userOnRisk==='function'){ try{ userOnRisk(e); }catch(_){}}
-      // event DOM tetap disiarkan untuk integrasi lanjutan
-      try{ window.dispatchEvent(new CustomEvent('behaviorguard:risk',{detail:e})); }catch(_){}
+      // C-45: event DOM `behaviorguard:risk` kini disiarkan oleh inti untuk SEMUA integrasi;
+      // menyiarkannya lagi di sini membuat pendengar auto-boot menerima tiap vonis dua kali.
     };
     var opts = {userId:userId, onRisk:onRisk};
     // HYBRID cloud: pk (kunci tenant) + endpoint (VPS) -> baseline lintas-device + log verdict

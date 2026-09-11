@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bayar & isi ulang · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .opsi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px}
+  @media (max-width:560px){.opsi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .opsi button{font:inherit;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;cursor:pointer}
+  .opsi button b{display:block;font-size:14.5px}
+  .opsi button span{font-size:12.5px;color:var(--ink-3)}
+  .opsi button[aria-pressed=true]{border-color:var(--brand);background:var(--brand-soft)}
+  .tag{display:flex;justify-content:space-between;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;margin-bottom:14px;font-size:14px}
+</style>
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="page-hd"><div><h1>Bayar & isi ulang</h1><p>Pulsa, token listrik, dan tagihan bulanan.</p></div></div>
+  <div class="grid g-2">
+    <section class="card card-b">
+      <div class="tabs" role="tablist" id="tabs">
+        <button class="tab" role="tab" aria-selected="true" data-t="pulsa">Pulsa & data</button>
+        <button class="tab" role="tab" aria-selected="false" data-t="listrik">Token listrik</button>
+        <button class="tab" role="tab" aria-selected="false" data-t="air">Air bersih</button>
+        <button class="tab" role="tab" aria-selected="false" data-t="internet">Internet</button>
+      </div>
+      <form id="f" novalidate>
+        <div class="field"><label for="no" id="lbl-no"></label>
+          <input class="input num" id="no" inputmode="numeric" autocomplete="off">
+          <span class="hint" id="hint"></span></div>
+        <div id="pilih"></div>
+        <div class="err" id="err" role="alert"></div>
+        <button class="btn btn-pri" type="submit" id="btn">Bayar</button>
+      </form>
+    </section>
+    <aside class="grid" style="align-content:start">
+      <section class="card card-b"><h3>Saldo tersedia</h3><div class="num" style="font-size:22px;font-weight:700;margin-top:4px" id="saldo"></div></section>
+      <section class="card"><div class="card-h"><h2>Pembayaran terakhir</h2></div><ul class="list" id="last"></ul></section>
+    </aside>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integrasi.js"></script>
+<script src="assets/panel-demo.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('bayar.html');
+  if (!a) return;
+  const $ = id => document.getElementById(id);
+  const JENIS = {
+    pulsa: { lbl: 'Nomor ponsel', ph: '08xx xxxx xxxx', hint: 'Masukkan nomor tujuan isi ulang.', ic: 'phone',
+      opsi: [['Pulsa 25.000', 26500], ['Pulsa 50.000', 51500], ['Pulsa 100.000', 101000], ['Data 10 GB', 65000], ['Data 25 GB', 110000], ['Data 50 GB', 175000]] },
+    listrik: { lbl: 'Nomor meter / ID pelanggan', ph: '11–12 digit', hint: 'Tertera di meteran atau struk sebelumnya.', ic: 'bolt',
+      opsi: [['Token 50.000', 52500], ['Token 100.000', 102500], ['Token 200.000', 202500], ['Token 500.000', 502500], ['Token 1.000.000', 1002500], ['Token 2.500.000', 2502500]] },
+    air: { lbl: 'Nomor pelanggan', ph: '8 digit', hint: 'Tagihan bulan ini akan ditampilkan.', ic: 'drop', tagihan: 96000 },
+    internet: { lbl: 'Nomor pelanggan', ph: '10 digit', hint: 'Tagihan bulan ini akan ditampilkan.', ic: 'wifi', tagihan: 335000 },
+  };
+  let jenis = 'pulsa', pilihan = null;
+  const saldo = () => { $('saldo').textContent = A.rupiah(A.akun().saldo); };
+  function last() {
+    const tx = A.akun().tx.filter(t => t.kat === 'Tagihan').slice(0, 5);
+    $('last').innerHTML = tx.map(t => `<li class="row"><div class="ico">${A.I.bill}</div><div class="main"><div class="t">${A.esc(t.ket)}</div><div class="s">${A.tanggal(t.t)}</div></div><div class="amt num">${A.rupiah(-t.jml)}</div></li>`).join('') || '<li class="empty">Belum ada pembayaran.</li>';
+  }
+  function tab(t) {
+    jenis = t; pilihan = null; $('err').textContent = ''; $('no').value = '';
+    document.querySelectorAll('#tabs .tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === t)));
+    const J = JENIS[t];
+    $('lbl-no').textContent = J.lbl; $('no').placeholder = J.ph; $('hint').textContent = J.hint;
+    if (J.opsi) {
+      $('pilih').innerHTML = `<div class="field" style="margin-bottom:6px"><label>Pilih nominal</label></div><div class="opsi" id="opsi">${J.opsi.map(([n, h], i) => `<button type="button" aria-pressed="false" data-i="${i}"><b>${A.esc(n)}</b><span>${A.rupiah(h)}</span></button>`).join('')}</div>`;
+      $('opsi').addEventListener('click', e => {
+        const b = e.target.closest('[data-i]'); if (!b) return;
+        pilihan = J.opsi[+b.dataset.i];
+        document.querySelectorAll('#opsi button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      });
+    } else $('pilih').innerHTML = '';
+  }
+  $('no').addEventListener('input', () => {
+    $('no').value = $('no').value.replace(/\D/g, '').slice(0, 13);
+    const J = JENIS[jenis];
+    if (J.tagihan) {
+      const cukup = $('no').value.length >= 8;
+      pilihan = cukup ? ['Tagihan ' + new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }), J.tagihan + 2500] : null;
+      $('pilih').innerHTML = cukup ? `<div class="tag"><span>${A.esc(pilihan[0])}<br><span class="small muted">termasuk biaya admin Rp 2.500</span></span><b class="num">${A.rupiah(pilihan[1])}</b></div>` : '';
+    }
+  });
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (b) tab(b.dataset.t); });
+  $('f').addEventListener('submit', async e => {
+    e.preventDefault();
+    const n = $('no').value;
+    if (n.length < 8) return ($('err').textContent = 'Nomor belum lengkap.');
+    if (!pilihan) return ($('err').textContent = 'Pilih nominal terlebih dahulu.');
+    if (pilihan[1] > A.akun().saldo) return ($('err').textContent = 'Saldo tidak cukup.');
+    $('err').textContent = '';
+    const b = $('btn'); b.disabled = true; b.textContent = 'Memeriksa…';
+    const g = await Guard.gerbang('pembayaran', { nominal: pilihan[1], label: 'pembayaran' });
+    b.disabled = false; b.textContent = 'Bayar';
+    if (!g.ok) return ($('err').textContent = 'Pembayaran dibatalkan karena verifikasi tidak diselesaikan.');
+    const acc = A.akun(), ref = 'ARN' + Date.now().toString().slice(-9);
+    A.catatTx(acc, { id: ref, t: Date.now(), ket: pilihan[0] + ' · ' + n, kat: 'Tagihan', jml: -pilihan[1] });
+    const token = jenis === 'listrik' ? Array.from({ length: 5 }, () => String(Math.floor(1000 + Math.random() * 9000))).join(' ') : null;
+    const d = A.dialog(`<div class="receipt"><div class="okc">${A.I.check}</div><h2>Pembayaran berhasil</h2><div class="big num">${A.rupiah(pilihan[1])}</div><p class="muted">${A.esc(pilihan[0])}</p></div>
+      <dl class="kv" style="margin-top:14px"><dt>Nomor</dt><dd class="num">${A.esc(n)}</dd>${token ? `<dt>Token</dt><dd class="num">${token}</dd>` : ''}<dt>Referensi</dt><dd class="num">${ref}</dd></dl>
+      <div class="acts"><button class="btn btn-pri" data-ok>Selesai</button></div>`);
+    d.el.querySelector('[data-ok]').onclick = d.close; d.el.querySelector('[data-ok]').focus();
+    saldo(); last(); tab(jenis);
+  });
+  saldo(); last(); tab('pulsa');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transfer · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .pick{display:grid;gap:8px;margin-bottom:16px}
+  .opt{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--surface)}
+  .opt:hover{border-color:#cfd4db}
+  .opt input{accent-color:var(--brand);width:16px;height:16px;margin:0}
+  .opt .main{flex:1}
+  .opt .t{font-weight:600;font-size:14px}
+  .opt .s{font-size:12.5px;color:var(--ink-3)}
+  .opt:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+  .two{display:grid;grid-template-columns:1fr 1.4fr;gap:12px}
+  @media (max-width:560px){.two{grid-template-columns:1fr}}
+  .cek{font-size:13px;margin-top:-6px;margin-bottom:14px;min-height:18px}
+</style>
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="page-hd"><div><h1>Transfer</h1><p>Kirim uang ke rekening Arunika atau bank lain.</p></div></div>
+  <div class="grid g-2">
+    <section class="card card-b" id="kartu">
+      <div class="steps" id="steps"><span class="on" data-s="1"><b>1</b>Isi data</span><i></i><span data-s="2"><b>2</b>Periksa</span><i></i><span data-s="3"><b>3</b>Selesai</span></div>
+
+      <form id="f1" novalidate>
+        <h3 style="margin-bottom:10px">Rekening tujuan</h3>
+        <div class="pick" id="pick"></div>
+        <div id="baru" hidden>
+          <div class="two">
+            <div class="field"><label for="bank">Bank</label>
+              <select class="input" id="bank"><option>Arunika</option><option>Bank Lain</option></select></div>
+            <div class="field"><label for="rek">Nomor rekening</label>
+              <input class="input num" id="rek" inputmode="numeric" autocomplete="off" placeholder="10 digit"></div>
+          </div>
+          <div class="cek" id="cek"></div>
+        </div>
+        <div class="field"><label for="nom">Nominal</label>
+          <div class="prefix"><span>Rp</span><input class="input num" id="nom" inputmode="numeric" autocomplete="off" placeholder="0"></div>
+          <div class="chips" style="margin-top:4px" id="cepat"></div>
+        </div>
+        <div class="field"><label for="cat">Catatan <span class="muted" style="font-weight:500">(opsional)</span></label>
+          <input class="input" id="cat" maxlength="60" autocomplete="off" placeholder="mis. bayar arisan"></div>
+        <div class="err" id="e1" role="alert"></div>
+        <button class="btn btn-pri" type="submit">Lanjut</button>
+      </form>
+
+      <div id="p2" hidden>
+        <h3 style="margin-bottom:12px">Periksa lagi sebelum mengirim</h3>
+        <dl class="kv" id="ringkas"></dl>
+        <div class="err" id="e2" role="alert" style="margin-top:12px"></div>
+        <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" id="kembali" type="button">Ubah</button><button class="btn btn-pri" id="kirim" type="button">Kirim sekarang</button></div>
+      </div>
+
+      <div id="p3" hidden>
+        <div class="receipt">
+          <div class="okc"></div>
+          <h2>Transfer berhasil</h2>
+          <div class="big num" id="r-nom"></div>
+          <p class="muted" id="r-ke"></p>
+        </div>
+        <dl class="kv" id="r-kv" style="margin-top:14px"></dl>
+        <div style="display:flex;gap:8px;margin-top:18px"><a class="btn" href="beranda.html">Ke beranda</a><button class="btn btn-pri" id="lagi" type="button">Transfer lagi</button></div>
+      </div>
+    </section>
+    <aside class="grid" style="align-content:start">
+      <section class="card card-b"><h3>Saldo tersedia</h3><div class="num" style="font-size:22px;font-weight:700;margin-top:4px" id="saldo"></div>
+        <p class="small muted" style="margin-top:6px">Batas transfer harian Rp 50.000.000.</p></section>
+      <section class="card card-b" id="guard"></section>
+      <section class="card card-b">
+        <h3>Kapan kami minta verifikasi?</h3>
+        <p class="small muted" style="margin-top:6px">Saat cara akunmu dipakai terlihat tidak biasa, atau selama perangkat ini masih dikenali untuk transfer Rp 1 juta ke atas. Verifikasi memakai irama ketikmu atau kode OTP.</p>
+      </section>
+    </aside>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integrasi.js"></script>
+<script src="assets/status.js"></script>
+<script src="assets/panel-demo.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('transfer.html');
+  if (!a) return;
+  const $ = id => document.getElementById(id);
+  document.querySelector('.okc').innerHTML = A.I.check;
+  const step = n => {
+    document.querySelectorAll('#steps span').forEach(s => { const k = +s.dataset.s; s.className = k === n ? 'on' : k < n ? 'done' : ''; });
+    $('f1').hidden = n !== 1; $('p2').hidden = n !== 2; $('p3').hidden = n !== 3;
+    try { BehaviorGuard.markStep('transfer-' + n); } catch {}
+  };
+  const saldo = () => { $('saldo').textContent = A.rupiah(A.akun().saldo); };
+  saldo();
+  const ke = new URLSearchParams(location.search).get('ke');
+  $('pick').innerHTML = a.penerima.map((p, i) => `<label class="opt"><input type="radio" name="tuj" value="${i}" ${ke === p.rek || (!ke && i === 0) ? 'checked' : ''}>
+      <div class="avatar" style="background:#e5e7eb;color:#374151">${A.esc(A.inisial(p.nama))}</div>
+      <div class="main"><div class="t">${A.esc(p.nama)}</div><div class="s num">${A.esc(p.bank)} · ${A.esc(p.rek)}</div></div></label>`).join('') +
+    `<label class="opt"><input type="radio" name="tuj" value="baru"><div class="main"><div class="t">Rekening baru</div><div class="s">Masukkan nomor rekening tujuan</div></div></label>`;
+  const tujuan = () => (document.querySelector('input[name=tuj]:checked') || {}).value;
+  document.querySelectorAll('input[name=tuj]').forEach(r => r.addEventListener('change', () => { $('baru').hidden = tujuan() !== 'baru'; if (tujuan() === 'baru') $('rek').focus(); }));
+  const NAMA = ['Siti Rahmawati', 'Agus Setiawan', 'Dewi Lestari', 'Hendra Gunawan', 'Putri Ayu Maharani', 'Rizky Ramadhan'];
+  let namaBaru = null;
+  $('rek').addEventListener('input', () => {
+    $('rek').value = $('rek').value.replace(/\D/g, '').slice(0, 10);
+    namaBaru = null; $('cek').textContent = '';
+    if ($('rek').value.length === 10) {
+      $('cek').innerHTML = '<span class="muted">Memeriksa rekening…</span>';
+      setTimeout(() => { if ($('rek').value.length !== 10) return; namaBaru = NAMA[+$('rek').value.slice(-1) % NAMA.length]; $('cek').innerHTML = `Nama pemilik: <b>${A.esc(namaBaru)}</b>`; }, 700);
+    }
+  });
+  A.nominalInput($('nom'));
+  $('cepat').innerHTML = [50000, 100000, 500000, 1000000].map(v => `<button type="button" class="chip" data-v="${v}">${A.rupiah(v)}</button>`).join('');
+  $('cepat').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { $('nom').value = (+b.dataset.v).toLocaleString('id-ID'); $('nom').focus(); } });
+
+  let draf = null;
+  $('f1').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = tujuan(), nom = A.angka($('nom').value);
+    let p;
+    if (t === 'baru') {
+      if ($('rek').value.length !== 10) return ($('e1').textContent = 'Nomor rekening harus 10 digit.');
+      if (!namaBaru) return ($('e1').textContent = 'Tunggu nama pemilik rekening muncul.');
+      p = { nama: namaBaru, bank: $('bank').value, rek: $('rek').value, baru: true };
+    } else p = a.penerima[+t];
+    if (nom < 10000) return ($('e1').textContent = 'Nominal minimal Rp 10.000.');
+    if (nom > A.akun().saldo) return ($('e1').textContent = 'Saldo tidak cukup.');
+    if (nom > 50000000) return ($('e1').textContent = 'Melebihi batas transfer harian.');
+    $('e1').textContent = '';
+    const biaya = p.bank === 'Arunika' ? 0 : 2500;
+    draf = { p, nom, biaya, cat: $('cat').value.trim() };
+    $('ringkas').innerHTML = `<dt>Penerima</dt><dd>${A.esc(p.nama)}</dd><dt>Rekening</dt><dd class="num">${A.esc(p.bank)} · ${A.esc(p.rek)}</dd>
+      <dt>Nominal</dt><dd class="num">${A.rupiah(nom)}</dd><dt>Biaya</dt><dd class="num">${biaya ? A.rupiah(biaya) : 'Gratis'}</dd>
+      ${draf.cat ? `<dt>Catatan</dt><dd>${A.esc(draf.cat)}</dd>` : ''}<dt>Total</dt><dd class="num">${A.rupiah(nom + biaya)}</dd>`;
+    step(2);
+    $('kirim').focus();
+  });
+  $('kembali').onclick = () => step(1);
+  $('kirim').onclick = async () => {
+    const b = $('kirim'); b.disabled = true; b.textContent = 'Memeriksa…'; $('e2').textContent = '';
+    const g = await Guard.gerbang('transfer', { nominal: draf.nom, label: 'transfer' });
+    b.disabled = false; b.textContent = 'Kirim sekarang';
+    if (!g.ok) { $('e2').textContent = 'Transfer dibatalkan karena verifikasi tidak diselesaikan. Tidak ada dana yang terkirim.'; return; }
+    const acc = A.akun();
+    if (draf.nom + draf.biaya > acc.saldo) { $('e2').textContent = 'Saldo tidak cukup.'; return; }
+    const ref = 'ARN' + Date.now().toString().slice(-9);
+    A.catatTx(acc, { id: ref, t: Date.now(), ket: 'Transfer ke ' + draf.p.nama, kat: 'Transfer', jml: -(draf.nom + draf.biaya) });
+    if (draf.p.baru && !acc.penerima.some(x => x.rek === draf.p.rek)) { acc.penerima.push({ nama: draf.p.nama, bank: draf.p.bank, rek: draf.p.rek }); A.simpanAkun(acc); }
+    $('r-nom').textContent = A.rupiah(draf.nom);
+    $('r-ke').textContent = 'ke ' + draf.p.nama + ' · ' + draf.p.bank;
+    $('r-kv').innerHTML = `<dt>Nomor referensi</dt><dd class="num">${ref}</dd><dt>Waktu</dt><dd>${A.tanggal(Date.now())}, ${A.jam(Date.now())}</dd>
+      <dt>Biaya</dt><dd class="num">${draf.biaya ? A.rupiah(draf.biaya) : 'Gratis'}</dd><dt>Sisa saldo</dt><dd class="num">${A.rupiah(acc.saldo)}</dd>`;
+    saldo(); step(3);
+  };
+  $('lagi').onclick = () => { $('f1').reset(); $('baru').hidden = true; step(1); };
+  StatusGuard.mount($('guard'));
+})();
+</script>
+</body>
+</html>

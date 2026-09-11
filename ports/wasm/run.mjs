@@ -1,5 +1,5 @@
 // run.mjs - jalankan bg_core.wasm di Node (tanpa browser), buat CI & bukti cepat.
-// Logika identik index.html: kasih teks golden.json ke WASM, ia hitung 227 cek sendiri.
+// Logika identik index.html: kasih teks golden.json ke WASM, ia hitung 319 cek sendiri.
 //   node ports/wasm/run.mjs
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

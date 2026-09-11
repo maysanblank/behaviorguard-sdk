@@ -94,6 +94,6 @@ server, jadi penyerang langsung dibandingkan dengan pemilik asli.
 (`HMAC-SHA256(sk, pk|userId|exp)`, berumur pendek) wajib, dan dicetak server Anda dengan
 `sk` yang tidak pernah masuk ke halaman. Tanpa token, pustaka berjalan murni di perangkat.
 
-**Yang keluar perangkat:** 28 angka fitur per jendela + vonis. Event mentah dan huruf
+**Yang keluar perangkat:** 34 angka fitur per jendela + vonis. Event mentah dan huruf
 ketikan tidak pernah dikirim. Setup server, contoh cetak token (Node), dan dashboard:
 `server/README.md`.

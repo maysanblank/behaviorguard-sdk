@@ -67,11 +67,22 @@ function idbDel(key){
 }
 
 const mem=new Map();
+// C-45: `crypto.subtle` HANYA ada di konteks aman (https / localhost). Di situs http biasa -
+// masih umum untuk intranet dan situs kecil - seal() dulu melempar, jadi SETIAP _persist()
+// gagal, jalur vonis ikut melempar, dan endSession() (yang dipanggil jam dengan .catch
+// kosong) diam: pustaka terpasang tapi tidak pernah memberi satu vonis pun, tanpa pesan.
+// HMAC di sini hanya penanda-rusak (kuncinya berasal dari nama kunci penyimpanan, bukan
+// rahasia), jadi tanpa crypto data disimpan tanpa tanda tangan ('nosig:') - dan format itu
+// hanya DITERIMA di konteks yang memang tidak punya crypto, supaya di https tidak melemah.
+const hasSubtle=()=>{ try{ return !!(globalThis.crypto && globalThis.crypto.subtle); }catch{ return false; } };
+let warnedInsecure=false;
+function warnInsecure(){ if(warnedInsecure) return; warnedInsecure=true; try{ console.warn('[BG] konteks tidak aman (bukan https/localhost): profil disimpan tanpa tanda tangan anti-rusak. Pasang situs di https.'); }catch{} }
 // enkripsi ringan: XOR + base64 + HMAC (anti-tamper)
 async function hmacKey(k){ const hk=await crypto.subtle.importKey('raw', new TextEncoder().encode(k.slice(0,16).padEnd(16,'0')), {name:'HMAC',hash:'SHA-256'}, false, ['sign']); return hk; }
 async function seal(obj, keyHint='bg-key'){
   const json=JSON.stringify(obj);
   const b64=btoa(unescape(encodeURIComponent(json)));
+  if(!hasSubtle()){ warnInsecure(); return `nosig:${b64}`; }
   const hk=await hmacKey(keyHint);
   const sig=await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode(b64));
   const hex=Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
@@ -80,6 +91,8 @@ async function seal(obj, keyHint='bg-key'){
 async function open(sealed, keyHint='bg-key'){
   try{
     const [hex,b64]=sealed.split(':');
+    if(hex==='nosig') return hasSubtle() ? null : JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if(!hasSubtle()) return null;
     const hk=await hmacKey(keyHint);
     const exp=await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode(b64));
     const eh=Array.from(new Uint8Array(exp)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);

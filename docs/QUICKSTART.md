@@ -47,10 +47,13 @@ integrating, and the fastest way to confirm events are being captured:
 
 Three equivalent ways. Pick one.
 
-**DOM event** (recommended — no globals):
+**DOM event** (recommended — no globals). Fired for every integration, including a manual
+`init()`:
 
 ```js
 addEventListener('behaviorguard:risk', e => handle(e.detail));
+// or, equivalently, with an unsubscribe handle:
+const off = BehaviorGuard.on('risk', handle);
 ```
 
 **Named global callback:**
@@ -92,8 +95,23 @@ addEventListener('behaviorguard:risk', e => handle(e.detail));
   reverifyAfterAway: false,       // true if raised because the user came back after >= 15 min
   replay: null,                   // set when this window copies a stored one (recorded behavior)
   partialEvidence: null,          // 'keystroke' when typing was pasted/autofilled
-  mfa: { shown: true, verified: true }   // present when the built-in step-up ran
+  id: 7,                          // verdict number; the two events of one verdict share it
+  stage: 'final',                 // 'awaiting-mfa' | 'final'
+  mfa: { shown: true, verified: true }   // present when a step-up ran
 }
+```
+
+**One verdict, two events, when a dialog is shown.** A verdict that opens the step-up dialog
+is announced immediately with `stage: 'awaiting-mfa'` and `mfa: { awaiting: true }` — the
+action is not final yet — and announced again with the same `id`, `stage: 'final'` and the
+outcome (`MFA_PASSED` / `MFA_FAILED`). A verdict that arrives while another dialog is still
+open carries `mfa: { busy: true }`: the open dialog decides, so do not act on it. In short:
+
+```js
+BehaviorGuard.on('risk', e => {
+  if (e.mfa && (e.mfa.awaiting || e.mfa.busy)) return showPendingState(e);
+  handleFinal(e);
+});
 ```
 
 | `action` | Meaning | Suggested response |
@@ -132,25 +150,48 @@ If verdicts stay `LOW` forever, the user has not finished enrollment yet. Check
 
 ## 4. The built-in step-up challenge
 
-On `MEDIUM` or `HIGH`, the library raises its own prompt: the user retypes their security
-phrase, and identity is verified from per-character dwell and flight timing. **This needs no
-code from you.**
+On `MEDIUM` or `HIGH`, the library raises its own dialog: the user retypes a short phrase
+shown on screen, and identity is verified from per-character dwell and flight timing. **This
+needs no code from you.**
+
+The dialog renders in a Shadow DOM with its own stylesheet (your CSS cannot break it, and it
+works under a strict `style-src` CSP), is keyboard- and screen-reader-accessible (focus trap,
+`Esc` cancels, live status messages), highlights each character as it is typed, submits by
+itself when the phrase is complete, and works with touch-screen keyboards (where only the
+gaps between characters are measured). Its timeout counts from the last keystroke.
 
 The template is enrolled during a trusted `LOW` session — never at the moment of
-suspicion — so the first time a user sees the prompt is "Set up your security verification".
+suspicion. By default the library offers it once, at a quiet moment (never while the user
+is typing); set `autoEnroll: false` to put it on your settings page instead:
+
+```js
+await BehaviorGuard.enrollMfa();   // refuses while the session is under suspicion
+await BehaviorGuard.forgetMfa();   // requires a passed step-up first
+```
 
 ```js
 window.BehaviorGuardConfig = {
   userId: 'andi@example.com',
   mfa: {
     enabled: true,                       // set false to handle step-up yourself
-    phrase: 'my secret phrase',          // change this; the default is public
+    phrase: 'my secret phrase',          // change this; the default is public (min 8 chars)
     rounds: 3,                           // enrollment repetitions
     triggerOn: ['MEDIUM', 'HIGH'],
-    cooldownMs: 15000,
+    brand: 'Your Site', accent: '#1f5fd6', theme: 'auto',   // 'light' | 'dark' | 'auto'
+    lang: 'id',                          // 'id' | 'en'; texts: {...} overrides any string
+    onFallback: async ({ level, reasons, trigger, why }) => runMyOtpFlow(),  // see below
+    autoEnroll: true,
+    lockAfterFailures: 3,                // failed dialogs in a row before rhythm is locked
   },
 };
 ```
+
+**Always provide `onFallback`.** It adds a "Use another method" button to the dialog and is
+used automatically when the user has no rhythm template yet, when their keyboard differs from
+the one they enrolled with, and after `lockAfterFailures` failed dialogs in a row. Return
+`true` only when **your server** verified the factor. Without a fallback, an owner who cannot
+type the phrase (another keyboard, a phone, an injured hand) has no way out except being
+blocked.
 
 **Change the phrase.** The default (`'kunci rahasia saya'`) is in the public source. The
 phrase is not a secret in the cryptographic sense — the rhythm is what proves identity —
@@ -160,10 +201,11 @@ Pasting is blocked, modified keypresses are ignored, and a sample whose keystrok
 not match the field is rejected before verification runs. Three failed attempts end the
 challenge as failed.
 
-### Using your own step-up (OTP, WebAuthn, email link)
+### Using only your own step-up (OTP, WebAuthn, email link)
 
-Set `mfa.enabled = false`, act on `REQUIRE_MFA` / `REQUIRE_STEPUP`, and **report the
-result back**:
+To keep the built-in dialog but route everything through your factor, use `onFallback`
+above. To replace the dialog entirely, set `mfa.enabled = false`, act on `REQUIRE_MFA` /
+`REQUIRE_STEPUP`, and **report the result back**:
 
 ```js
 window.BehaviorGuardConfig = { userId: 'andi@example.com', mfa: { enabled: false } };
@@ -214,15 +256,21 @@ Useful methods:
 
 | Method | Purpose |
 | --- | --- |
-| `bg.init(opts)` | Start. Required before anything else. Calling it again (logout A, login B) starts B from zero. |
-| `bg.assessNow()` | Verdict right now for a sensitive action. No side effects; `UNKNOWN` + `REQUIRE_STEPUP` when evidence is short. |
+| `bg.init(opts)` | Start. Required before anything else. Calling it again (logout A, login B) starts B from zero. Concurrent calls are queued. |
+| `bg.assessNow()` | Verdict right now for a sensitive action. No side effects; `UNKNOWN` + `REQUIRE_STEPUP` when evidence is short. `verifiedRecently` says whether a step-up passed within `graceSec`. |
+| `bg.stepUp({level, reason})` | Show the step-up dialog now (or run `onFallback`). Resolves `{verified, method}`. Use it before a transfer or a password change. |
 | `bg.reportStepUp({passed})` | Report your own step-up result. `passed:true` clears the verdict and lets the window train. |
+| `bg.status()` | What to show in your UI: `phase` (`learning` / `protecting`), enrollment progress, last verdict, rhythm-template state, remaining grace. No vectors. |
+| `bg.enrollMfa()` / `bg.forgetMfa()` | Set up / remove the typing-rhythm template from your settings page. |
+| `bg.stop()` | Logout: bank the evidence, stop capturing, cancel the step-up grace. The profile stays. |
+| `bg.forget()` | Delete everything stored about this user on this device (right to erasure). |
+| `bg.on('risk', fn)` | Subscribe to verdicts; returns an unsubscribe function. |
 | `bg.setUserToken(t)` | Refresh the short-lived user token for the optional server. |
 | `bg.endSession()` | Score whatever evidence is buffered now (at least 150 events). Returns the verdict or `null`. |
-| `bg.getVector()` | Current 28-float vector without closing the session. |
+| `bg.getVector()` | Current 34-float vector without closing the session. |
 | `bg.getState()` | Sessions, config, thresholds — for dashboards and debugging. |
 | `bg.scoreVector(vec)` | Score a vector with no side effects. For evaluation. |
-| `bg.clear()` | Erase this user's baseline, template and history. |
+| `bg.clear()` | Erase this user's baseline, template and history (`forget()` also removes the token secret). |
 
 ---
 
@@ -239,7 +287,11 @@ window.BehaviorGuardConfig = {
 
   mfa: { enabled: true, phrase: '...', rounds: 3,
          triggerOn: ['MEDIUM','HIGH'], cooldownMs: 15000,
-         graceSec: 900 },           // no re-ask of MEDIUM for 15 min after a passed step-up
+         graceSec: 900,             // no re-ask of MEDIUM for 15 min after a passed step-up
+         onFallback: null,          // async ctx => boolean: YOUR server-verified factor
+         brand: null, accent: null, theme: 'auto', lang: null, texts: null,
+         autoEnroll: true, lockAfterFailures: 3,
+         timeoutMs: 120000, enrollTimeoutMs: 90000 },   // counted from the last keystroke
 
   session: { minEventsAssess: 150,  // evidence per verdict
              carryMaxAgeSec: 900,   // how long short evidence is collected
@@ -278,9 +330,14 @@ email, password or phone, add a device or payee, payout — on an immediate verd
 
 ```js
 const v = BehaviorGuard.assessNow();       // or bg.assessNow() in the ES-module form
-if (v.level === 'LOW') proceed();
-else requireStepUp();                      // MEDIUM, HIGH, and UNKNOWN (too little evidence)
+if (v.level === 'LOW') return proceed();
+const s = await BehaviorGuard.stepUp({ level: v.level === 'HIGH' ? 'HIGH' : 'MEDIUM', reason: 'change your email' });
+if (s.verified) proceed();                 // MEDIUM, HIGH, and UNKNOWN (too little evidence)
 ```
+
+`v.verifiedRecently` is `true` for `graceSec` after a passed step-up, if your policy allows two
+transfers in a row without asking twice. **If the library failed to load, treat every
+sensitive action as `UNKNOWN`** — never let the absence of the security script mean "safe".
 
 `assessNow()` does not drain the buffer, train, move the sticky floor or count toward the
 block rule. During enrollment it returns `UNKNOWN` — there is nothing to compare against yet.
@@ -305,7 +362,7 @@ and logs verdicts for an operator dashboard.
 The public `pk` opens nothing by itself. Every account call needs the short-lived user
 token, `HMAC-SHA256(sk, pk|userId|exp)`, minted by your backend with the tenant secret `sk`
 after a real login; refresh it with `BehaviorGuard.setUserToken()`. Without a token the
-library stays fully on-device. Only 28-number feature vectors and verdicts are transmitted,
+library stays fully on-device. Only 34-number feature vectors and verdicts are transmitted,
 and a device that already has its own enrollment never adopts a server baseline.
 
 Setup, the Node minting snippet and the dashboard: [server/README.md](../server/README.md).
@@ -358,11 +415,11 @@ requests unless you enable hybrid mode. If you use the built-in step-up prompt o
 ## 11. Verifying your install
 
 ```bash
-python core/conformance.py       # engine matches the spec        -> 255/255
+python core/conformance.py       # engine matches the spec        -> 319/319
 node   core/lifecycle.test.mjs   # lifecycle and integrator APIs  -> 49/49
 node   core/challenge.test.mjs   # step-up layer is fail-closed
 python -m http.server 8080       # then open /demo/pemantau/
 ```
 
-If `conformance.py` does not print `255 / 255`, something in `sdk/core/` has been modified
+If `conformance.py` does not print `319 / 319`, something in `sdk/core/` has been modified
 away from the specification — see [../core/SPEC.md](../core/SPEC.md).

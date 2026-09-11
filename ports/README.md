@@ -6,7 +6,7 @@ languages. Every implementation must produce **the same numbers** from the same 
 proven, not asserted, against a single shared golden file.
 
 ```
-raw events ──▶ 28-float feature vector ──▶ risk verdict
+raw events ──▶ 34-float feature vector ──▶ risk verdict
    (SPEC §8)              (exchange format)        (SPEC §5)
 ```
 
@@ -23,7 +23,7 @@ port that is **byte-for-byte compatible within 1e-9**.
 - **[`core/SPEC.md`](../core/SPEC.md)** — the normative spec. If code and spec disagree,
   the spec is right and the code is the bug.
 - **[`core/golden.json`](../core/golden.json)** — the numeric contract: explicit inputs and
-  expected outputs. **255 checks** (140 feature-extraction + 115 engine). Inputs are written
+  expected outputs. **319 checks** (204 feature-extraction + 115 engine). Inputs are written
   out literally, so a new port never has to reproduce any generator — just read, compute, compare.
 
 An implementation is **conformant** only if it passes every check in `golden.json`.

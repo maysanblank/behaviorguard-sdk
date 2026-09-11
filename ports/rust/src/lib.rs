@@ -5,7 +5,7 @@
 // bahwa kontrak numerik BehaviorGuard benar-benar lintas-bahasa: menghasilkan angka
 // yang SAMA dengan JS dan Python dari core/golden.json yang sama, toleransi 1e-9.
 //
-//   cargo run --release            # jalankan uji kesesuaian (227 pemeriksaan)
+//   cargo run --release            # jalankan uji kesesuaian (319 pemeriksaan)
 //
 // Struktur mengikuti bg_core.py baris-demi-baris supaya mudah dibandingkan.
 
@@ -1258,7 +1258,7 @@ pub unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize) {
     let _ = Vec::from_raw_parts(ptr, 0, size);
 }
 
-/// Baca teks golden.json dari (`ptr`,`len`), jalankan 227 pemeriksaan, kembalikan
+/// Baca teks golden.json dari (`ptr`,`len`), jalankan 319 pemeriksaan, kembalikan
 /// hasil sebagai JSON. Nilai balik = `(out_ptr << 32) | out_len` (little-packed u64).
 ///
 /// # Safety

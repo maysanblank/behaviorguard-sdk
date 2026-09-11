@@ -29,7 +29,7 @@ session that already passed the login check.
 The core assumption is simple and worth stating because everything rests on it:
 **the legitimate owner's interaction dynamics are stable enough over time, and distinct
 enough between people, to be discriminative.** Our data supports this for ordinary users
-(per-owner AUC 0.927 over 16 subjects, measured on the shipped library in 30-second
+(per-owner AUC 0.953 over 16 subjects, measured on the shipped library in 30-second
 windows), but see §5 on how far that evidence stretches.
 
 ---
@@ -46,7 +46,7 @@ windows), but see §5 on how far that evidence stretches.
 │                                                          │
 └──────────────────────────┬───────────────────────────────┘
                            │  optional hybrid mode:
-                           │  28-float feature vectors only
+                           │  34-float feature vectors only
                            ▼
                   ┌─ your server ─────────┐
                   │ account baseline      │   ← you operate this;
@@ -77,7 +77,7 @@ client-side UI can be bypassed by anyone willing to open devtools.
 | --- | --- | --- |
 | Raw events (coordinates, key timings) | Memory; an unscored tail may wait in localStorage up to 15 min between page loads | **Never** |
 | Typed characters | Not captured: keys become per-page tokens before anything is buffered | **Never** |
-| 28-float feature vector | IndexedDB / localStorage | Only in hybrid mode |
+| 34-float feature vector | IndexedDB / localStorage | Only in hybrid mode |
 | Rhythm template (dwell/flight medians + MAD) | IndexedDB / localStorage | **Never** |
 | Verdicts and reasons | Passed to your callback | Only if you send them |
 | Device fingerprint (hash) | IndexedDB / localStorage | Only in hybrid mode |
@@ -100,8 +100,8 @@ leaves the device. That is your call to make, and worth making deliberately.
 An attacker who can observe the victim's typing and mouse behavior, then deliberately
 imitate its rhythm, is **not covered by our evaluation and may well succeed**.
 
-Our impostor figures — 13.3% of impostors pass their first verdict, 9.2% pass their whole
-session — are measured against *other ordinary users behaving naturally*, not against
+Our impostor figures — 10.5% of impostors pass their first verdict, 7.9% pass their whole
+session (14.3% / 10.8% when the impostor uses the account at the owner's usual hour) — are measured against *other ordinary users behaving naturally*, not against
 adversaries optimizing to defeat the model. These are different threat classes and the
 second is strictly harder. We have not tested it, we do not claim resistance to it, and we
 would expect a determined, well-informed mimic to have meaningfully better odds.
@@ -278,6 +278,40 @@ The first 10 eligible windows produce no verdict — there is nothing to compare
 Windows whose keystroke block was pasted or autofilled never count toward enrollment (their
 typing features are structurally empty), so a user who only ever uses a password manager
 may take a long time to enroll. Until enrollment completes, rely on your other controls.
+
+A new device is the same case: in on-device mode an attacker who logs in with a stolen
+password from their own machine meets an empty profile, and the library enrolls *them*. That
+is the classic account-takeover path, and on-device scoring alone cannot see it. Two answers,
+use at least one: `assessNow()` returns `UNKNOWN` for the whole enrollment period, so a
+policy of "verify every sensitive action on `UNKNOWN`" puts a server-verified factor in front
+of the attacker; and hybrid mode (§4.7) gives a new device the account's baseline instead of
+an empty one.
+
+### 4.14 The step-up fallback and rhythm guessing — MITIGATED (C-45)
+
+`mfa.onFallback` is the integrator's own factor (OTP, WebAuthn). The library trusts its
+return value exactly as it trusts `reportStepUp`: return `true` only after **your server**
+verified the factor. A page script can call it too — the same client-side boundary as §4.2.
+
+Before C-45 each verdict opened a fresh dialog with three attempts, with no memory across
+dialogs, so an impostor who kept coming back had unlimited tries at the owner's rhythm.
+After `mfa.lockAfterFailures` (default 3) exhausted dialogs in a row, persisted across page
+loads, the rhythm path is locked and only the fallback can verify; a passed verification
+unlocks it. Without a fallback configured the locked state is fail-closed (`unavailable`),
+not a pass.
+
+### 4.15 Deployment conditions that used to silence the library — FIXED (C-45)
+
+- **Plain http.** `crypto.subtle` exists only in secure contexts. Every save threw, the
+  verdict path threw with it, and the timer swallowed the error: the library was installed
+  and produced no verdict at all. It now stores unsigned data on insecure origins (the HMAC
+  was tamper-evidence keyed by a public string, not secrecy) and warns once; unsigned data is
+  refused on a secure origin, so https is not weakened.
+- **Loaded twice** (tag manager plus a manual tag): the second copy replaced the first and
+  two capture instances ran. The first copy now wins.
+- **Library missing** (blocked by an extension, CDN down): this is on the integrator. The
+  demo integration treats it as `UNKNOWN` and sends every sensitive action to OTP. Do the
+  same; never let the absence of the security script mean "safe".
 
 ---
 

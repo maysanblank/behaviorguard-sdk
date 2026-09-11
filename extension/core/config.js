@@ -2,11 +2,13 @@
  * config.js - default SDK yang DIKIRIM.
  *
  * Angka resmi diukur dengan SDK ini sendiri (`node tools/eval_sdk.mjs --live`: 653 sesi,
- * 16 subjek, jendela 30 dtk persis setInterval browser, step-up dijawab lewat API publik):
- *   pemilik diminta verifikasi 14,5%   diblokir 0%
- *   penyusup lolos vonis pertama 13,3%   lolos seluruh sesinya 9,2%
- *   ambil-alih ketahuan di sesi pertama 89,6%   tak ketahuan dalam 6 sesi 0%
- *   AUC / EER per pemilik 0,927 / 12,3%
+ * 16 subjek, jendela 30 dtk persis setInterval browser, sesi URUT WAKTU seperti pemakaian
+ * nyata, step-up dijawab lewat API publik):
+ *   pemilik diminta verifikasi 11,4%   diblokir 0%
+ *   penyusup lolos vonis pertama 10,5%   lolos seluruh sesinya 7,9%
+ *   (penyusup yang memakai akun di jam biasa pemilik: 14,3% / 10,8%)
+ *   ambil-alih ketahuan di sesi pertama 95,0%   tak ketahuan dalam 6 sesi 0,4% (1/240)
+ *   AUC / EER per pemilik 0,953 / 10,1%
  * Titik operasi lain (k_low) dan mode ketat (session.contextEvents): README "Choosing an
  * operating point" dan core/DRIFT.md C-42, C-43.
  *
@@ -74,14 +76,26 @@ export const DEFAULTS = {
     rounds: 3,                       // berapa kali ketik saat pendaftaran template ritme
     triggerOn: ['MEDIUM', 'HIGH'],   // vonis yang memunculkan popup
     cooldownMs: 15000,               // jangan popup lagi dalam N ms setelah lolos
-    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
-    enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
+    timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri (C-45: sejak input terakhir)
+    enrollTimeoutMs: 90000,          // C-45: dihitung dari ketidakaktifan, bukan sejak dialog dibuka
     enrollSnoozeMs: 86400000,        // C-37: ditutup/diabaikan -> jangan tawarkan lagi 24 jam
     // C-43: sesudah verifikasi TERBUKTI (MFA bawaan / reportStepUp passed), MEDIUM tidak
     // meminta verifikasi ulang selama graceSec; HIGH tetap; absen >= idle.awaySec
     // mencabutnya. eval_sdk --live: pemilik diminta verifikasi 16,4% -> 14,5%, penyusup
     // lolos vonis pertama 13,5% -> 13,3%, ambil-alih tak ketahuan tetap 0%. 0 = mati.
+    // (Angka C-43 itu diukur pada 28 fitur, sesi urut-id. Tanpa grace pada mesin C-44:
+    // pemilik 12,5% -> 11,4% dengan grace, penyusup 10,5% sama.)
     graceSec: 900,
+    // C-45: tampilan & jalur cadangan dialog (semuanya opsional)
+    //   onFallback: async ({level, reasons, trigger, why}) => boolean  - OTP/WebAuthn milik
+    //               integrator, DIVERIFIKASI SERVER; memunculkan tombol "Gunakan cara lain"
+    //   autoEnroll: false -> pendaftaran irama hanya lewat BehaviorGuard.enrollMfa()
+    //   brand, accent (warna CSS), theme ('auto'|'light'|'dark'), lang ('id'|'en'), texts
+    autoEnroll: true,
+    theme: 'auto',
+    // C-45: sesudah N dialog irama gagal BERTURUT (lintas kunjungan), jalur irama dikunci dan
+    // verifikasi hanya lewat onFallback sampai berhasil. 0 = tanpa batas (tidak disarankan).
+    lockAfterFailures: 3,
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
@@ -131,6 +145,9 @@ export const DEFAULTS = {
   // penyusup lolos vonis pertama 13,3% -> 10,1%, seluruh sesi 9,2% -> 8,2%, pemilik
   // 14,5% -> 14,5% — TAPI satu dari 15 penyusup lolos 6 sesi berturut di 3 akun (0 -> 3
   // dari 240 pasangan). Karena itu tidak dijadikan default. Lihat core/DRIFT.md C-42.
+  // C-44 (34 fitur, urut waktu), N=450 + k_low 2,0: pemilik 11,0%, penyusup vonis pertama
+  // 8,7%, seluruh sesi 7,9%, tak pernah ketahuan 0/240 — tapi pada data ber-AFK penyusup
+  // naik (5,6% -> 6,5% seluruh sesi), jadi tetap opt-in.
   session: { minEventsAssess: 150, minEventsTrain: 100, minDurationSec: 5.0, minNonZeroFeatures: 6, windowSec: 30, idleGapSec: 30, idleCompressSec: 15, carryMaxAgeSec: 900, canonicalWindow: 0, contextEvents: 0 },
   // C-23: idle punya DUA konsekuensi, jadi dua ambang berbeda.
   //  - awaySec (300): batas "kursi mungkin kosong". Kepercayaan dari SEBELUM absen

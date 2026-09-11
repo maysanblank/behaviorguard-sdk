@@ -24,7 +24,7 @@
  * `extractF4` hanya pernah melihat potongan yang KONTIGU. Rumus fitur di
  * core/SPEC.md tidak berubah sedikit pun — yang berubah hanya APA yang disuapkan
  * ke sana. Karena itu golden vector dan keempat port (Python/Rust/Java/WASM)
- * tetap 227/227 tanpa disentuh.
+ * tetap hijau tanpa disentuh.
  *
  * Idle punya DUA konsekuensi berbeda, jadi ambangnya dua:
  *   gapMs  (ukur)  — jeda yang tidak boleh diukur melintasinya.        default 30 dtk

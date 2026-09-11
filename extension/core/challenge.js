@@ -71,19 +71,29 @@ function axis(samples, key) {
  * Menolak (mengembalikan null) bila sampel tidak konsisten bentuknya atau
  * frasanya terlalu pendek — lebih baik tanpa template daripada template lemah.
  */
+// C-45: keyboard layar sentuh (Android/iOS) menembakkan keydown `Unidentified` / 229 tanpa
+// waktu tahan yang bermakna, jadi dwell tidak bisa diukur di sana. Sampel dari keyboard
+// seperti itu bermode 'soft': hanya jeda antar-karakter (flight) yang dinilai. Template
+// menyimpan modenya; sampel dengan mode berbeda DITOLAK (gagal-tertutup), bukan
+// diterjemahkan - ritme keyboard fisik dan layar sentuh bukan besaran yang sama.
+const modeOf = s => (s && s.mode === 'soft') ? 'soft' : 'hard';
+
 export function buildTemplate(samples) {
   if (!Array.isArray(samples) || samples.length < 2) return null;
   const nD = samples[0] && Array.isArray(samples[0].dwell) ? samples[0].dwell.length : 0;
   const nF = samples[0] && Array.isArray(samples[0].flight) ? samples[0].flight.length : 0;
   if (nD < MIN_DWELL_POINTS) return null;
+  const mode = modeOf(samples[0]);
   // setiap sampel harus berbentuk sama & finit — kalau tidak, pendaftarannya cacat
   for (const s of samples) {
     if (!s || !isFiniteArray(s.dwell, nD) || !isFiniteArray(s.flight, nF)) return null;
+    if (modeOf(s) !== mode) return null;
   }
   const d = axis(samples, 'dwell');
   const f = axis(samples, 'flight');
   return {
     v: 2,
+    mode,
     dwell: d.med, dwellMad: d.mad,
     flight: f.med, flightMad: f.mad,
     k: K_DEFAULT,
@@ -114,6 +124,14 @@ export function verify(sample, tmpl) {
     };
   }
 
+  if (modeOf(sample) !== modeOf(tmpl)) {
+    return {
+      ok: false, modeMismatch: true,
+      reasons: [`jenis keyboard berbeda dari saat pendaftaran (${modeOf(tmpl)} vs ${modeOf(sample)})`],
+      checks: nD + nF, misses: nD + nF, budget: 0,
+    };
+  }
+  const soft = modeOf(tmpl) === 'soft';
   const k = Number.isFinite(tmpl.k) ? tmpl.k : K_DEFAULT;
   const reasons = [];
   const push = (label, i, d, lim) =>
@@ -132,7 +150,9 @@ export function verify(sample, tmpl) {
   const rF = clampRatio(medianOf([...tmpl.flight].sort((a, b) => a - b)),
                         medianOf([...sample.flight].sort((a, b) => a - b)));
 
-  for (let i = 0; i < nD; i++) {
+  // Mode soft: dwell tidak terukur, jadi tidak dinilai SAMA SEKALI - kalau dihitung sebagai
+  // "lolos", anggaran meleset di bawah ikut membengkak dan melonggarkan cek flight.
+  if (!soft) for (let i = 0; i < nD; i++) {
     const lim = k * tmpl.dwellMad[i];
     const d = Math.abs(sample.dwell[i] * rD - tmpl.dwell[i]);
     if (d > lim) push('dwell', i, d, lim);
@@ -145,7 +165,7 @@ export function verify(sample, tmpl) {
 
   // Anggaran meleset PROPORSIONAL, bukan angka tetap 2. Pada frasa pendek
   // "2 posisi bebas" adalah celah besar; pada frasa panjang justru terlalu galak.
-  const checks = nD + nF;
+  const checks = soft ? nF : nD + nF;
   const budget = Math.max(1, Math.floor(MISS_BUDGET_REL * checks));
   return { ok: reasons.length <= budget, reasons, checks, misses: reasons.length, budget };
 }

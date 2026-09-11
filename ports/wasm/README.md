@@ -13,7 +13,7 @@ single compiled artifact that everything calls.
 | File | What |
 |---|---|
 | `bg_core.wasm` | the compiled core (~210 KB, zero imports, no WASI) |
-| `index.html` | browser demo: feeds `golden.json` in, runs 227 checks **inside** WASM |
+| `index.html` | browser demo: feeds `golden.json` in, runs 319 checks **inside** WASM |
 | `run.mjs` | the same demo for Node (headless / CI) |
 
 **Verified:** the module runs the full contract inside WASM and returns
@@ -57,7 +57,7 @@ Four exports, C ABI, all over the module's linear memory — no `wasm-bindgen`, 
 |---|---|---|
 | `alloc` | `(size: i32) -> ptr: i32` | reserve `size` bytes in WASM memory |
 | `dealloc` | `(ptr: i32, size: i32)` | free a buffer from `alloc` or `run_golden` |
-| `run_golden` | `(ptr: i32, len: i32) -> i64` | read golden.json text at `ptr..ptr+len`, run all 227 checks, return a result-JSON pointer packed as `(out_ptr << 32) \| out_len` |
+| `run_golden` | `(ptr: i32, len: i32) -> i64` | read golden.json text at `ptr..ptr+len`, run all 319 checks, return a result-JSON pointer packed as `(out_ptr << 32) \| out_len` |
 | `memory` | (exported memory) | the linear memory both sides read/write |
 
 Calling convention:
@@ -73,5 +73,5 @@ ex.dealloc(outPtr, outLen); ex.dealloc(p, bytes.length);        // free both
 
 The same three-step pattern (write bytes → call → read bytes) works from Go (wazero),
 Python (wasmtime), and any other host — the tiny JSON in/out contract is language-neutral
-by design. Extending the ABI with `extract(events_json) -> 28 floats` and
+by design. Extending the ABI with `extract(events_json) -> 34 floats` and
 `score(baseline+vector) -> verdict` for production use follows the exact same pattern.

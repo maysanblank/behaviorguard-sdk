@@ -54,24 +54,30 @@ That is the whole integration. Capture (pointer, keystroke, scroll, focus, navig
 scoring, enrollment, retraining and the step-up prompt all start on their own.
 
 **The built-in step-up needs no code at all.** On a `MEDIUM` or `HIGH` verdict the library
-raises its own challenge and asks the user to retype their security phrase; identity is
-proven from per-character dwell and flight timing.
+raises its own dialog and asks the user to retype a short phrase; identity is proven from
+per-character dwell and flight timing. The dialog lives in a Shadow DOM (site CSS cannot
+break it, strict CSP is fine), is accessible, and works with touch-screen keyboards.
 
-**Already have OTP or WebAuthn?** Turn the built-in prompt off and report your own result:
+**Already have OTP or WebAuthn?** Plug it in as the dialog's "use another method" path. It is
+also used automatically when the user has no rhythm template yet or has failed too often:
 
 ```js
-window.BehaviorGuardConfig = { mfa: { enabled: false } };
-// ...on a MEDIUM/HIGH verdict, run your own step-up, then:
-BehaviorGuard.reportStepUp({ passed: true });   // clears the verdict, lets the session train
+window.BehaviorGuardConfig = { userId, mfa: { onFallback: async () => await myServerVerifiedOtp() } };
 ```
+
+Or turn the built-in dialog off and report your own result with
+`BehaviorGuard.reportStepUp({ passed: true })`.
 
 **Before a sensitive action** (change email or password, payout, new device), ask for a
-verdict right now instead of waiting for the next 30-second window:
+verdict right now instead of waiting for the next 30-second window, and step up if needed:
 
 ```js
-const v = BehaviorGuard.assessNow();
-if (v.level !== 'LOW') requireStepUp();          // UNKNOWN means "not enough evidence": fail closed
+const v = BehaviorGuard.assessNow();             // UNKNOWN means "not enough evidence": fail closed
+if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'change your email' })).verified) return;
 ```
+
+`BehaviorGuard.status()` gives you what to show in your own UI (learning vs protecting,
+enrollment progress, last verdict), `stop()` is logout, `forget()` erases the user's data.
 
 More: [docs/QUICKSTART.md](docs/QUICKSTART.md) covers the ES-module form, the config
 object, the optional server and framework notes.
@@ -230,7 +236,15 @@ No Node required.
 python -m http.server 8080
 ```
 
-Then open <http://localhost:8080/demo/pemantau/>.
+**A realistic site with the library installed:** <http://localhost:8080/demo/arunika/> — a
+fictional digital bank with login, transfer, bill payment, history and security settings.
+Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integrasi.js`
+(init, verdict handling, a risk-based gate for transfers, and an OTP fallback). A presenter
+panel in the bottom-left corner shows the live phase, evidence, verdict gauge and
+plain-language reasons, and can simulate a lunch-break return, a replay of your own recorded
+behavior, and a bot.
+
+**The zero-code view:** <http://localhost:8080/demo/pemantau/>.
 
 The left pane is an ordinary shop page with **zero BehaviorGuard code inside it** — check
 the Network tab, it loads no SDK. The right pane attaches from the outside and shows live
@@ -241,7 +255,8 @@ move.
 ```bash
 python core/conformance.py         # engine vs golden.json        -> 319/319
 node   core/lifecycle.test.mjs     # long-run lifecycle & APIs    -> 49/49
-node   core/privacy.test.mjs       # no typed characters stored   -> 10/10
+node   core/stepup.test.mjs        # step-up, fallback, lockout   -> 61/61
+node   core/privacy.test.mjs       # no typed characters stored   -> 14/14
 node   core/challenge.test.mjs     # step-up regression
 python server/test_app.py          # optional server: auth, XSS   -> 35/35
 ```
@@ -315,7 +330,7 @@ client-only check. For a real security boundary, pair it with a server-verified 
 
 We audited our own defenses adversarially and fixed more than forty logic flaws, each with
 its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/DRIFT.md)
-(C-1 to C-43). A few that defeated the product entirely:
+(C-1 to C-45). A few that defeated the product entirely:
 
 - **A complete step-up bypass.** Pasting the phrase produced zero keystroke events, and
   `NaN > x` silently returns false in JavaScript — so an empty rhythm passed every check.
@@ -370,7 +385,7 @@ server/       optional backend (baseline sync, verdict log) and operator dashboa
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-43 audit: every defect, its evidence and its test |
+| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-45 audit: every defect, its evidence and its test |
 | [server/README.md](server/README.md) | Optional server: keys, user tokens, dashboard |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 

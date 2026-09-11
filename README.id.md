@@ -42,21 +42,29 @@ disimpan, bahkan di perangkat itu sendiri.
 Itu seluruh integrasinya. Penangkapan event, penilaian, pendaftaran, latih ulang, dan popup
 verifikasi berjalan sendiri.
 
-**Sudah punya OTP / WebAuthn?** Matikan popup bawaan dan laporkan hasil verifikasi Anda:
+Dialog verifikasinya hidup di Shadow DOM (CSS situs tidak bisa merusaknya, CSP ketat aman),
+bisa dipakai dengan keyboard & pembaca layar, dan jalan di keyboard layar sentuh.
+
+**Sudah punya OTP / WebAuthn?** Pasang sebagai jalur "Gunakan cara lain" di dialog. Jalur ini
+juga dipakai otomatis saat pengguna belum punya template irama atau sudah terlalu sering gagal:
 
 ```js
-window.BehaviorGuardConfig = { mfa: { enabled: false } };
-// ...saat vonis MEDIUM/HIGH, jalankan OTP Anda, lalu:
-BehaviorGuard.reportStepUp({ passed: true });
+window.BehaviorGuardConfig = { userId, mfa: { onFallback: async () => await otpDiverifikasiServer() } };
 ```
+
+Atau matikan dialog bawaan dan laporkan hasil verifikasi Anda dengan
+`BehaviorGuard.reportStepUp({ passed: true })`.
 
 **Sebelum aksi sensitif** (ganti email/sandi, transfer, tambah perangkat), minta vonis saat
-itu juga:
+itu juga, lalu verifikasi bila perlu:
 
 ```js
-const v = BehaviorGuard.assessNow();
-if (v.level !== 'LOW') mintaVerifikasi();   // UNKNOWN = bukti belum cukup -> tetap minta verifikasi
+const v = BehaviorGuard.assessNow();   // UNKNOWN = bukti belum cukup -> tetap minta verifikasi
+if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'ganti email' })).verified) return;
 ```
+
+`BehaviorGuard.status()` memberi keadaan untuk UI Anda sendiri (masih mengenali / melindungi,
+progres pendaftaran, vonis terakhir), `stop()` untuk logout, `forget()` menghapus data pengguna.
 
 Panduan lengkap (modul ES, objek konfigurasi, server opsional):
 [docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang berbahasa Indonesia:
@@ -187,14 +195,21 @@ sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
 python -m http.server 8080
 ```
 
-Buka <http://localhost:8080/demo/pemantau/>. Panel kiri adalah toko biasa **tanpa satu baris
+**Situs realistis yang sudah memasang pustaka:** <http://localhost:8080/demo/arunika/> — bank
+digital fiktif (masuk, transfer, bayar tagihan, riwayat, keamanan). Semua kode khusus
+BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integrasi.js`. Panel presentasi di
+pojok kiri bawah menampilkan fase, bukti, vonis, dan alasannya dalam bahasa biasa, serta bisa
+mensimulasikan kembali-setelah-absen, rekam-ulang, dan bot.
+
+Tampilan tanpa kode: <http://localhost:8080/demo/pemantau/>. Panel kiri adalah toko biasa **tanpa satu baris
 kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor langsung.
 Panduan lengkap: [demo/CARA-DEMO-PLUG-AND-PLAY.md](demo/CARA-DEMO-PLUG-AND-PLAY.md).
 
 ```bash
 python core/conformance.py         # mesin vs golden.json            -> 319/319
 node   core/lifecycle.test.mjs     # siklus hidup & API integrator   -> 49/49
-node   core/privacy.test.mjs       # huruf ketikan tidak tersimpan   -> 10/10
+node   core/stepup.test.mjs        # verifikasi, cadangan, penguncian -> 61/61
+node   core/privacy.test.mjs       # huruf ketikan tidak tersimpan   -> 14/14
 python server/test_app.py          # server opsional: auth, XSS      -> 35/35
 node   tools/eval_sdk.mjs --live   # ukur pustaka yang dikirim (butuh ekspor data riset lokal)
 ```
@@ -242,7 +257,7 @@ pengguna berumur pendek yang dicetak backend Anda sendiri.
 | [dist/PASANG.md](dist/PASANG.md) | Panduan pasang satu tag (Indonesia) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, peta modul, keputusan desain |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Batas kepercayaan, serangan yang belum tertutup |
-| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-43: tiap cacat, buktinya, dan ujinya |
+| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-45: tiap cacat, buktinya, dan ujinya |
 | [core/SPEC.id.md](core/SPEC.id.md) | Spesifikasi mesin |
 
 ---

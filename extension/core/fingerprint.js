@@ -33,6 +33,14 @@ export async function getFingerprint(){
     parts.push(c.toDataURL().slice(-64));
   }catch{}
   const raw=parts.join('||');
+  // C-45: di http (bukan konteks aman) crypto.subtle tidak ada. Dulu sidiknya jadi
+  // 'unknown' untuk semua orang -> ganti perangkat tak pernah terdeteksi. Sidik bukan
+  // rahasia, jadi hash non-kriptografis (FNV-1a 2x32 bit) cukup untuk membedakan perangkat.
+  if(!(globalThis.crypto && globalThis.crypto.subtle)){
+    let h1=0x811c9dc5, h2=0x01000193 ^ raw.length;
+    for(let i=0;i<raw.length;i++){ const c=raw.charCodeAt(i); h1=Math.imul(h1^c, 16777619)>>>0; h2=Math.imul(h2^c, 2246822507)>>>0; }
+    return (h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0')).repeat(2);
+  }
   const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
 }

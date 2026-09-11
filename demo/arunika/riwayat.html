@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riwayat · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .tools{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line-2)}
+  .tools .input{max-width:280px;padding:8px 12px;font-size:14px}
+  .pager{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid var(--line-2);font-size:13.5px;color:var(--ink-3)}
+  .cat{display:inline-flex;align-items:center;gap:8px}
+  .cat .ico{width:30px;height:30px;border-radius:8px}
+  .cat .ico svg{width:16px;height:16px}
+</style>
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="page-hd"><div><h1>Riwayat transaksi</h1><p>Mutasi rekening 60 hari terakhir.</p></div>
+    <div class="grid g-3" style="gap:10px;min-width:min(100%,420px)">
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Masuk</div><div class="num" style="font-weight:700;color:var(--ok)" id="s-in"></div></div>
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Keluar</div><div class="num" style="font-weight:700" id="s-out"></div></div>
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Transaksi</div><div class="num" style="font-weight:700" id="s-n"></div></div>
+    </div></div>
+  <section class="card">
+    <div class="tools">
+      <div class="chips" id="filter" role="group" aria-label="Jenis transaksi">
+        <button class="chip" aria-pressed="true" data-f="semua">Semua</button>
+        <button class="chip" aria-pressed="false" data-f="masuk">Masuk</button>
+        <button class="chip" aria-pressed="false" data-f="keluar">Keluar</button>
+      </div>
+      <input class="input" id="cari" type="search" placeholder="Cari transaksi" aria-label="Cari transaksi" autocomplete="off">
+    </div>
+    <div class="scroll-x"><table class="tbl"><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th class="r">Nominal</th></tr></thead><tbody id="tb"></tbody></table></div>
+    <div class="empty" id="kosong" hidden>Tidak ada transaksi yang cocok.</div>
+    <div class="pager"><span id="info"></span><span style="display:flex;gap:6px"><button class="btn btn-sm" id="prev">Sebelumnya</button><button class="btn btn-sm" id="next">Berikutnya</button></span></div>
+  </section>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integrasi.js"></script>
+<script src="assets/panel-demo.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('riwayat.html');
+  if (!a) return;
+  const $ = id => document.getElementById(id);
+  const PER = 10;
+  let f = 'semua', q = '', hal = 0;
+  $('s-in').textContent = A.rupiah(a.tx.filter(t => t.jml > 0).reduce((x, t) => x + t.jml, 0));
+  $('s-out').textContent = A.rupiah(-a.tx.filter(t => t.jml < 0).reduce((x, t) => x + t.jml, 0));
+  $('s-n').textContent = a.tx.length;
+  function render() {
+    const rows = a.tx.filter(t => (f === 'semua' || (f === 'masuk' ? t.jml > 0 : t.jml < 0)) && (!q || (t.ket + ' ' + t.kat).toLowerCase().includes(q)));
+    const maks = Math.max(0, Math.ceil(rows.length / PER) - 1);
+    hal = Math.min(hal, maks);
+    const sl = rows.slice(hal * PER, hal * PER + PER);
+    $('tb').innerHTML = sl.map(t => { const k = A.KAT[t.kat] || A.KAT.Transfer; return `<tr>
+      <td class="num" style="white-space:nowrap">${A.tanggal(t.t)}<div class="small muted">${A.jam(t.t)}</div></td>
+      <td><div style="font-weight:600">${A.esc(t.ket)}</div><div class="small muted num">${A.esc(t.id)}</div></td>
+      <td><span class="cat"><span class="ico">${A.I[k.ic]}</span>${A.esc(t.kat)}</span></td>
+      <td class="r"><span class="amt ${t.jml > 0 ? 'in' : ''}">${t.jml > 0 ? '+' : '−'}${A.rupiah(Math.abs(t.jml))}</span></td></tr>`; }).join('');
+    $('kosong').hidden = rows.length > 0;
+    $('info').textContent = rows.length ? `${hal * PER + 1}–${hal * PER + sl.length} dari ${rows.length}` : '';
+    $('prev').disabled = hal === 0; $('next').disabled = hal >= maks;
+  }
+  $('filter').addEventListener('click', e => {
+    const b = e.target.closest('[data-f]'); if (!b) return;
+    f = b.dataset.f; hal = 0;
+    document.querySelectorAll('#filter .chip').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
+    render();
+  });
+  $('cari').addEventListener('input', () => { q = $('cari').value.trim().toLowerCase(); hal = 0; render(); });
+  $('prev').onclick = () => { hal--; render(); window.scrollTo({ top: 0 }); };
+  $('next').onclick = () => { hal++; render(); window.scrollTo({ top: 0 }); };
+  render();
+})();
+</script>
+</body>
+</html>

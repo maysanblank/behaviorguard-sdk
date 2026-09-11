@@ -1,5 +1,5 @@
 // Biner uji kesesuaian native. Otaknya ada di lib.rs (dipakai bersama WASM).
-//   cargo run --release            # jalankan 227 pemeriksaan lawan golden.json
+//   cargo run --release            # jalankan 319 pemeriksaan lawan golden.json
 use bg_core::run_conformance;
 use std::fs;
 

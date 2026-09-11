@@ -62,7 +62,7 @@ dashboard.
 ## 3. Cara tes deteksi
 
 **A. Pemilik (kamu, gaya normal)** — sesudah pendaftaran, lanjut beberapa langkah normal.
-   → Harusnya mayoritas LOW. Wajar sekitar 1 dari 7 vonis minta verifikasi (14,5% di
+   → Harusnya mayoritas LOW. Wajar sekitar 1 dari 9 vonis minta verifikasi (11,4% di
    pengukuran); sesudah lolos verifikasi, MEDIUM tidak ditanya lagi 15 menit.
 
 **B. Penyusup (orang lain, gaya beda)**:
@@ -72,8 +72,8 @@ dashboard.
    4. Minta **orang lain** yang memakai.
    → Harusnya MEDIUM/HIGH, dan HIGH dua kali berturut = BLOCK_SESSION.
 
-> **Jujur:** di pengukuran, 13,3% penyusup lolos vonis pertamanya dan 9,2% lolos seluruh
-> sesinya; tidak ada penyusup yang lolos 6 sesi berturut. Jangan bertaruh pada satu sesi —
+> **Jujur:** di pengukuran, 10,5% penyusup lolos vonis pertamanya dan 7,9% lolos seluruh
+> sesinya; 1 dari 240 pasangan penyusup tidak pernah ketahuan dalam 6 sesi. Jangan bertaruh pada satu sesi —
 > jalankan 3–5 sesi penyusup dan laporkan rasionya.
 
 ---

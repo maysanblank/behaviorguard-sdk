@@ -1727,12 +1727,177 @@ Uji: `core/lifecycle.test.mjs` J (10 pemeriksaan) dan K (5 pemeriksaan jendela g
 
 ---
 
+## C-44 - sesi dinilai dalam urutan ACAK; ritme ketik yang tak tercemar jeda
+
+### Temuan: harness menilai sesi dalam urutan acak
+
+`session_id` di basis data riset adalah UUID acak, dan `load_raw` mengurutkan dengan
+`ORDER BY session_id`. Semua harness sampai C-43 karena itu mendaftarkan pemilik dengan 10
+sesi ACAK dari seluruh masa pengambilan data, lalu menilai sisanya juga dalam urutan acak.
+Pengguna nyata tidak begitu: ia mendaftar dengan kunjungan PERTAMANYA lalu terus memakai
+situs. `tools/export_sessions.py --order time` (kini default) mengurutkan sesi per subjek
+berdasarkan timestamp event pertamanya.
+
+Di urutan waktu, gesekan pemilik per kuintil masa pakai (mesin C-44): 10,0 / 13,8 / 16,2 /
+10,1 / 7,2% - naik di tengah lalu turun lagi - kebiasaan pemilik bergeser di minggu-minggu awal, dan kolam progresif
+mengejarnya. Tidak ada tren "makin lama makin kacau" yang sistematis; kesan itu datang dari
+tampilan per-sesi yang disusun menurut urutan acak.
+
+### Perubahan: 6 fitur ritme ketik (SPEC 1.4.0, 28 -> 34 fitur)
+
+Fitur ketik lama memakai RATA-RATA jeda dan tahan tombol. Rata-rata jeda tercemar oleh
+berhenti-berpikir (satu jeda 900 ms menggeser rata-rata sesi pendek jauh), padahal median
+dan IQR tidak. Enam fitur baru (SPEC §8.10):
+
+| fitur | arti |
+|---|---|
+| `keystroke_flight_median` / `_iqr` | ritme jeda antar-tombol, tahan jeda panjang |
+| `keystroke_dwell_median` | lama tahan tombol, tahan outlier |
+| `keystroke_backspace_ratio` | kebiasaan koreksi |
+| `keystroke_shift_ratio` | kebiasaan huruf besar |
+| `keystroke_cross_hand_ratio` | pola tangan kiri/kanan |
+
+Kelas tangan diambil dari `e.code` (posisi FISIK, tak bergantung tata letak) sebagai
+`kc` = L/R/D/S. Di kolom `input[type=password]` kelasnya **tidak** direkam (urutan kiri/kanan
+sandi mempersempit tebakan); `core/privacy.test.mjs` menguncinya. Data riset tanpa `kc`
+jatuh ke kelas QWERTY dari karakter ASCII-nya.
+
+### Hasil (`eval_sdk --live`, 653 sesi, 16 subjek, urut waktu)
+
+| | mesin C-43 (28 fitur) | **C-44 (34 fitur)** |
+|---|---:|---:|
+| pemilik diminta verifikasi | 12,2% | **11,4%** |
+| pemilik diblokir | 0% | **0%** |
+| penyusup lolos vonis pertama | 12,6% | **10,5%** |
+| penyusup lolos seluruh sesi | 8,6% | **7,9%** |
+| penyusup di jam biasa pemilik (`--same-hour`) vonis-1 / seluruh | 16,7% / 11,8% | **14,3% / 10,8%** |
+| AUC per pemilik (makro) | 0,942 | **0,953** |
+| data AFK: pemilik / penyusup vonis-1 / seluruh | 19,9% / 9,6% / 5,8% | **19,1% / 8,5% / 5,6%** |
+| ambil-alih ketahuan di sesi-1 | 96,3% | 95,0% |
+| ambil-alih tak ketahuan dalam 6 sesi | 0,4% (1/240) | 0,4% (1/240) |
+
+Belahan lapor (8 subjek yang tidak dipakai memilih apa pun): pemilik 14,4% -> 12,7%,
+penyusup vonis-1 11,4% -> 9,2%. Diungkap apa adanya: ambil-alih yang ketahuan di sesi
+PERTAMA turun 96,3% -> 95,0% (3 pasangan dari 240 baru ketahuan di sesi ke-2); yang tak
+pernah ketahuan tetap satu pasangan yang sama di kedua mesin.
+
+`--same-hour` baru di eval_sdk: penyusup memakai akun pada jam yang biasa dipakai pemilik,
+jadi `temporal_time_of_day_score` tidak lagi memberi bantuan gratis. Itu skenario yang lebih
+jujur untuk penyerang yang tahu kebiasaan korbannya, dan kenaikan dari 10,5% ke 14,3% adalah
+porsi deteksi yang selama ini datang dari jam saja.
+
+Tiap fitur baru ikut menyumbang (leave-one-out, pemilik / penyusup vonis-1): tanpa
+backspace 11,8 / 10,6; tanpa cross-hand 12,2 / 10,5; tanpa dwell median 12,0 / 10,7; tanpa
+flight IQR 11,8 / 10,6; tanpa flight median 12,1 / 10,8; tanpa shift 11,3 / 11,1.
+
+### Tuas yang diuji dan DITOLAK
+
+- membuang fitur jam (temporal) atau fitur tugas (tiga varian): pemilik turun sedikit tapi
+  penyusup lolos vonis-1 naik dari 12,6% ke 16,0-21,9% - melanggar syarat "FAR tidak boleh naik";
+- `retrainEvery` 3: identik dengan 6;
+- `progressiveMaxPool` 45: pemilik 12,7%, penyusup 12,2% - campuran, tidak dipakai;
+- mode ketat `contextEvents` 450 + k_low 2,0: pemilik 11,0%, penyusup vonis-1 8,7%, tak
+  pernah ketahuan 0/240 - tetapi di data AFK penyusup seluruh sesi naik 5,6% -> 6,5%, jadi
+  tetap opt-in (dicatat di README "strict mode").
+
+### Titik operasi (k_low) pada mesin C-44
+
+| k_low | pemilik | penyusup vonis-1 | seluruh sesi | tak pernah ketahuan |
+|---|---:|---:|---:|---:|
+| 1,25 | 17,0% | 6,5% | 4,8% | 0,4% |
+| 1,5 | 14,8% | 8,6% | 6,5% | 0,4% |
+| **1,75** | **11,4%** | **10,5%** | **7,9%** | **0,4%** |
+| 2,0 | 10,0% | 12,3% | 9,4% | 0,4% |
+| 2,5 | 7,7% | 16,6% | 12,9% | 0,4% |
+
+### Dua akibat samping yang ditangani
+
+1. **Rekam-ulang.** Median dan IQR jeda adalah statistik urutan yang peka jitter
+   milidetik; rekaman yang diputar dengan jitter +-2 ms menggeser median pemilik
+   yang ritmenya sangat rata cukup jauh untuk melewati `replayEps`. Ambang itu dikalibrasi
+   (C-35) pada 28 fitur lama, jadi jarak rekam-ulang tetap dihitung di ruang itu - keenam
+   fitur baru dikecualikan dari `_nearestPastSession`. `core/lifecycle.test.mjs` H hijau.
+2. **Profil tersimpan lama.** Vektor 28 angka tidak bisa dibandingkan dengan 34; menambal
+   kolom kosong dengan nol akan meracuni model. `init()` membuang profil yang panjang
+   vektornya berbeda (sekali, dengan peringatan konsol) dan pengguna mendaftar ulang.
+
+Golden 255 -> **319** pemeriksaan (kasus `fc06_keystroke_rhythm`: kc, huruf besar, Shift,
+Backspace, Delete, karakter non-ASCII, jeda 1500 ms, tahan 0 / 1200 ms), hijau di JS,
+Python, Java, Rust, dan WASM.
+
+---
+
+## C-45 - dari pustaka yang benar ke produk yang bisa dipasang orang lain
+
+Audit ini tidak menyentuh model, fitur, atau ambang: `eval_sdk --live` sebelum dan sesudah
+identik (pemilik 11,4%, penyusup vonis-1 10,5%, seluruh sesi 7,9%, AUC 0,953) dan golden
+tetap 319/319. Yang diaudit adalah apa yang terjadi saat pustaka ini dipasang di situs orang
+lain, dipakai orang sungguhan, di perangkat dan kondisi yang tidak ada di data riset.
+Metodenya: memasangnya di situs demo realistis (`demo/arunika/`) lalu menjalankan tiap alur
+di browser sungguhan, termasuk jalur live penuh (event DOM -> jam 30 dtk -> vonis -> dialog
+-> OTP -> vonis akhir).
+
+### Dialog verifikasi
+
+| cacat | akibat | kini |
+|---|---|---|
+| gaya inline di halaman integrator, id tetap | CSS situs mengubah dialog; id bisa bertabrakan; CSP `style-src` ketat memblokirnya | Shadow DOM + adoptedStyleSheets, nol atribut style, teks lewat textContent |
+| tanpa role/fokus/Esc | tak terpakai dengan keyboard/pembaca layar | role=dialog, aria-modal, fokus terkunci, Esc, aria-live, fokus dikembalikan |
+| keyboard layar sentuh (`Unidentified`/229) | sampel ponsel TAK PERNAH utuh -> pemilik di ponsel tidak bisa lolos | mode 'soft': jeda antar-karakter dari event `input`; template menyimpan modenya; beda mode ditolak |
+| satu `downAt` untuk semua tombol | rollover (tekan huruf berikut sebelum melepas) merusak pasangan tekan/lepas | pencatatan per tombol |
+| Backspace hanya mengosongkan rekaman | ketikan berikutnya pasti ditolak tanpa penjelasan | kolom ikut dikosongkan, alasannya ditulis |
+| batas waktu sejak dibuka (60 dtk daftar) | pendaftaran 3 putaran oleh pengetik pelan ditutup di tengah | dihitung dari ketidakaktifan; daftar 90 dtk |
+| tanpa jalan keluar | pemilik yang tak bisa mengetik frasa (keyboard lain, cedera) hanya bisa diblokir | `mfa.onFallback` = tombol "Gunakan cara lain" |
+| salin teks "perilakumu berbeda" untuk semua step-up | step-up kebijakan (transfer besar) menuduh pengguna | teks sesuai pemicu (vonis vs aksi integrator) |
+| animasi masuk | di tab yang dirender tertunda dialog bisa tampak transparan | dihapus - dialog keamanan tidak boleh berisiko tak terlihat |
+
+### API integrator
+
+- `stepUp({level, reason})`: dialog/cadangan sesuai permintaan, sebelum aksi sensitif.
+- `status()`: keadaan untuk UI integrator tanpa membeberkan vektor (dulu hanya `getState()`).
+- `stop()` (logout): dulu tak ada cara berhenti - pustaka terus menangkap atas nama akun yang
+  sudah keluar. Kini ekor dibank, penangkap dilepas, jam dihentikan, masa berlaku dicabut.
+- `forget()`: hak hapus data (profil, template, ekor, rahasia token).
+- `enrollMfa()` / `forgetMfa()`: pendaftaran dari halaman pengaturan; menghapus template
+  menuntut verifikasi lolos lebih dulu.
+- `on('risk', fn)`; event DOM `behaviorguard:risk` kini disiarkan inti untuk SEMUA integrasi
+  (dulu hanya auto-boot - integrator yang memanggil init() sendiri tidak pernah menerimanya).
+- `assessNow().verifiedRecently`: kebijakan integrator bisa tidak bertanya dua kali.
+- Vonis yang memunculkan dialog diumumkan SEKETIKA (`stage:'awaiting-mfa'`, `mfa.awaiting`)
+  lalu diumumkan lagi dengan hasilnya (`id` sama). Dulu onRisk menunggu dialog ditutup - bisa
+  2 menit lebih integrator buta. Vonis yang jatuh saat dialog lain terbuka: `mfa.busy`.
+
+### Kondisi nyata yang dulu mematikan atau merusak pustaka
+
+| kondisi | dulu | kini |
+|---|---|---|
+| situs http (bukan konteks aman) | `crypto.subtle` tidak ada -> tiap `_persist` melempar -> TIDAK ADA vonis sama sekali, tanpa pesan | disimpan tanpa tanda tangan + peringatan; data tanpa tanda tangan ditolak di https; sidik perangkat pakai FNV |
+| skrip dimuat dua kali | dua penangkap berjalan | salinan pertama menang |
+| browser tanpa `structuredClone` | melempar saat dimuat | salinan JSON |
+| init() dipanggil bersamaan | dua penangkap terpasang | diantrekan |
+| halaman dipulihkan dari back/forward cache | jam mati, tak ada vonis lagi | `pageshow` menghidupkannya |
+| dialog di tab latar | kedaluwarsa tanpa dilihat -> MFA_FAILED | pemimpin memilih tab yang terlihat; dialog menunggu tab terlihat |
+| satu langkah jam mundur (sinkron NTP) | "timestamp non-monoton" -> BLOCK untuk manusia | perlu >= 3 langkah dan > 1% event |
+| tahan tombol keyboard layar sentuh (~0 ms seragam) | "hold identik" -> pengguna ponsel diblokir sebagai bot | tombol `soft` dikecualikan dari cek tahan |
+| fokus ke `<select>`/centang tanpa mengetik | dibaca "autofill" -> jendela tak layak melatih | `txt:false`; hanya kolom ketik yang dihitung |
+| verifikasi 10 menit sesudah vonis | jendela lama (bisa milik orang lain) ikut dilatih | hanya jendela berumur <= 2 jendela yang dilatih |
+| gagal irama tanpa batas lintas dialog | percobaan menebak tak terhingga | `lockAfterFailures` (3): irama dikunci sampai cadangan lolos |
+| frasa < 8 karakter | template tak pernah terbentuk, diam | peringatan konsol |
+| pendaftaran otomatis saat pengguna mengetik | dialog merebut fokus dari formulir | ditunda ke vonis LOW berikutnya |
+
+Uji: `core/stepup.test.mjs` (61 pemeriksaan: A-M), selain semua suite lama yang tetap hijau.
+Uji browser (bukan otomatis, dicatat di sini): pendaftaran irama 3 putaran, verifikasi irama
+sebelum transfer, cadangan OTP (kode salah lalu benar), rekam-ulang -> HIGH -> sesi
+dihentikan, suntik bot -> BLOCK, jalur live penuh dengan jam 30 dtk, tata letak ponsel.
+
+---
+
 ## Status verifikasi setelah tambalan
 
 | Uji | Perintah | Hasil |
 |---|---|---|
-| Mesin Python vs golden | `python core/conformance.py` | 255/255 SESUAI (SPEC 1.3) |
-| Mesin JS vs golden | `node core/conformance.node.mjs` | 255/255 SESUAI |
+| Mesin Python vs golden | `python core/conformance.py` | 319/319 SESUAI (SPEC 1.4) |
+| Mesin JS vs golden | `node core/conformance.node.mjs` | 319/319 SESUAI |
 | Regresi step-up C-1 + drift tempo C-20 | `core/challenge.test.html` / `.mjs` | 23/23 SESUAI |
 | FRR/FAR MFA sebelum vs sesudah C-20 | simulasi jitter Gauss (frasa 18 char) | FRR 63.6%→~2%, FAR ~0% |
 | Storage C-10 (browser) | `storage.del` pada store kosong | tidak melempar, 0 error |
@@ -1749,11 +1914,13 @@ Uji: `core/lifecycle.test.mjs` J (10 pemeriksaan) dan K (5 pemeriksaan jendela g
 | Kompresi waktu diam C-28 | `core/compress.test.mjs` | 22/22 SESUAI |
 | Jalur penuh idle C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 SESUAI |
 | Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18,4% -> 9,7%, FAR tetap |
-| Privasi capture C-30 | `node core/privacy.test.mjs` | 10/10 SESUAI |
+| Privasi capture C-30, C-44 | `node core/privacy.test.mjs` | 14/14 SESUAI |
 | Siklus hidup C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 SESUAI |
+| Step-up versi produksi, API integrator, kondisi nyata C-45 | `node core/stepup.test.mjs` | 61/61 SESUAI |
 | Server auth + sanitasi log C-39, C-41 | `python server/test_app.py` | 35/35 SESUAI |
-| SDK yang dikirim, jendela 30 dtk (C-43) | `node tools/eval_sdk.mjs --live` | pemilik 14,5%, penyusup vonis-1 13,3%, ambil-alih tak ketahuan 0% |
+| SDK yang dikirim, jendela 30 dtk, urut waktu (C-44) | `node tools/eval_sdk.mjs --live` | pemilik 11,4%, penyusup vonis-1 10,5%, seluruh sesi 7,9%, AUC 0,953 |
+| Kesesuaian Java / Rust / WASM | `npm run conformance:java` / `:rust` / `:wasm` | 319/319 SESUAI |
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
-conformance dijalankan ulang di kedua sisi dan tetap 227/227 (kini 255/255 sejak SPEC 1.3, C-34).
+conformance dijalankan ulang di kedua sisi dan tetap 227/227 (255/255 sejak SPEC 1.3, C-34; 319/319 sejak SPEC 1.4, C-44).

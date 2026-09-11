@@ -24,7 +24,7 @@ regenerating `core/golden.json`, and re-running conformance in all five runtimes
 ## Before you open a pull request
 
 ```bash
-python core/conformance.py       # engine vs golden.json    -> 227/227
+python core/conformance.py       # engine vs golden.json    -> 319/319
 node   core/challenge.test.mjs   # step-up regression       -> 20/20
 node   core/ensemble.test.mjs    # detector-gate regression -> 11/11
 ```
@@ -38,7 +38,7 @@ whether the gap moved.
 ## Adding a language port
 
 Read [`ports/README.md`](ports/README.md). The short version: read `core/SPEC.md`, mirror
-`core/bg_core.py`, and pass all 227 checks in `core/golden.json` at 1e-9. Two traps that
+`core/bg_core.py`, and pass all 319 checks in `core/golden.json` at 1e-9. Two traps that
 break most ports — mask every `mulberry32` multiply to 32 bits (§4), and compute
 time-of-day in **UTC** (§9).
 

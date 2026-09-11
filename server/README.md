@@ -1,7 +1,7 @@
 # BehaviorGuard server (opsional)
 
 Backend kecil multi-tenant untuk dua hal: **baseline yang ikut pengguna lintas perangkat**
-dan **log vonis untuk dashboard operator**. Yang disimpan hanya **28 angka fitur per jendela**
+dan **log vonis untuk dashboard operator**. Yang disimpan hanya **34 angka fitur per jendela**
 dan vonisnya. Event mentah dan huruf ketikan tidak pernah sampai ke sini.
 
 Pustaka berjalan penuh tanpa server ini. Server hanya aktif kalau situs memberi `pk`,

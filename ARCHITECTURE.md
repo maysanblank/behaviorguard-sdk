@@ -14,7 +14,7 @@ and the spec disagree, the spec wins.
 ```
   ┌────────────┐   ┌────────────┐   ┌──────────────┐   ┌──────────────────┐
   │  capture   │──▶│  features  │──▶│ standardize  │──▶│    ensemble      │
-  │ DOM events │   │ 28 floats  │   │ z vs owner   │   │ IF .30 + Maha .70│
+  │ DOM events │   │ 34 floats  │   │ z vs owner   │   │ IF .30 + Maha .70│
   └────────────┘   └────────────┘   └──────────────┘   └────────┬─────────┘
    pointer, key,    per session,     mean/std of the            │
    scroll, focus,   deterministic,   owner's baseline           ▼
@@ -32,7 +32,7 @@ and the spec disagree, the spec wins.
               └──────────────────┘  sessions teach    └──────────────────────┘
 ```
 
-The **28-float feature vector is the system's exchange point.** Everything to its left is
+The **34-float feature vector is the system's exchange point.** Everything to its left is
 platform-specific (DOM, touch, native). Everything to its right is pure arithmetic, and is
 what the specification and the five ports cover. That boundary is why a browser can capture
 while a JVM or a WASM host scores.
@@ -49,7 +49,7 @@ while a JVM or a WASM host scores.
 | `behaviorguard.js` | Orchestrator: session lifecycle, storage, verdict assembly, step-up policy | No |
 | `core/capture.js` | Auto-attach DOM listeners, throttle, buffer cap; keys become per-page tokens (typed characters are never kept) | No |
 | `core/idle.js` | Duplicate removal, idle-gap compression, evidence gating and tail carry | No |
-| `core/features.js` | 28 features from raw events | Yes (§8) |
+| `core/features.js` | 34 features from raw events | Yes (§8) |
 | `core/standardize.js` | Per-feature z-score against the owner baseline | Yes |
 | `core/isolation_forest.js` | Isolation Forest, 100 trees, seed 42 | Yes |
 | `core/mahalanobis.js` | Mahalanobis distance + diagonal shrinkage | Yes |
@@ -57,14 +57,14 @@ while a JVM or a WASM host scores.
 | `core/ensemble.js` | Weighted blend, per-detector score standardization, sample gating | Yes |
 | `core/risk.js` | Threshold calibration, banding, top-feature reasons | Yes |
 | `core/lifecycle.js` | Retrain cadence, two-sided convergence rule | No |
-| `core/challenge.js` | Rhythm template construction and verification | No |
-| `core/mfa.js` | The step-up prompt UI and capture integrity | No |
+| `core/challenge.js` | Rhythm template construction and verification (physical and touch-screen keyboards) | No |
+| `core/mfa.js` | The step-up dialog: Shadow DOM, accessible, per-key rhythm capture, fallback button | No |
 | `core/integrity.js` | Bot heuristics (constant timing, duplicate events, impossible speed) | No |
 | `core/ratelimit.js` | Per-user token bucket | No |
 | `core/token.js` | HMAC session token | No |
 | `core/fingerprint.js` | Lightweight device fingerprint | No |
 | `core/config.js` | Defaults and validated constants | Yes (constants) |
-| `storage.js` | IndexedDB → localStorage → memory, HMAC-sealed | No |
+| `storage.js` | IndexedDB → localStorage → memory, HMAC-sealed (unsigned on insecure origins) | No |
 
 "In spec" means the module's numeric behavior is pinned by `core/golden.json` and must be
 identical across all five runtimes to within 1e-9.
@@ -91,7 +91,7 @@ README — see `core/DRIFT.md` C-29.) The decision boundary becomes an ellipse i
 sitting near the owner's mean but off-axis is still caught.
 
 Shrinkage toward the scaled identity is required, not decoration: with 10–30 baseline
-sessions and 28 features, the sample covariance is near-singular. It is adaptive —
+sessions and 34 features, the sample covariance is near-singular. It is adaptive —
 `min(0.9, max(0.3, d/n))` — heavy while the pool is small, decaying to 0.3 as it grows
 (C-22).
 
@@ -176,7 +176,8 @@ After a **proven** step-up (the built-in rhythm challenge verified, or
 Owner friction clusters by day, not by window — an owner flagged once in a visit is usually
 flagged in every window of it — so without this an owner who just passed an OTP was asked
 again 30 seconds later. `HIGH` still asks, absence revokes it, and graced windows never
-train. Owner friction 16.4% → 14.5% with no security metric worse (C-43).
+train. Owner friction 16.4% → 14.5% with no security metric worse (C-43); with the C-44
+features and time-ordered sessions the shipped default asks the owner 11.4% of verdicts.
 
 ### Replay is not behavior
 
@@ -184,6 +185,16 @@ A recorded session replayed with shifted timestamps produces a feature vector id
 a stored one, which the model would happily call `LOW`. No human repeats themself that
 closely (nearest real owner pair: 0.289 standardized RMS), so anything under 0.05 is `HIGH`
 and never trains (C-35).
+
+### A verification the user can always complete
+
+The built-in step-up is only useful if the real owner can always finish it. So the dialog
+has a way out (`mfa.onFallback`, the integrator's server-verified OTP or WebAuthn), used on
+request, when no rhythm template exists yet, when the keyboard differs from enrollment, and
+after three failed dialogs in a row (which also closes the brute-force path). A verdict that
+opens the dialog is announced at once (`mfa.awaiting`) and again with the outcome, so the
+integrator is never blind while the user is typing. Integrators call `stepUp()` for their own
+sensitive moments and read `status()` for their own UI; neither exposes the model (C-45).
 
 ### Prequential evaluation
 
@@ -234,11 +245,11 @@ The engine is defined once, in prose and numbers, and implemented five times.
 ```
 core/SPEC.md      normative prose  ─┐
 core/bg_core.py   readable reference │──▶ core/golden.json ──▶ every port must match
-                                    ─┘     255 checks, 1e-9
+                                    ─┘     319 checks, 1e-9
 ```
 
-`golden.json` contains **literal inputs and expected outputs** — 140 feature-extraction
-checks (five event streams × 28 features) plus 115 engine checks. A new port never has to reproduce a generator; it reads the
+`golden.json` contains **literal inputs and expected outputs** — 204 feature-extraction
+checks (six event streams × 34 features) plus 115 engine checks. A new port never has to reproduce a generator; it reads the
 file, computes, and compares.
 
 Two portability traps are called out in the spec because both silently break ports:
@@ -266,7 +277,7 @@ and integrity regression suites pass.
 | ES module | You want explicit lifecycle control | `sdk/behaviorguard.js` |
 | Hybrid (optional) | Baseline must follow the user across devices | `server/` |
 
-Hybrid mode transmits only 28-float feature vectors and verdicts, never raw events. It is
+Hybrid mode transmits only 34-float feature vectors and verdicts, never raw events. It is
 off unless a public key, an endpoint **and** a short-lived user token (HMAC, minted by your
 backend with the tenant secret) are all supplied; the server takes the user id from the
 token, never from the request. Read [THREAT-MODEL.md](THREAT-MODEL.md) §4.6 before enabling
@@ -289,6 +300,6 @@ enrollment block is always kept and only the progressive history is shortened.
 ## 8. Where to look next
 
 - [`core/SPEC.md`](core/SPEC.md) — the normative contract
-- [`core/DRIFT.md`](core/DRIFT.md) — measured gaps between engines, and the C-1..C-43 audit
+- [`core/DRIFT.md`](core/DRIFT.md) — measured gaps between engines, and the C-1..C-45 audit
 - [`ports/README.md`](ports/README.md) — how to add a sixth runtime
 - [`THREAT-MODEL.md`](THREAT-MODEL.md) — trust boundaries and known attacks

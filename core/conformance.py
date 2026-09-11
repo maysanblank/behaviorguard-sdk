@@ -36,7 +36,7 @@ def run(verbose=False):
     passed = failed = 0
     problems = []
 
-    # --- SPEC v1.1: ekstraksi fitur (event mentah -> vektor 28-float) ---
+    # --- SPEC v1.1: ekstraksi fitur (event mentah -> vektor 34-float) ---
     for fcase in g.get('feature_cases', []):
         got_vec = bg.features_to_vector(
             bg.extract_features(fcase['events'], fcase.get('session_start_ts')))
