@@ -67,6 +67,7 @@ export const DEFAULTS = {
     cooldownMs: 15000,               // jangan popup lagi dalam N ms setelah lolos
     timeoutMs: 120000,               // C-18: popup yang diabaikan menutup sendiri
     enrollTimeoutMs: 60000,          // pendaftaran lebih pendek: sifatnya opsional
+    enrollSnoozeMs: 86400000,        // C-37: ditutup/diabaikan -> jangan tawarkan lagi 24 jam
   },
   // === ACUAN server/config.py ===
   ensembleMinSamples: { isolation_forest: 8, svm: 20, lstm: 24 },
@@ -78,6 +79,9 @@ export const DEFAULTS = {
   // C-31: riwayat vonis yang disimpan = blok pendaftaran utuh + historyMax entri terakhir.
   // Harus > progressiveMaxPool (kolam diambil dari sini) + jendela konvergensi.
   historyMax: 240,
+  // C-35: sesi yang jarak RMS terstandarnya (tanpa fitur temporal) ke sesi tersimpan mana
+  // pun < replayEps dianggap rekam-ulang. Manusia terdekat di data riset: 0,289.
+  replayEps: 0.05,
   progressiveDupEps: 1e-3,
   // C-23: `idleGapSec` = jeda yang TIDAK BOLEH diukur melintasinya. Disamakan dengan
   // windowSec (30 dtk): jeda sepanjang satu jendela penilaian bukan lagi perilaku.

@@ -37,7 +37,10 @@ export function extractF4(events, sessionStartTs){
     const v=dist/dt; velocities.push(v);
     if(dist>0){
       const dir=Math.atan2(dy,dx);
-      if(lastDir!==null && Math.abs(dir-lastDir)>Math.PI/4) directionChanges++;
+      // SPEC 1.3 (C-34): toleransi 1e-9 di atas pi/4. Gerakan piksel bulat sangat sering
+      // berselisih arah TEPAT pi/4 (482 pasangan di 192 sesi riset), dan atan2 V8 vs libm
+      // Python berbeda 1-2 ulp di sana -> perbandingan berbalik di satu bahasa saja.
+      if(lastDir!==null && Math.abs(dir-lastDir)>Math.PI/4+1e-9) directionChanges++;
       lastDir=dir;
     }
     if(velocities.length>1){

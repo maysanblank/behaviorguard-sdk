@@ -1,4 +1,4 @@
-# BehaviorGuard Core — Engine Specification v1.2.0
+# BehaviorGuard Core — Engine Specification v1.3.0
 
 This document is the **normative reference** for the BehaviorGuard scoring engine. If the
 code and this document disagree, **this document is right and the code is the bug.**
@@ -220,6 +220,15 @@ Semantics: **major** = numbers change; **minor** = surface added, existing numbe
 unchanged; **patch** = documentation clarification only. `golden.json` records the
 `spec_version` it complies with.
 
+- **v1.3.0** (2026-09-11) — **MAJOR** (numbers change in two places):
+  (1) §8 `direction_changes` compares against `π/4 + 1e-9`. Without the tolerance, `atan2`
+  differences of 1–2 ulp between libm implementations flipped the comparison in one
+  language only, on 5 of 192 real sessions, although all 227 golden checks passed. A golden
+  case built from those real move pairs (`fc05_atan2_pi4_edges`) now locks it.
+  (2) Default `k_low` 3.3 → **1.75** (recorded explicitly in `golden.json` `config`).
+  The v1.2.0 held-out figures below were measured by a Python imitation of the engine on
+  whole research sessions, and **do not describe the shipped SDK**. The SDK is now measured
+  by itself: `tools/eval_sdk.mjs --live` (DRIFT C-29, C-33).
 - **v1.2.0** (2026-09-04) — **MAJOR**: detector-2 centroid-RBF → **Mahalanobis +
   shrinkage** (§5.4), threshold calibration → **parametric** (§5.6), IF/SVM weights
   0.70/0.30 → **0.30/0.70**, HIGH action `BLOCK_SESSION` → **`REQUIRE_STEPUP`** plus the
@@ -278,7 +287,10 @@ For each pair `(p=mouse_ev[i-1], c=mouse_ev[i])` with `dt = c.ts − p.ts`:
 - `dt ≤ 0` → **skip** that pair.
 - `dist = hypot(c.x−p.x, c.y−p.y)`, `v = dist/dt` → append to `velocities`.
 - **direction**: if `dist > 0`, `dir = atan2(dy,dx)`; if `last_dir` exists and
-  `|dir − last_dir| > π/4` then `direction_changes += 1`; set `last_dir = dir`.
+  `|dir − last_dir| > π/4 + 1e-9` then `direction_changes += 1`; set `last_dir = dir`.
+  (v1.3: the `1e-9` is normative. Integer-pixel moves hit a direction change of exactly
+  π/4 very often, and `atan2` differs by 1–2 ulp across libm implementations there, so
+  a bare `> π/4` flips in one language only — measured: 5 of 192 real sessions.)
 - **acceleration**: if `|velocities| > 1`, `a = (v − velocities[−2])/dt` → `accelerations`.
 - **curvature** (needs 3 points, `i ≥ 2`, `p2 = mouse_ev[i-2]`):
   `area = x0(y1−y2) + x1(y2−y0) + x2(y0−y1)`; `sa,sb,sc` are the side lengths;

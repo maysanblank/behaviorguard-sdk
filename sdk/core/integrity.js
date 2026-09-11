@@ -54,6 +54,11 @@ export function checkIntegrity(events, opts={}){
   // replay: selisih timestamp duplikat persis
   const seen=new Set(); let dup=0;
   for(const t of ts){ if(seen.has(t)) dup++; seen.add(t); }
-  if(dup>5) reasons.push(`timestamp duplikat ${dup}`);
+  // C-29: ambang dulu mutlak (>5). Sesudah kembaran identik dibuang, manusia mencapai
+  // maksimum 4 ketikan/klik BERBEDA di milidetik yang sama per sesi riset (~230 event).
+  // Ambang mutlak itu menyempit seiring panjang batch (pending bisa 800 event), jadi
+  // dibuat relatif: > 5 DAN > 5% event yang diperiksa. Bot yang menyuntik event sintetis
+  // bertumpuk di milidetik yang sama jauh di atas keduanya.
+  if(dup>Math.max(5, 0.05*evs.length)) reasons.push(`timestamp duplikat ${dup}`);
   return {suspected: reasons.length>0, reasons};
 }

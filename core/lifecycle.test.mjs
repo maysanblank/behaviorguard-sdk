@@ -176,6 +176,57 @@ const feedOne = async (g, evs) => { NOW = Math.max(NOW, evs[evs.length - 1].time
   check('G: memori & penyimpanan sepakat soal lastRisk', g.lastRisk === saved.lastRisk, `${g.lastRisk}/${saved.lastRisk}`);
 }
 
+// ---------------------------------------------------------------- H (C-35) rekam-ulang
+{
+  const g = await guard('uji-replay@contoh.id', { session: { minEventsAssess: 30 } });
+  let t = NOW;
+  const rec = [];
+  for (let i = 0; i < 14; i++) { const b = burst(t, 160); rec.push(b); await feedOne(g, b); t += 20 * 60_000; }
+  const fresh = await feedOne(g, burst(t, 160)); t += 20 * 60_000;
+  check('H: sesi pemilik baru (bukan rekaman) tidak dituduh rekam-ulang', fresh && !fresh.replay, fresh && fresh.level);
+  // putar ulang sesi ke-12 dengan waktu digeser 3 hari
+  const shiftMs = 3 * 86_400_000;
+  const replayed = rec[12].map(e => ({ ...e, timestamp: e.timestamp + shiftMs }));
+  const before = g._trainingVectors().length;
+  const r = await feedOne(g, replayed);
+  check('H: rekaman yang diputar ulang dengan waktu digeser -> HIGH + alasan rekam-ulang',
+    r && r.level === 'HIGH' && r.replay && r.reasons[0].includes('rekam-ulang'), r && `${r.level} jarak ${r.replay && r.replay.distance}`);
+  check('H: sesi rekam-ulang tidak pernah melatih model', g._trainingVectors().length === before && r.eligible === false);
+  const jit = rec[13].map(e => ({ ...e, timestamp: e.timestamp + shiftMs + 86_400_000 + Math.round((rnd() - .5) * 4) }));
+  const r2 = await feedOne(g, jit);
+  check('H: rekaman dengan jitter waktu +-2 ms tetap tertangkap', r2 && r2.replay, r2 && r2.replay ? r2.replay.distance.toFixed(4) : 'lolos');
+}
+
+// ---------------------------------------------------------------- I (C-36..C-38)
+{
+  const { normalizeUA } = await import('../sdk/core/fingerprint.js');
+  const ua = v => `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v} Safari/537.36`;
+  check('I: pembaruan otomatis Chrome 139 -> 140 tidak mengubah sidik perangkat', normalizeUA(ua('139.0.0.0')) === normalizeUA(ua('140.0.7339.80')));
+  check('I: ganti OS/browser tetap mengubah sidik',
+    normalizeUA(ua('139.0.0.0')) !== normalizeUA('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15'));
+
+  // C-38: logout A -> login B (tanpa data tersimpan) di tab yang sama
+  const g = new BehaviorGuard();
+  await g.init({ userId: 'uji-A@contoh.id', mfa: { enabled: false }, session: { minEventsAssess: 30 } });
+  try { clearInterval(g._autoTimer); } catch {}
+  let t = NOW;
+  for (let i = 0; i < 12; i++) { await feedOne(g, burst(t, 160)); t += 20 * 60_000; }
+  g.challengeTemplate = { phrase: 'milik A' };
+  check('I: (prasyarat) A punya model & template', !!g.model && !!g.challengeTemplate);
+  await g.init({ userId: 'uji-B-baru@contoh.id', mfa: { enabled: false } });
+  try { clearInterval(g._autoTimer); } catch {}
+  check('I: B TIDAK mewarisi model, sesi, maupun template ritme milik A',
+    !g.model && g.sessions.length === 0 && !g.challengeTemplate, `model=${!!g.model} sesi=${g.sessions.length} template=${!!g.challengeTemplate}`);
+  check('I: opsi init() A (minEventsAssess 30) tidak terbawa ke B', g.cfg.session.minEventsAssess === 150);
+
+  // C-37: popup pendaftaran MFA ditunda sesudah ditutup
+  g._mfaEnrollSnoozeUntil = NOW + 3600_000; await g._persist();
+  const g2 = new BehaviorGuard();
+  await g2.init({ userId: 'uji-B-baru@contoh.id', mfa: { enabled: false } });
+  try { clearInterval(g2._autoTimer); } catch {}
+  check('I: penundaan popup pendaftaran MFA tersimpan lintas muat-halaman', g2._mfaEnrollSnoozeUntil === NOW + 3600_000);
+}
+
 const failed = results.filter(r => !r.ok);
 console.log(`\nSIKLUS HIDUP & API INTEGRATOR (C-31..C-33)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +

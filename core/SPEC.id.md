@@ -259,7 +259,10 @@ Untuk tiap pasang `(p=mouse_ev[i-1], c=mouse_ev[i])`, `dt = c.ts − p.ts`:
 - `dt ≤ 0` → **lewati** pasangan itu.
 - `dist = hypot(c.x−p.x, c.y−p.y)`, `v = dist/dt` → masuk `velocities`.
 - **arah**: bila `dist > 0`, `dir = atan2(dy,dx)`; bila ada `last_dir` dan
-  `|dir − last_dir| > π/4` → `direction_changes += 1`; set `last_dir = dir`.
+  `|dir − last_dir| > π/4 + 1e-9` → `direction_changes += 1`; set `last_dir = dir`.
+  (v1.3: `1e-9` normatif. Gerakan piksel bulat sangat sering berselisih arah TEPAT π/4,
+  dan `atan2` antar-libm beda 1–2 ulp di situ -> tanpa toleransi perbandingannya berbalik
+  di satu bahasa saja. Terukur: 5 dari 192 sesi nyata.)
 - **akselerasi**: bila `|velocities| > 1`, `a = (v − velocities[−2])/dt` → `accelerations`.
 - **kurvatur** (butuh 3 titik, `i ≥ 2`, `p2 = mouse_ev[i-2]`):
   `area = x0(y1−y2) + x1(y2−y0) + x2(y0−y1)`; `sa,sb,sc` = panjang sisi;

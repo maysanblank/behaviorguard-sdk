@@ -399,7 +399,7 @@ public class BgConformance {
             double v=dist/dt; velocities.add(v);
             if(dist>0){
                 double dr=Math.atan2(dy,dx);
-                if(lastDir!=null && Math.abs(dr-lastDir)>Math.PI/4) directionChanges++;
+                if(lastDir!=null && Math.abs(dr-lastDir)>Math.PI/4+1e-9) directionChanges++;   // SPEC 1.3 (C-34)
                 lastDir=dr;
             }
             if(velocities.size()>1){

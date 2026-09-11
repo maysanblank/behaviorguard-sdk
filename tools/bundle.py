@@ -161,9 +161,18 @@ try{
     // HYBRID cloud: pk (kunci tenant) + endpoint (VPS) -> baseline lintas-device + log verdict
     opts.pk       = cfg.pk       || (S && S.getAttribute('data-pk'))       || null;
     opts.endpoint = cfg.endpoint || (S && S.getAttribute('data-endpoint')) || null;
-    ['weights','baseline','retrainEvery','features','thresholds','mfa'].forEach(function(k){ if(cfg[k]!=null) opts[k]=cfg[k]; });
+    // C-39: token pengguna berumur pendek dari server integrator; tanpa ini mode cloud mati
+    opts.userToken = cfg.userToken || (S && S.getAttribute('data-user-token')) || null;
+    // C-33: session/idle/calibration dulu TIDAK diteruskan -> integrator auto-boot tak bisa
+    // mengatur titik operasi maupun ukuran bukti.
+    ['weights','baseline','retrainEvery','features','thresholds','mfa','session','idle','calibration',
+     'aggregateWindows','calibrationHoldout'].forEach(function(k){ if(cfg[k]!=null) opts[k]=cfg[k]; });
     BG.init(opts);
-    window.addEventListener('pagehide', function(){ try{ BG.endSession(); }catch(_){}} );
+    // C-40: DULU di sini ada pagehide -> BG.endSession(). Pendengar ini terpasang SEBELUM
+    // milik SDK (init() menunggu fingerprint dulu), jadi ia menguras buffer lebih dulu:
+    // penilaian async-nya tak sempat selesai karena halaman mati, dan _bankTail milik SDK
+    // mendapati buffer kosong -> bukti terakhir hilang (C-21 lewat pintu lain). SDK sudah
+    // menangani pagehide sendiri secara sinkron.
   }
 }catch(e){ try{ console.error('[BehaviorGuard boot]', e); }catch(_){} }
 })();

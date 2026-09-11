@@ -622,7 +622,8 @@ def extract_features(events, session_start_ts=None):
         velocities.append(v)
         if dist > 0:
             dr = math.atan2(dy, dx)
-            if last_dir is not None and abs(dr - last_dir) > math.pi / 4:
+            # SPEC 1.3 (C-34): toleransi 1e-9 — atan2 lintas-libm beda 1-2 ulp tepat di pi/4
+            if last_dir is not None and abs(dr - last_dir) > math.pi / 4 + 1e-9:
                 direction_changes += 1
             last_dir = dr
         if len(velocities) > 1:

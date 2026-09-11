@@ -20,7 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bg_core as bg  # noqa: E402
 
-SPEC_VERSION = '1.2.0'
+SPEC_VERSION = '1.3.0'   # C-34: toleransi pi/4 di direction_changes
 ROUND = 6
 
 
@@ -131,9 +131,24 @@ def _fc_sparse_edges():
     return {'id': 'fc04_sparse_edges', 'session_start_ts': FBASE, 'events': ev}
 
 
+def _fc_atan2_pi4_edges():
+    # C-34: pasangan gerakan NYATA dari basis data riset yang selisih arahnya tepat pi/4
+    # dan dulu berbalik antara JS (V8) dan Python (libm). Tiap pasang dipisah gerakan
+    # sumbu-x supaya last_dir diset ulang dengan pasti.
+    pairs = [((-5, -1), (-2, -3)), ((-1, -6), (5, -7)), ((6, -15), (-3, -7)),
+             ((-3, -7), (2, -5)), ((-25, 5), (-8, 12)), ((1, 0), (1, 1)), ((4, 4), (0, 1))]
+    ev, x, y, t = [], 500, 500, FBASE
+    ev.append(_ev('MOUSE_MOVE', t, x=x, y=y))
+    for a, b in pairs:
+        for dx, dy in (a, b, (40, 0)):
+            t += 50; x += dx; y += dy
+            ev.append(_ev('MOUSE_MOVE', t, x=x, y=y, velocity=0.8))
+    return {'id': 'fc05_atan2_pi4_edges', 'session_start_ts': FBASE, 'events': ev}
+
+
 def make_feature_cases():
     return [_fc_rich_desktop(), _fc_keyboard_heavy(),
-            _fc_mouse_only_velfield(), _fc_sparse_edges()]
+            _fc_mouse_only_velfield(), _fc_sparse_edges(), _fc_atan2_pi4_edges()]
 
 
 def build():

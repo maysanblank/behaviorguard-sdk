@@ -9,21 +9,35 @@ Skema per tenant + per akun (userId), BUKAN per device:
   baselines(pk, user_id, vectors_json, updated_at)   # baseline akun -> tarik saat login device mana pun
   logs(id, pk, user_id, level, score, action, reasons, ts, ip)
 
-Endpoint:
-  POST /tenant     {name}                        -> {pk}        (daftar tenant)
-  GET  /baseline?u=..   (Bearer pk / ?pk=)       -> {vectors}   (tarik baseline akun)
-  POST /baseline   {userId, vectors} (pk)        -> {ok}        (sync baseline akun)
-  POST /log        {pk,userId,level,score,...}   -> {ok}        (kirim verdict)
-  GET  /dashboard?pk=..                          -> HTML per-akun (andi=HIGH, budi=LOW)
+Kunci (C-39):
+  pk  publishable, ada di halaman. SENDIRIAN tidak membuka apa pun.
+  sk  rahasia tenant, HANYA di server integrator. Dipakai (a) operator membuka dashboard,
+      (b) server integrator mencetak TOKEN PENGGUNA sesudah pengguna login:
+         token = b64url(userId) "." exp "." hex(HMAC-SHA256(sk, pk|userId|exp))
+  Operasi per-akun (baseline, log) wajib pk + token; userId DIAMBIL DARI TOKEN, bukan
+  dari parameter. Tanpa ini (versi lama): siapa pun yang membaca pk dari kode halaman bisa
+  membaca template perilaku akun mana pun, MENIMPANYA (peracunan: penyerang mengirim
+  vektornya sendiri ke akun korban, lalu dianggap pemilik), memalsukan vonis, dan - lewat
+  /tenants tanpa auth - mengumpulkan pk SEMUA tenant beserta IP pengguna di dashboard.
 
-CATATAN KEAMANAN (jujur, demo-grade): pk = publishable key (kelihatan di klien). Siapa pun
-yg punya pk bisa tulis log/baseline tenant itu -> risiko peracunan baseline. Produksi:
-gerbang tulis-baseline via secret key sisi server aplikasi vendor, bukan pk klien.
+Endpoint:
+  POST /tenant                      {name}             -> {pk, sk}  (sk tampil SEKALI)
+  GET  /baseline      Bearer pk + X-BG-User-Token      -> {vectors}
+  POST /baseline      Bearer pk + X-BG-User-Token      -> {ok}
+  POST /log           Bearer pk + X-BG-User-Token      -> {ok}
+  GET  /api/dashboard Bearer sk                        -> data SOC
+  GET  /api/account   Bearer sk  ?u=                   -> detail akun
+  GET  /tenants       Bearer $BG_ADMIN_TOKEN           -> daftar tenant (mati tanpa env)
+  GET  /dashboard                                      -> HTML (operator memasukkan sk)
+
+Cetak token untuk uji lokal:  python server/app.py mint <pk> <sk> <userId> [ttl_detik]
 """
-import os, json, time, secrets, sqlite3
+import os, json, time, secrets, sqlite3, hmac, hashlib, base64, sys, math
 from flask import Flask, request, jsonify, g, Response
 
-DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg_server.db")
+DB = os.environ.get("BG_DB") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg_server.db")
+ADMIN_TOKEN = os.environ.get("BG_ADMIN_TOKEN", "")
+TOKEN_MAX_TTL = 7 * 86400      # token pengguna tak boleh berlaku lebih dari seminggu
 app = Flask(__name__)
 
 
@@ -45,7 +59,7 @@ def init_db():
     c = sqlite3.connect(DB)
     c.executescript(
         """
-    CREATE TABLE IF NOT EXISTS tenants(pk TEXT PRIMARY KEY, name TEXT, created_at REAL);
+    CREATE TABLE IF NOT EXISTS tenants(pk TEXT PRIMARY KEY, name TEXT, created_at REAL, sk TEXT);
     CREATE TABLE IF NOT EXISTS baselines(pk TEXT, user_id TEXT, vectors_json TEXT, updated_at REAL,
         PRIMARY KEY(pk, user_id));
     CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT, pk TEXT, user_id TEXT,
@@ -53,7 +67,12 @@ def init_db():
         top_features TEXT, convergence TEXT, eligible INTEGER, sessions INTEGER, fp TEXT);
     """
     )
-    # migrasi lembut untuk DB lama (kolom baru)
+    # migrasi lembut untuk DB lama (kolom baru). Tenant lama tanpa sk TIDAK bisa membuka
+    # dashboard atau menerima token sampai sk dibuat ulang - gagal-tertutup, disengaja.
+    try:
+        c.execute("ALTER TABLE tenants ADD COLUMN sk TEXT")
+    except sqlite3.OperationalError:
+        pass
     for col, typ in [("top_features", "TEXT"), ("convergence", "TEXT"),
                      ("eligible", "INTEGER"), ("sessions", "INTEGER"), ("fp", "TEXT")]:
         try:
@@ -68,7 +87,7 @@ def init_db():
 @app.after_request
 def cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-BG-User-Token"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return resp
 
@@ -94,26 +113,77 @@ def valid_pk(pk):
     return db().execute("SELECT 1 FROM tenants WHERE pk=?", (pk,)).fetchone() is not None
 
 
+def _b64u(b):
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def _unb64u(s):
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _sig(sk, pk, user_id, exp):
+    return hmac.new(sk.encode(), f"{pk}|{user_id}|{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def mint_user_token(pk, sk, user_id, ttl=3600):
+    """Dipanggil di SERVER INTEGRATOR sesudah pengguna login. Padanan Node ada di
+    server/README.md. Token terikat ke pk, userId, dan waktu kedaluwarsa."""
+    exp = int(time.time()) + int(min(ttl, TOKEN_MAX_TTL))
+    return f"{_b64u(user_id.encode())}.{exp}.{_sig(sk, pk, user_id, exp)}"
+
+
+def auth_user():
+    """((pk, userId), None) dari pk + X-BG-User-Token yang sah, atau (None, pesan)."""
+    pk = get_pk()
+    row = db().execute("SELECT sk FROM tenants WHERE pk=?", (pk,)).fetchone() if pk else None
+    if not row or not row["sk"]:
+        return None, "pk invalid"
+    tok = request.headers.get("X-BG-User-Token", "")
+    try:
+        u_b64, exp_s, sig = tok.split(".")
+        user_id, exp = _unb64u(u_b64).decode(), int(exp_s)
+    except Exception:
+        return None, "token pengguna wajib"
+    now = time.time()
+    if exp < now or exp > now + TOKEN_MAX_TTL + 60:
+        return None, "token kedaluwarsa"
+    if not hmac.compare_digest(sig, _sig(row["sk"], pk, user_id, exp)):
+        return None, "token tidak sah"
+    return (pk, user_id), None
+
+
+def auth_operator():
+    """pk tenant dari Bearer sk, atau None. sk dibandingkan waktu-konstan."""
+    auth = request.headers.get("Authorization", "")
+    sk = auth[7:].strip() if auth.startswith("Bearer ") else ""
+    if not sk.startswith("sk_"):
+        return None
+    for r in db().execute("SELECT pk, sk FROM tenants WHERE sk IS NOT NULL").fetchall():
+        if hmac.compare_digest(r["sk"], sk):
+            return r["pk"]
+    return None
+
+
 # ---- daftar tenant ----
 @app.post("/tenant")
 def tenant():
     body = request.get_json(silent=True) or {}
     name = (body.get("name") or "tenant").strip()[:80]
     pk = "pk_" + secrets.token_hex(12)
-    db().execute("INSERT INTO tenants(pk,name,created_at) VALUES(?,?,?)", (pk, name, time.time()))
+    sk = "sk_" + secrets.token_hex(24)
+    db().execute("INSERT INTO tenants(pk,name,created_at,sk) VALUES(?,?,?,?)", (pk, name, time.time(), sk))
     db().commit()
-    return jsonify(pk=pk, name=name)
+    return jsonify(pk=pk, sk=sk, name=name,
+                   note="sk tampil SEKALI. Simpan di server Anda, JANGAN di halaman.")
 
 
 # ---- baseline akun (per pk+userId) ----
 @app.get("/baseline")
 def get_baseline():
-    pk = get_pk()
-    if not valid_pk(pk):
-        return jsonify(error="pk invalid"), 401
-    u = request.args.get("u") or request.args.get("userId")
-    if not u:
-        return jsonify(error="userId wajib"), 400
+    who, err = auth_user()
+    if not who:
+        return jsonify(error=err), 401
+    pk, u = who
     row = db().execute(
         "SELECT vectors_json, updated_at FROM baselines WHERE pk=? AND user_id=?", (pk, u)
     ).fetchone()
@@ -124,18 +194,20 @@ def get_baseline():
 
 @app.post("/baseline")
 def post_baseline():
-    pk = get_pk()
-    if not valid_pk(pk):
-        return jsonify(error="pk invalid"), 401
+    who, err = auth_user()
+    if not who:
+        return jsonify(error=err), 401
+    pk, u = who
     body = request.get_json(silent=True) or {}
-    u = body.get("userId")
+    if body.get("userId") not in (None, u):
+        return jsonify(error="userId tidak cocok dengan token"), 403
     vecs = body.get("vectors")
-    if not u or not isinstance(vecs, list):
-        return jsonify(error="userId+vectors wajib"), 400
-    # sanitasi: hanya list-of-list angka, cap 60 sesi x 40 fitur
+    if not isinstance(vecs, list):
+        return jsonify(error="vectors wajib"), 400
+    # sanitasi: list-of-list angka HINGGA (NaN/inf ditolak), cap 100 sesi x 40 fitur
     clean = []
-    for v in vecs[:60]:
-        if isinstance(v, list) and all(isinstance(x, (int, float)) for x in v):
+    for v in vecs[:100]:
+        if isinstance(v, list) and v and all(isinstance(x, (int, float)) and math.isfinite(x) for x in v):
             clean.append([float(x) for x in v[:40]])
     db().execute(
         "INSERT INTO baselines(pk,user_id,vectors_json,updated_at) VALUES(?,?,?,?) "
@@ -149,10 +221,14 @@ def post_baseline():
 # ---- log verdict ----
 @app.post("/log")
 def log():
-    pk = get_pk()
-    if not valid_pk(pk):
-        return jsonify(error="pk invalid"), 401
+    who, err = auth_user()
+    if not who:
+        return jsonify(error=err), 401
+    pk, uid = who
     b = request.get_json(silent=True) or {}
+    if b.get("userId") not in (None, uid):
+        return jsonify(error="userId tidak cocok dengan token"), 403
+    b["userId"] = uid
     ts = b.get("ts") or time.time()
     if ts and ts > 1e11:  # klien kirim Date.now() (milidetik) -> normalkan ke detik
         ts = ts / 1000.0
@@ -187,9 +263,9 @@ def _norm_ts(t):
 # ---- data JSON untuk dashboard SOC (dipoll tiap 3 dtk) ----
 @app.get("/api/dashboard")
 def api_dashboard():
-    pk = get_pk()
-    if not valid_pk(pk):
-        return jsonify(error="pk invalid"), 401
+    pk = auth_operator()
+    if not pk:
+        return jsonify(error="butuh sk operator"), 401
     d = db()
     name = d.execute("SELECT name FROM tenants WHERE pk=?", (pk,)).fetchone()["name"]
     users = [r["user_id"] for r in d.execute("SELECT DISTINCT user_id FROM logs WHERE pk=?", (pk,)).fetchall()]
@@ -228,10 +304,13 @@ def api_dashboard():
     return jsonify(name=name, pk=pk, generatedAt=time.time(), kpi=kpi, accounts=accounts, events=events)
 
 
-# ---- daftar tenant (untuk pemilih tenant di dashboard) ----
-# Catatan demo: tak ada auth admin; untuk produksi gerbang dgn login operator.
+# ---- daftar tenant: HANYA admin platform (env BG_ADMIN_TOKEN). Dulu tanpa auth dan
+# mengembalikan pk semua tenant - satu permintaan membuka seluruh platform (C-39).
 @app.get("/tenants")
 def tenants():
+    auth = request.headers.get("Authorization", "")
+    if not ADMIN_TOKEN or not hmac.compare_digest(auth, "Bearer " + ADMIN_TOKEN):
+        return jsonify(error="admin saja"), 403
     d = db()
     out = []
     for t in d.execute("SELECT pk, name, created_at FROM tenants ORDER BY created_at").fetchall():
@@ -246,9 +325,9 @@ def tenants():
 # ---- detail satu akun (untuk drawer drill-down) ----
 @app.get("/api/account")
 def api_account():
-    pk = get_pk()
-    if not valid_pk(pk):
-        return jsonify(error="pk invalid"), 401
+    pk = auth_operator()
+    if not pk:
+        return jsonify(error="butuh sk operator"), 401
     u = request.args.get("u")
     if not u:
         return jsonify(error="userId wajib"), 400
@@ -285,13 +364,11 @@ def api_account():
 # ---- dashboard SOC (dark, live) ----
 @app.get("/dashboard")
 def dashboard():
-    # pk opsional: SPA menampilkan pemilih tenant. Kalau diberi & valid, langsung terpilih.
-    pk = request.args.get("pk") or ""
-    if pk and not valid_pk(pk):
-        pk = ""
+    # Halaman statis; operator memasukkan sk-nya di halaman (disimpan di sessionStorage tab
+    # itu saja). Kunci tidak pernah lewat URL - URL tercatat di log server & riwayat.
     tpl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
     with open(tpl, encoding="utf-8") as f:
-        html = f.read().replace("__PK__", pk)
+        html = f.read()
     return Response(html, mimetype="text/html")
 
 
@@ -301,5 +378,9 @@ def home():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 5 and sys.argv[1] == "mint":
+        print(mint_user_token(sys.argv[2], sys.argv[3], sys.argv[4],
+                              int(sys.argv[5]) if len(sys.argv) > 5 else 3600))
+        sys.exit(0)
     init_db()
     app.run(host="0.0.0.0", port=5055, debug=False)

@@ -769,7 +769,7 @@ fn extract_features(events: &[J], session_start_ts: f64) -> Vec<f64> {
         if dist > 0.0 {
             let dr = dy.atan2(dx);
             if let Some(ld) = last_dir {
-                if (dr - ld).abs() > std::f64::consts::PI / 4.0 {
+                if (dr - ld).abs() > std::f64::consts::PI / 4.0 + 1e-9 { // SPEC 1.3 (C-34)
                     direction_changes += 1.0;
                 }
             }

@@ -1,65 +1,55 @@
 /**
- * content.js - on-device capture + scoring (tanpa backend)
- * Skor dilakukan di content (bundled core) agar MV3 tidak butuh offscreen.
- * Background hanya untuk badge/notifikasi & persistensi Alarm.
+ * content.js - penangkap on-device untuk ekstensi, memakai capture.js YANG SAMA dengan SDK.
+ *
+ * C-41: versi lama memakai penangkap SALINAN-TANGAN di berkas ini: menyimpan KARAKTER ASLI
+ * yang diketik (sandi di situs mana pun — ekstensi ini berjalan di <all_urls>), tanpa
+ * velocity (C-16), tanpa mengabaikan popup MFA, lalu background menyimpan buffer mentahnya
+ * ke chrome.storage.local. Kini capture.js dimuat apa adanya (token per-halaman, C-30),
+ * jadi karakter tidak pernah meninggalkan halaman ini.
+ *
+ * Penilaian di background.js memakai orkestrator BehaviorGuard asli, satu model per origin.
  */
-(() => {
-  if(window.__bgInjected) return; window.__bgInjected=true;
+(async () => {
+  if (window.__bgInjected) return; window.__bgInjected = true;
+  let createCapture;
+  try {
+    ({ createCapture } = await import(chrome.runtime.getURL('core/capture.js')));
+  } catch (e) { console.warn('[BG] capture tidak termuat', e); return; }
 
-  // --- inline minimal core (subset) agar tidak butuh import di content-script ---
-  // Untuk full engine, background akan sync via chrome.storage; di sini kita lakukan scoring ringan
-  const buf=[];
-  const push=e=>{ e.timestamp=Date.now(); e.page_url=location.href; if(buf.length<2000) buf.push(e); };
-  let lastMove=0;
-  document.addEventListener('mousemove', e=>{
-    const now=Date.now(); if(now-lastMove<50) return; lastMove=now;
-    push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY});
-  }, {passive:true, capture:true});
-  document.addEventListener('click', e=> push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY}), {passive:true, capture:true});
-  let lastY=window.scrollY;
-  window.addEventListener('scroll', ()=>{ const cur=window.scrollY; const d=Math.abs(cur-lastY); lastY=cur; if(d) push({event_type:'MOUSE_SCROLL', scroll_delta: d}); }, {passive:true});
-  const downAt=new Map(); document.addEventListener('keydown', e=> downAt.set(e.code, Date.now()), {passive:true, capture:true});
-  document.addEventListener('keyup', e=>{ const t0=downAt.get(e.code); const h=t0?Date.now()-t0:80; push({event_type:'KEYSTROKE', key:e.key, hold_time:h}); }, {passive:true, capture:true});
-  document.addEventListener('focusin', e=>{
-    try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS'}); }catch{}
-  }, true);
-  document.addEventListener('focusout', e=>{
-    try{ if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR'}); }catch{}
-  }, true);
+  const cap = createCapture(() => {});
+  cap.attach();
+  const WINDOW_MS = 30000;          // = session.windowSec: irama yang sama dengan SDK
 
-  // drain tiap 5 detik → background untuk scoring + badge
-  setInterval(()=>{
-    if(!buf.length) return;
-    const batch=buf.splice(0, buf.length);
-    chrome.runtime.sendMessage({type:'BG_EVENTS', events: batch}, resp=>{
-      if(chrome.runtime.lastError) return;
-      if(resp && resp.evt){
-        // background sudah skor → tampilkan banner ringan
-        const evt=resp.evt;
-        console.log('[BG]', evt);
-        // dispatch ke page agar demo/pemantau bisa dengar
-        window.dispatchEvent(new CustomEvent('BG_RISK', {detail: evt}));
-        // overlay sederhana untuk HIGH
-        if(evt.level==='HIGH'){
-          let el=document.getElementById('__bg_lock');
-          if(!el){
-            el=document.createElement('div');
-            el.id='__bg_lock';
-            el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);color:#fff;display:flex;align-items:center;justify-content:center;z-index:999999;font-family:system-ui;padding:20px;text-align:center';
-            el.innerHTML='<div><h2>Perilaku tidak dikenali - verifikasi diperlukan</h2><p>Skor '+evt.score.toFixed(2)+' - '+evt.reasons.join(', ')+'</p><button id="__bg_ok" style="padding:10px 16px;border-radius:8px;border:0;background:#0ea5a0;color:#fff;font-weight:700;cursor:pointer">Saya pemilik</button></div>';
-            document.body.appendChild(el);
-            document.getElementById('__bg_ok').onclick=()=> el.remove();
-          }
-        }
-      }
+  const flush = () => {
+    const batch = cap.drain();
+    if (!batch.length) return;
+    chrome.runtime.sendMessage({ type: 'BG_EVENTS', origin: location.origin, events: batch }, resp => {
+      if (chrome.runtime.lastError || !resp || !resp.evt) return;
+      window.dispatchEvent(new CustomEvent('BG_RISK', { detail: resp.evt }));
+      notice(resp.evt);
     });
-  }, 5000);
+  };
+  setInterval(flush, WINDOW_MS);
+  // pagehide: kirim sisa buffer sekali; background yang mengumpulkannya lintas halaman
+  window.addEventListener('pagehide', flush);
 
-  // terusan BG_RISK dari background (alarm berkala)
-  chrome.runtime.onMessage.addListener(msg=>{
-    if(msg.type==='BG_RISK' && msg.evt){
-      window.dispatchEvent(new CustomEvent('BG_RISK', {detail: msg.evt}));
-      console.log('[BG BG_RISK]', msg.evt);
-    }
-  });
+  // C-41: dulu layar kunci HIGH punya tombol "Saya pemilik" yang cukup DIKLIK untuk
+  // menutupnya — verifikasi yang bisa dilewati siapa pun. Ekstensi tidak punya jalur
+  // step-up sungguhan, jadi yang jujur adalah PEMBERITAHUAN, bukan kunci palsu.
+  function notice(evt) {
+    if (evt.level !== 'HIGH' || document.getElementById('__bg_notice')) return;
+    const el = document.createElement('div');
+    el.id = '__bg_notice';
+    el.style.cssText = 'position:fixed;right:16px;bottom:16px;max-width:360px;background:#111827;color:#f9fafb;' +
+      'padding:14px 16px;border-radius:10px;z-index:2147483647;font:13px/1.45 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+    const reason = (evt.reasons || [])[0] || '';
+    el.textContent = 'BehaviorGuard: perilaku di situs ini tidak cocok dengan pola biasanya. ' +
+      'Kalau ini bukan Anda, keluar dan ganti sandi. ' + (reason ? '(' + reason + ')' : '');
+    const x = document.createElement('button');
+    x.textContent = 'Tutup';
+    x.style.cssText = 'margin-left:10px;padding:4px 10px;border-radius:6px;border:0;background:#374151;color:#fff;cursor:pointer';
+    x.onclick = () => el.remove();
+    el.appendChild(x);
+    document.body.appendChild(el);
+  }
 })();

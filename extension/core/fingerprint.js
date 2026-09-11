@@ -2,14 +2,22 @@
  * fingerprint.js - device fingerprint ringan (canvas +UA +screen +tz)
  * Tanpa backend, untuk anti ganti-profile
  */
+export const FP_VERSION=2;
+export function normalizeUA(ua){
+  return String(ua||'').replace(/\d+([._]\d+)*/g,'').replace(/\s+/g,' ').trim();
+}
 export async function getFingerprint(){
   // B2: `screen.width x screen.height` DULU ikut jadi sidik. Colok monitor eksternal
   // -> sidik berubah -> behaviorguard.js memaksa lastRisk='MEDIUM', dan lantai lengket
   // menahannya sampai tiga sesi LOW berturut. Colok monitor bukan ganti perangkat.
   // Resolusi adalah KONTEKS (ia menggeser skala kecepatan, lihat A2), bukan identitas
   // mesin — jadi ia keluar dari sini dan ditangani sebagai konteks.
+  // C-36: `userAgent` DULU ikut utuh, lengkap dengan nomor versi. Chrome/Edge/Firefox
+  // naik versi mayor ~tiap 4 minggu lewat pembaruan otomatis -> sidik berubah -> pemilik
+  // dipaksa MEDIUM + lantai lengket sebulan sekali, padahal perangkatnya sama persis.
+  // Versi bukan identitas mesin; keluarga browser + OS-nya yang identitas. Angka dibuang.
   const parts=[
-    navigator.userAgent,
+    normalizeUA(navigator.userAgent),
     Intl.DateTimeFormat().resolvedOptions().timeZone,
     navigator.language,
     String(screen.colorDepth)
