@@ -34,7 +34,7 @@ const DEFAULTS = {
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas
   weights: { isolation_forest: 0.30, svm: 0.70, lstm: 0.00 },
-  // 28 fitur F4 - nama persis, urutan tetap (deterministik)
+  // 34 fitur F4 (28 + 6 ritme ketik C-44) - nama persis, urutan tetap (deterministik)
   features: [
     'mouse_velocity_mean','mouse_velocity_std','mouse_velocity_max',
     'mouse_acceleration_std','mouse_curvature_mean','mouse_direction_changes',
@@ -46,7 +46,12 @@ const DEFAULTS = {
     'temporal_time_of_day_score','temporal_session_duration',
     'temporal_activity_bursts','nav_page_transition_pattern','nav_scroll_depth_mean',
     'nav_page_count','nav_step_transition_count','form_focus_count','form_blur_count',
-    'form_field_switch_rate','cart_action_count'
+    'form_field_switch_rate','cart_action_count',
+    // C-44: ritme ketik yang tak tercemar jeda panjang + kebiasaan koreksi & tangan.
+    // eval_sdk --live (sesi urut waktu): pemilik diminta verifikasi 12,2% -> 11,4%,
+    // penyusup lolos vonis pertama 12,6% -> 10,5%, AUC per-pemilik 0,942 -> 0,953.
+    'keystroke_flight_median','keystroke_flight_iqr','keystroke_backspace_ratio',
+    'keystroke_cross_hand_ratio','keystroke_dwell_median','keystroke_shift_ratio'
   ],
   // pita risiko default (fallback) - di runtime dikalibrasi per-user dari baseline
   thresholds: { low: -0.4, medium: -0.8 },
@@ -251,9 +256,9 @@ return {computeStats: computeStats, standardize: standardize, standardizeBatch: 
 /* ---- core/features.js ---- */
 __M["core/features.js"] = (function(){
 /**
- * features.js - ekstraksi 28 fitur F4 dari event mentah (on-device, deterministik)
+ * features.js - ekstraksi 34 fitur F4 dari event mentah (on-device, deterministik)
  * Input: event[] {event_type, timestamp, x,y, key, hold_time, page_url, scroll_delta, ...}
- * Output: {featureName: float} lengkap 28, selalu finite
+ * Output: {featureName: float} lengkap 34, selalu finite
  */
 const { DEFAULTS } = __M["core/config.js"];
 
@@ -412,17 +417,79 @@ function extractF4(events, sessionStartTs){
     form_focus_count: safe(focusEv.length),
     form_blur_count: safe(blurEv.length),
     form_field_switch_rate: safe(mean(fieldGaps)),
-    cart_action_count: safe(events.filter(e=>e.event_type==='CART_ACTION').length)
+    cart_action_count: safe(events.filter(e=>e.event_type==='CART_ACTION').length),
+    ...keystrokeRhythm(keyEv)
   };
-  // pastikan semua 28 ada & finite, urutan deterministik
+  // pastikan semua fitur ada & finite, urutan deterministik
   const res={}; F4.forEach(k=>res[k]=safe(out[k]||0));
   return res;
+}
+
+// ---- C-44 (SPEC 1.4): ritme ketik yang lebih tajam -------------------------------
+// Rata-rata jeda antar-tombol (keystroke_flight_time_mean) tercampur jeda PANJANG antar
+// kolom/berpikir, jadi yang terukur lebih banyak "tugas" daripada "orang". Di sini hanya
+// jeda < 1 dtk yang dihitung, dengan median & IQR (tahan pencilan), ditambah kebiasaan
+// koreksi (Backspace), pemakaian Shift, dan beda kecepatan pindah-tangan vs tangan-sama.
+// Kelas tangan dari `kc` (dicatat capture dari posisi fisik tombol); data tanpa `kc`
+// (riset) memakai tata letak QWERTY dari karakter ASCII-nya.
+const HAND_L='qwertasdfgzxcvb', HAND_R='yuiophjklnm';
+function keyClass(e){
+  if(typeof e.kc==='string' && e.kc) return e.kc;
+  const k=e.key;
+  if(typeof k!=='string') return 'O';
+  if(k.length===1 && k.charCodeAt(0)<128){
+    let c=k; const code=k.charCodeAt(0); if(code>=65 && code<=90) c=String.fromCharCode(code+32);
+    if(HAND_L.indexOf(c)>=0) return 'L';
+    if(HAND_R.indexOf(c)>=0) return 'R';
+    if(c>='0' && c<='9') return 'D';
+    if(c===' ') return 'S';
+    return 'P';
+  }
+  if(k==='Backspace' || k==='Delete') return 'E';
+  if(k==='Shift') return 'H';
+  return 'O';
+}
+function median(a){
+  if(!a.length) return 0;
+  const b=a.slice().sort((x,y)=>x-y), m=Math.floor(b.length/2);
+  return b.length%2 ? b[m] : (b[m-1]+b[m])/2;
+}
+function keystrokeRhythm(keyEv){
+  const fl=[], same=[], cross=[], dw=[];
+  let back=0, shift=0, letters=0;
+  for(let i=0;i<keyEv.length;i++){
+    const e=keyEv[i], c=keyClass(e);
+    if(c==='E') back++;
+    if(c==='H') shift++;
+    if(c==='L' || c==='R') letters++;
+    const h=e.hold_time;
+    if(h!=null && h>0 && h<1000) dw.push(h);
+    if(i>0){
+      const p=keyEv[i-1], dt=(e.timestamp||0)-(p.timestamp||0);
+      if(dt>0 && dt<1000){
+        fl.push(dt);
+        const pc=keyClass(p);
+        if((pc==='L' || pc==='R') && (c==='L' || c==='R')) (pc===c ? same : cross).push(dt);
+      }
+    }
+  }
+  let iqr=0;
+  if(fl.length>3){ const b=fl.slice().sort((x,y)=>x-y); iqr=b[Math.floor(b.length*0.75)]-b[Math.floor(b.length*0.25)]; }
+  const ms=median(same), mc=median(cross);
+  return {
+    keystroke_flight_median: safe(median(fl)),
+    keystroke_flight_iqr: safe(iqr),
+    keystroke_backspace_ratio: safe(keyEv.length ? back/keyEv.length : 0),
+    keystroke_cross_hand_ratio: safe(ms>0 && mc>0 ? mc/ms : 0),
+    keystroke_dwell_median: safe(median(dw)),
+    keystroke_shift_ratio: safe(letters ? shift/letters : 0),
+  };
 }
 
 function featuresToVector(featObj){
   return F4.map(k=> featObj[k]||0);
 }
-return {F4: F4, extractF4: extractF4, featuresToVector: featuresToVector};
+return {F4: F4, extractF4: extractF4, keyClass: keyClass, featuresToVector: featuresToVector};
 })();
 
 /* ---- core/ensemble.js ---- */
@@ -780,6 +847,19 @@ function createCapture(onEvent){
       if(!t){ t='k'+(keyTok.size+1); keyTok.set(k,t); }
       return t;
     };
+    // C-44: KELAS POSISI tombol (tangan kiri/kanan, angka, spasi) untuk
+    // keystroke_cross_hand_ratio — dari e.code (posisi FISIK, tak bergantung tata letak),
+    // bukan dari hurufnya. Di kolom kata sandi kelasnya TIDAK direkam: urutan kiri/kanan
+    // sandi mempersempit tebakan, jadi di sana hanya waktu tekan yang diambil.
+    const LEFT_CODES=new Set(['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyA','KeyS','KeyD','KeyF','KeyG','KeyZ','KeyX','KeyC','KeyV','KeyB']);
+    const codeClass=e=>{
+      try{ if(e.target && e.target.matches && e.target.matches('input[type=password]')) return undefined; }catch{}
+      const c=e.code||'';
+      if(c.startsWith('Key')) return LEFT_CODES.has(c)? 'L' : 'R';
+      if(c.startsWith('Digit') || c.startsWith('Numpad')) return 'D';
+      if(c==='Space') return 'S';
+      return undefined;                                    // tombol lain: cukup nama tombolnya
+    };
     // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami — itu frasa tetap
     // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
     // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
@@ -817,7 +897,7 @@ function createCapture(onEvent){
       // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
       // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
       kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
-      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}); },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; push(ev); },
       focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
@@ -1852,6 +1932,8 @@ __M["behaviorguard.js"] = (function(){
  */
 const { DEFAULTS, normalizeWeights } = __M["core/config.js"];
 const { extractF4, featuresToVector, F4 } = __M["core/features.js"];
+const RHYTHM_C44=new Set(['keystroke_flight_median','keystroke_flight_iqr','keystroke_backspace_ratio',
+  'keystroke_cross_hand_ratio','keystroke_dwell_median','keystroke_shift_ratio']);
 const { computeStats, standardize, standardizeBatch } = __M["core/standardize.js"];
 const { IsolationForest } = __M["core/isolation_forest.js"];
 const { OCSVM } = __M["core/ocsvm.js"];
@@ -1933,6 +2015,13 @@ class BehaviorGuard {
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
     try{ this.secret=await getOrCreateSecret(userId, storage); this.token=await generateToken({secret:this.secret, userId}); }catch{}
     const saved=await storage.get(ns(userId));
+    // C-44: jumlah fitur berubah (28 -> 34). Vektor lama tidak bisa dibandingkan dengan
+    // vektor baru, dan menambal kolom kosong dengan nol akan meracuni model. Profil lama
+    // dibuang sekali; pengguna mendaftar ulang (10 langkah) dengan fitur yang baru.
+    if(saved && Array.isArray(saved.sessions) && saved.sessions.some(s=> s && Array.isArray(s.vector) && s.vector.length!==this.cfg.features.length)){
+      console.warn('[BG] profil tersimpan memakai jumlah fitur lama - pendaftaran diulang');
+      saved.sessions=[]; saved.stats=null;
+    }
     if(saved){ this.sessions=saved.sessions||[]; this.stats=saved.stats||null; this.lastRisk=saved.lastRisk||'LOW'; this._highRun=saved.highRun||0; this.challengeTemplate=saved.challengeTemplate||null;
       // C-32: streak LOW dulu TIDAK disimpan. Lantai lengket turun hanya setelah 3 LOW
       // berturut dalam SATU muat-halaman, jadi pengguna yang kunjungannya pendek (1-2
@@ -2144,9 +2233,14 @@ class BehaviorGuard {
       mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0, mfaPassedAt:this._mfaPassedAt||null, lastActiveAt:Date.now()});
   }
   // C-35: sesi tersimpan terdekat dalam ruang terstandar, tanpa fitur temporal.
+  // C-44: juga tanpa 6 fitur ritme ketik baru. Median & IQR jeda adalah statistik urutan
+  // yang peka jitter milidetik: rekaman yang diputar dengan jitter +-2 ms menggeser
+  // mediannya penuh 1-2 ms, dan pada pemilik yang ritmenya sangat rata (std median ~8 ms)
+  // itu cukup untuk mendorong jaraknya melewati replayEps -> rekaman lolos. Ambang
+  // replayEps dikalibrasi (C-35) pada 28 fitur lama, jadi deteksinya tetap di ruang itu.
   _nearestPastSession(xstd){
     if(!this.stats || !this.sessions.length) return null;
-    const idx=this._behIdx || (this._behIdx=F4.map((_,i)=>i).filter(i=>!F4[i].startsWith('temporal_')));
+    const idx=this._behIdx || (this._behIdx=F4.map((_,i)=>i).filter(i=>!F4[i].startsWith('temporal_') && !RHYTHM_C44.has(F4[i])));
     let best=null;
     for(const s of this.sessions){
       if(!s || !s.vector) continue;

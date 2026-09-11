@@ -36,15 +36,21 @@ def main():
                          'urutan RNG identik dengan canonical_holdout.build_source')
     ap.add_argument('--seed', type=int, default=42)
     ap.add_argument('--out', help='default: <tmp>/bg_sessions[_afk].json')
+    # session_id di DB adalah UUID acak, jadi ORDER BY session_id (load_raw) = urutan ACAK,
+    # bukan urutan waktu. Pengguna nyata mendaftar dengan kunjungan PERTAMANYA lalu terus
+    # memakai situs; 'time' meniru itu. 'id' = urutan lama semua harness sampai C-43.
+    ap.add_argument('--order', choices=['time', 'id'], default='time')
     a = ap.parse_args()
     db = a.db or rdb.find_db()
     if not db:
         print('DB tidak ditemukan'); return 1
     conn = sqlite3.connect(db)
-    out = {'subjects': {}, 'afk': a.afk, 'seed': a.seed}
+    out = {'subjects': {}, 'afk': a.afk, 'seed': a.seed, 'order': a.order}
     n = 0
     for uid in rdb.SUBJECT_IDS:
         sessions = ch.load_raw(conn, uid)
+        if a.order == 'time':
+            sessions.sort(key=lambda evs: evs[0]['timestamp'])
         rng = random.Random(a.seed + uid)
         res = []
         for i, evs in enumerate(sessions):

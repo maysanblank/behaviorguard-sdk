@@ -30,6 +30,9 @@ F4 = [
     'temporal_activity_bursts', 'nav_page_transition_pattern', 'nav_scroll_depth_mean',
     'nav_page_count', 'nav_step_transition_count', 'form_focus_count', 'form_blur_count',
     'form_field_switch_rate', 'cart_action_count',
+    # SPEC 1.4 (C-44): ritme ketik yang lebih tajam
+    'keystroke_flight_median', 'keystroke_flight_iqr', 'keystroke_backspace_ratio',
+    'keystroke_cross_hand_ratio', 'keystroke_dwell_median', 'keystroke_shift_ratio',
 ]
 
 DEFAULTS = {
@@ -582,11 +585,86 @@ def _safe(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else 0
 
 
+# ---- SPEC 1.4 (C-44): ritme ketik. Padanan keyClass()/keystrokeRhythm() di features.js.
+_HAND_L = 'qwertasdfgzxcvb'
+_HAND_R = 'yuiophjklnm'
+
+
+def key_class(e):
+    kc = e.get('kc')
+    if isinstance(kc, str) and kc:
+        return kc
+    k = e.get('key')
+    if not isinstance(k, str):
+        return 'O'
+    if len(k) == 1 and ord(k) < 128:
+        c = chr(ord(k) + 32) if 65 <= ord(k) <= 90 else k
+        if c in _HAND_L:
+            return 'L'
+        if c in _HAND_R:
+            return 'R'
+        if '0' <= c <= '9':
+            return 'D'
+        if c == ' ':
+            return 'S'
+        return 'P'
+    if k in ('Backspace', 'Delete'):
+        return 'E'
+    if k == 'Shift':
+        return 'H'
+    return 'O'
+
+
+def _median(a):
+    if not a:
+        return 0
+    b = sorted(a)
+    m = len(b) // 2
+    return b[m] if len(b) % 2 else (b[m - 1] + b[m]) / 2
+
+
+def _keystroke_rhythm(key_ev):
+    fl, same, cross, dw = [], [], [], []
+    back = shift = letters = 0
+    for i, e in enumerate(key_ev):
+        c = key_class(e)
+        if c == 'E':
+            back += 1
+        if c == 'H':
+            shift += 1
+        if c in ('L', 'R'):
+            letters += 1
+        h = e.get('hold_time')
+        if h is not None and 0 < h < 1000:
+            dw.append(h)
+        if i > 0:
+            p = key_ev[i - 1]
+            dt = _n(e.get('timestamp')) - _n(p.get('timestamp'))
+            if 0 < dt < 1000:
+                fl.append(dt)
+                pc = key_class(p)
+                if pc in ('L', 'R') and c in ('L', 'R'):
+                    (same if pc == c else cross).append(dt)
+    iqr = 0
+    if len(fl) > 3:
+        b = sorted(fl)
+        iqr = b[int(math.floor(len(b) * 0.75))] - b[int(math.floor(len(b) * 0.25))]
+    ms, mc = _median(same), _median(cross)
+    return {
+        'keystroke_flight_median': _safe(_median(fl)),
+        'keystroke_flight_iqr': _safe(iqr),
+        'keystroke_backspace_ratio': _safe(back / len(key_ev) if key_ev else 0),
+        'keystroke_cross_hand_ratio': _safe(mc / ms if ms > 0 and mc > 0 else 0),
+        'keystroke_dwell_median': _safe(_median(dw)),
+        'keystroke_shift_ratio': _safe(shift / letters if letters else 0),
+    }
+
+
 def extract_features(events, session_start_ts=None):
-    """Ubah daftar event mentah jadi dict 28 fitur bernama (selalu finit).
+    """Ubah daftar event mentah jadi dict 34 fitur bernama (selalu finit).
 
     Setiap event = dict dengan setidaknya `event_type` dan `timestamp` (epoch ms).
-    Kolom lain yang dibaca: x, y, key, hold_time, velocity, page_url, scroll_delta.
+    Kolom lain yang dibaca: x, y, key, kc, hold_time, velocity, page_url, scroll_delta.
     Urutan keluaran mengikat F4. Padanan persis extractF4() di features.js.
     """
     if not events:
@@ -763,11 +841,12 @@ def extract_features(events, session_start_ts=None):
         'form_field_switch_rate': _safe(_mean(field_gaps)),
         'cart_action_count': _safe(sum(1 for e in events if e.get('event_type') == 'CART_ACTION')),
     }
+    out.update(_keystroke_rhythm(key_ev))
     return {k: _safe(out.get(k) or 0) for k in F4}
 
 
 def features_to_vector(feat_obj):
-    """dict fitur -> list 28-float terurut F4. Padanan featuresToVector()."""
+    """dict fitur -> list 34-float terurut F4. Padanan featuresToVector()."""
     return [feat_obj.get(k) or 0 for k in F4]
 
 

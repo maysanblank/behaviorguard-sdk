@@ -26,7 +26,7 @@ export const DEFAULTS = {
   retrainEvery: 6,            // retrain tiap N sesi pemilik baru
   // detektor-2 ('svm' slot) kini Mahalanobis (bukan centroid) -> diberi bobot mayoritas
   weights: { isolation_forest: 0.30, svm: 0.70, lstm: 0.00 },
-  // 28 fitur F4 - nama persis, urutan tetap (deterministik)
+  // 34 fitur F4 (28 + 6 ritme ketik C-44) - nama persis, urutan tetap (deterministik)
   features: [
     'mouse_velocity_mean','mouse_velocity_std','mouse_velocity_max',
     'mouse_acceleration_std','mouse_curvature_mean','mouse_direction_changes',
@@ -38,7 +38,12 @@ export const DEFAULTS = {
     'temporal_time_of_day_score','temporal_session_duration',
     'temporal_activity_bursts','nav_page_transition_pattern','nav_scroll_depth_mean',
     'nav_page_count','nav_step_transition_count','form_focus_count','form_blur_count',
-    'form_field_switch_rate','cart_action_count'
+    'form_field_switch_rate','cart_action_count',
+    // C-44: ritme ketik yang tak tercemar jeda panjang + kebiasaan koreksi & tangan.
+    // eval_sdk --live (sesi urut waktu): pemilik diminta verifikasi 12,2% -> 11,4%,
+    // penyusup lolos vonis pertama 12,6% -> 10,5%, AUC per-pemilik 0,942 -> 0,953.
+    'keystroke_flight_median','keystroke_flight_iqr','keystroke_backspace_ratio',
+    'keystroke_cross_hand_ratio','keystroke_dwell_median','keystroke_shift_ratio'
   ],
   // pita risiko default (fallback) - di runtime dikalibrasi per-user dari baseline
   thresholds: { low: -0.4, medium: -0.8 },

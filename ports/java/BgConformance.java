@@ -95,7 +95,9 @@ public class BgConformance {
         "temporal_time_of_day_score","temporal_session_duration",
         "temporal_activity_bursts","nav_page_transition_pattern","nav_scroll_depth_mean",
         "nav_page_count","nav_step_transition_count","form_focus_count","form_blur_count",
-        "form_field_switch_rate","cart_action_count"
+        "form_field_switch_rate","cart_action_count",
+        "keystroke_flight_median","keystroke_flight_iqr","keystroke_backspace_ratio",
+        "keystroke_cross_hand_ratio","keystroke_dwell_median","keystroke_shift_ratio"
     };
 
     // ============================ PRNG mulberry32 ============================
@@ -364,6 +366,61 @@ public class BgConformance {
     }
     static double safe(double v){ return Double.isFinite(v)? v : 0.0; }
 
+    // ---- SPEC 1.4 (C-44): ritme ketik. Padanan keyClass()/keystrokeRhythm() di features.js.
+    static final String HAND_L="qwertasdfgzxcvb", HAND_R="yuiophjklnm";
+    static String keyClass(Map<String,Object> e){
+        Object kc=e.get("kc");
+        if(kc instanceof String s && !s.isEmpty()) return s;
+        Object ko=e.get("key");
+        if(!(ko instanceof String k)) return "O";
+        if(k.length()==1 && k.charAt(0)<128){
+            char c=k.charAt(0); if(c>='A' && c<='Z') c=(char)(c+32);
+            if(HAND_L.indexOf(c)>=0) return "L";
+            if(HAND_R.indexOf(c)>=0) return "R";
+            if(c>='0' && c<='9') return "D";
+            if(c==' ') return "S";
+            return "P";
+        }
+        if(k.equals("Backspace") || k.equals("Delete")) return "E";
+        if(k.equals("Shift")) return "H";
+        return "O";
+    }
+    static double median(List<Double> a){
+        if(a.isEmpty()) return 0.0;
+        List<Double> b=new ArrayList<>(a); Collections.sort(b); int m=b.size()/2;
+        return b.size()%2==1 ? b.get(m) : (b.get(m-1)+b.get(m))/2;
+    }
+    static void keystrokeRhythm(List<Map<String,Object>> keyEv, HashMap<String,Double> out){
+        List<Double> fl=new ArrayList<>(), same=new ArrayList<>(), cross=new ArrayList<>(), dw=new ArrayList<>();
+        double back=0, shift=0, letters=0;
+        for(int i=0;i<keyEv.size();i++){
+            Map<String,Object> e=keyEv.get(i); String c=keyClass(e);
+            if(c.equals("E")) back++;
+            if(c.equals("H")) shift++;
+            if(c.equals("L") || c.equals("R")) letters++;
+            if(hasNum(e,"hold_time")){ double h=(Double)e.get("hold_time"); if(h>0 && h<1000) dw.add(h); }
+            if(i>0){
+                Map<String,Object> p=keyEv.get(i-1);
+                double dt=num(e,"timestamp")-num(p,"timestamp");
+                if(dt>0 && dt<1000){
+                    fl.add(dt);
+                    String pc=keyClass(p);
+                    if((pc.equals("L")||pc.equals("R")) && (c.equals("L")||c.equals("R"))) (pc.equals(c)? same : cross).add(dt);
+                }
+            }
+        }
+        double iqr=0;
+        if(fl.size()>3){ List<Double> b=new ArrayList<>(fl); Collections.sort(b);
+            iqr=b.get((int)Math.floor(b.size()*0.75))-b.get((int)Math.floor(b.size()*0.25)); }
+        double ms=median(same), mc=median(cross);
+        out.put("keystroke_flight_median",safe(median(fl)));
+        out.put("keystroke_flight_iqr",safe(iqr));
+        out.put("keystroke_backspace_ratio",safe(keyEv.isEmpty()? 0 : back/keyEv.size()));
+        out.put("keystroke_cross_hand_ratio",safe(ms>0 && mc>0 ? mc/ms : 0));
+        out.put("keystroke_dwell_median",safe(median(dw)));
+        out.put("keystroke_shift_ratio",safe(letters>0 ? shift/letters : 0));
+    }
+
     static double[] extractFeatures(List<Object> rawEvents, double sessionStartTs){
         List<Map<String,Object>> events=new ArrayList<>();
         for(Object o:rawEvents) events.add(M(o));
@@ -532,6 +589,7 @@ public class BgConformance {
         out.put("form_field_switch_rate",safe(mean(fieldGaps)));
         int cart=0; for(Map<String,Object> e:events) if(etype(e).equals("CART_ACTION")) cart++;
         out.put("cart_action_count",safe(cart));
+        keystrokeRhythm(keyEv, out);   // SPEC 1.4 (C-44)
 
         double[] vec=new double[F4.length];
         for(int i=0;i<F4.length;i++) vec[i]=safe(out.getOrDefault(F4[i],0.0));

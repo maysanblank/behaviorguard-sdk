@@ -1,7 +1,7 @@
 /**
- * features.js - ekstraksi 28 fitur F4 dari event mentah (on-device, deterministik)
+ * features.js - ekstraksi 34 fitur F4 dari event mentah (on-device, deterministik)
  * Input: event[] {event_type, timestamp, x,y, key, hold_time, page_url, scroll_delta, ...}
- * Output: {featureName: float} lengkap 28, selalu finite
+ * Output: {featureName: float} lengkap 34, selalu finite
  */
 import { DEFAULTS } from './config.js';
 
@@ -160,11 +160,73 @@ export function extractF4(events, sessionStartTs){
     form_focus_count: safe(focusEv.length),
     form_blur_count: safe(blurEv.length),
     form_field_switch_rate: safe(mean(fieldGaps)),
-    cart_action_count: safe(events.filter(e=>e.event_type==='CART_ACTION').length)
+    cart_action_count: safe(events.filter(e=>e.event_type==='CART_ACTION').length),
+    ...keystrokeRhythm(keyEv)
   };
-  // pastikan semua 28 ada & finite, urutan deterministik
+  // pastikan semua fitur ada & finite, urutan deterministik
   const res={}; F4.forEach(k=>res[k]=safe(out[k]||0));
   return res;
+}
+
+// ---- C-44 (SPEC 1.4): ritme ketik yang lebih tajam -------------------------------
+// Rata-rata jeda antar-tombol (keystroke_flight_time_mean) tercampur jeda PANJANG antar
+// kolom/berpikir, jadi yang terukur lebih banyak "tugas" daripada "orang". Di sini hanya
+// jeda < 1 dtk yang dihitung, dengan median & IQR (tahan pencilan), ditambah kebiasaan
+// koreksi (Backspace), pemakaian Shift, dan beda kecepatan pindah-tangan vs tangan-sama.
+// Kelas tangan dari `kc` (dicatat capture dari posisi fisik tombol); data tanpa `kc`
+// (riset) memakai tata letak QWERTY dari karakter ASCII-nya.
+const HAND_L='qwertasdfgzxcvb', HAND_R='yuiophjklnm';
+export function keyClass(e){
+  if(typeof e.kc==='string' && e.kc) return e.kc;
+  const k=e.key;
+  if(typeof k!=='string') return 'O';
+  if(k.length===1 && k.charCodeAt(0)<128){
+    let c=k; const code=k.charCodeAt(0); if(code>=65 && code<=90) c=String.fromCharCode(code+32);
+    if(HAND_L.indexOf(c)>=0) return 'L';
+    if(HAND_R.indexOf(c)>=0) return 'R';
+    if(c>='0' && c<='9') return 'D';
+    if(c===' ') return 'S';
+    return 'P';
+  }
+  if(k==='Backspace' || k==='Delete') return 'E';
+  if(k==='Shift') return 'H';
+  return 'O';
+}
+function median(a){
+  if(!a.length) return 0;
+  const b=a.slice().sort((x,y)=>x-y), m=Math.floor(b.length/2);
+  return b.length%2 ? b[m] : (b[m-1]+b[m])/2;
+}
+function keystrokeRhythm(keyEv){
+  const fl=[], same=[], cross=[], dw=[];
+  let back=0, shift=0, letters=0;
+  for(let i=0;i<keyEv.length;i++){
+    const e=keyEv[i], c=keyClass(e);
+    if(c==='E') back++;
+    if(c==='H') shift++;
+    if(c==='L' || c==='R') letters++;
+    const h=e.hold_time;
+    if(h!=null && h>0 && h<1000) dw.push(h);
+    if(i>0){
+      const p=keyEv[i-1], dt=(e.timestamp||0)-(p.timestamp||0);
+      if(dt>0 && dt<1000){
+        fl.push(dt);
+        const pc=keyClass(p);
+        if((pc==='L' || pc==='R') && (c==='L' || c==='R')) (pc===c ? same : cross).push(dt);
+      }
+    }
+  }
+  let iqr=0;
+  if(fl.length>3){ const b=fl.slice().sort((x,y)=>x-y); iqr=b[Math.floor(b.length*0.75)]-b[Math.floor(b.length*0.25)]; }
+  const ms=median(same), mc=median(cross);
+  return {
+    keystroke_flight_median: safe(median(fl)),
+    keystroke_flight_iqr: safe(iqr),
+    keystroke_backspace_ratio: safe(keyEv.length ? back/keyEv.length : 0),
+    keystroke_cross_hand_ratio: safe(ms>0 && mc>0 ? mc/ms : 0),
+    keystroke_dwell_median: safe(median(dw)),
+    keystroke_shift_ratio: safe(letters ? shift/letters : 0),
+  };
 }
 
 export function featuresToVector(featObj){

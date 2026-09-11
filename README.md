@@ -3,7 +3,7 @@
 **Detect account takeover from how someone moves, types and navigates — entirely on the
 device, with a built-in step-up challenge. One script tag. No backend required.**
 
-[![conformance](https://img.shields.io/badge/conformance-255%2F255%20across%205%20runtimes-brightgreen)](core/golden.json)
+[![conformance](https://img.shields.io/badge/conformance-319%2F319%20across%205%20runtimes-brightgreen)](core/golden.json)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#no-dependencies-anywhere)
 
@@ -110,28 +110,35 @@ Every verdict carries its reasoning — the top deviating features with their z-
 Measured on **653 sessions from 16 human subjects** by driving the **shipped library
 itself** (`node tools/eval_sdk.mjs --live`): every session is replayed through the real
 capture-to-verdict path in 30-second windows, exactly as `setInterval` runs in a browser.
-Each research session is one visit (page load, state read back from storage). Owners answer
+Sessions are replayed **in the order they were recorded**, one visit each (page load, state
+read back from storage), so enrollment is each owner's first ten visits. Owners answer
 step-ups through the public `reportStepUp` API. Impostors are the other 15 subjects, each
 arriving through a fresh visit on the owner's account.
 
 | Owner | |
 | --- | --- |
-| Verdicts that asked the owner to verify | **14.5%** |
+| Verdicts that asked the owner to verify | **11.4%** |
+| … in the last fifth of each owner's history | 7.2% |
 | Owner blocked | **0%** |
 
-| Impostor (stolen password, own device) | |
-| --- | --- |
-| Passed the first verdict with no friction | **13.3%** |
-| Got through the **whole** session with no friction | **9.2%** |
-| Never assessed (session too short to collect evidence) | 0.6% |
+| Impostor (stolen password, own device) | at their own hour | at the owner's usual hour |
+| --- | ---: | ---: |
+| Passed the first verdict with no friction | **10.5%** | 14.3% |
+| Got through the **whole** session with no friction | **7.9%** | 10.8% |
+| Never assessed (session too short to collect evidence) | 0.6% | 0.6% |
 
 | Takeover (impostor keeps using the account, 6 sessions) | |
 | --- | --- |
-| Caught in the first session | **89.6%** |
-| Caught within 3 sessions | 98.3% |
-| Never caught in 6 sessions | **0%** |
+| Caught in the first session | **95.0%** |
+| Caught within 3 sessions | 99.6% |
+| Never caught in 6 sessions | **0.4%** (1 of 240 pairs) |
 
-Threshold-free separation, per owner: AUC **0.927**, EER **12.3%**.
+Threshold-free separation, per owner: AUC **0.953**, EER **10.1%**.
+
+The right-hand impostor column is the smarter attacker who logs in at the same time of day
+as the owner (`--same-hour`). Each volunteer recorded in a characteristic block of hours, so
+the time-of-day feature catches part of the left column for free; the right column removes
+that help.
 
 ### Choosing an operating point
 
@@ -139,23 +146,31 @@ One knob, `init({ calibration: { k_low } })`. Smaller is stricter.
 
 | `k_low` | owner asked to verify | impostor passes 1st verdict | impostor passes whole session | takeover never caught |
 | --- | ---: | ---: | ---: | ---: |
-| 1.25 | 19.3% | 8.5% | 5.4% | 0% |
-| 1.5 | 16.5% | 11.1% | 7.4% | 0% |
-| **1.75 (default)** | **14.5%** | **13.3%** | **9.2%** | **0%** |
-| 2.0 | 13.0% | 15.6% | 11.2% | 0.4% |
-| 2.5 | 10.9% | 19.8% | 15.4% | 1.7% |
+| 1.25 | 17.0% | 6.5% | 4.8% | 0.4% |
+| 1.5 | 14.8% | 8.6% | 6.5% | 0.4% |
+| **1.75 (default)** | **11.4%** | **10.5%** | **7.9%** | **0.4%** |
+| 2.0 | 10.0% | 12.3% | 9.4% | 0.4% |
+| 2.5 | 7.7% | 16.6% | 12.9% | 0.4% |
 
-The default was chosen on 8 subjects and checked on the other 8 (5 random splits), not fit
-to the whole table.
+The default was chosen on 8 subjects and checked on the other 8 (C-33). On those 8 held-out
+subjects alone, the default gives 12.7% owner friction and 9.2% impostor first-verdict passes.
 
 **Strict mode (opt-in):** `session: { contextEvents: 450 }` lets later verdicts in a visit
-reuse the evidence just assessed. Impostors pass the first verdict 10.1% and the whole
-session 8.2%, at the same owner friction — but one impostor (of 15) went uncaught for 6
-sessions on 3 accounts, so it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42.
+reuse the evidence just assessed.
+
+| strict mode | owner asked to verify | impostor passes 1st verdict | whole session | takeover never caught |
+| --- | ---: | ---: | ---: | ---: |
+| `contextEvents: 450` | 12.5% | 7.0% | 6.3% | 0% |
+| `contextEvents: 450`, `k_low: 2.0` | 11.0% | 8.7% | 7.9% | 0% |
+
+The second row beats the default on every column here, but on the AFK variant of the data
+(users who walk away mid-session) impostors pass the whole session 6.5% instead of 5.6%, so
+it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
 
 ### Read these numbers honestly
 
-- **About 1 in 8 impostors passes the first check.** This is a step-up layer, not a lock.
+- **About 1 in 10 impostors passes the first check** (1 in 7 if they log in at the owner's
+  usual hour). This is a step-up layer, not a lock.
   Treat `HIGH` as "make them prove it", never as proof of fraud, and gate sensitive actions
   with `assessNow()`.
 - **The impostors are 15 other ordinary users, not attackers imitating a specific
@@ -164,7 +179,8 @@ sessions on 3 accounts, so it is not the default. See [core/DRIFT.md](core/DRIFT
 - **Owner friction is not random noise.** It is flat across windows within a visit: an
   owner is flagged on the *days* their behavior differs, in every window of that day. It
   cannot be averaged away; it is what the step-up is for. That is why passing a step-up
-  now buys 15 quiet minutes.
+  now buys 15 quiet minutes. It also falls as the model learns from those step-ups: 10.0%
+  in the first fifth of an owner's history, 16.2% in the middle, 7.2% in the last.
 - **16 subjects is a small sample.** Expect several points of movement on a different
   population and a different site.
 - **Earlier numbers in this repository described other engines.** FRR 16.1% / FAR 5.4% came
@@ -183,15 +199,15 @@ the *same* numeric contract — not asserted to match, **proven** to match.
 
 | Runtime | Reach | Conformance |
 | --- | --- | --- |
-| JavaScript | browser, Node, edge | 255/255 |
-| Python | servers, data and ML | 255/255 |
-| Rust | systems, CLI, embedded | 255/255 |
-| Java | JVM, **Android**, Kotlin | 255/255 |
-| WASM | any WASM host | 255/255 |
+| JavaScript | browser, Node, edge | 319/319 |
+| Python | servers, data and ML | 319/319 |
+| Rust | systems, CLI, embedded | 319/319 |
+| Java | JVM, **Android**, Kotlin | 319/319 |
+| WASM | any WASM host | 319/319 |
 
 - [`core/SPEC.md`](core/SPEC.md) — the normative specification (v1.3.0). *If the code and
   the spec disagree, the spec is right and the code is the bug.*
-- [`core/golden.json`](core/golden.json) — 255 explicit input/output checks, tolerance 1e-9,
+- [`core/golden.json`](core/golden.json) — 319 explicit input/output checks, tolerance 1e-9,
   including real mouse-move pairs that sit exactly on a `pi/4` turn, where `atan2` differs by
   one ulp between math libraries (C-34).
 
@@ -223,7 +239,7 @@ products for 10-12 sessions to enroll, then let someone else drive and watch the
 move.
 
 ```bash
-python core/conformance.py         # engine vs golden.json        -> 255/255
+python core/conformance.py         # engine vs golden.json        -> 319/319
 node   core/lifecycle.test.mjs     # long-run lifecycle & APIs    -> 49/49
 node   core/privacy.test.mjs       # no typed characters stored   -> 10/10
 node   core/challenge.test.mjs     # step-up regression
@@ -239,7 +255,7 @@ path, and rhythm mimicry — against a seeded owner model.
 
 ```
 DOM events -> drop duplicates -> compress idle gaps -> 150 events of evidence
-          -> 28 features -> z-score vs owner -> IF 0.30 + Mahalanobis 0.70
+          -> 34 features -> z-score vs owner -> IF 0.30 + Mahalanobis 0.70
           -> per-owner thresholds (mean - k*std) -> LOW / MEDIUM / HIGH + reasons
           -> replay check, sticky floor, run rule, away/re-verify, step-up grace
           -> step-up (typing rhythm, or your OTP via reportStepUp)
@@ -277,7 +293,7 @@ The combination below is what we have not found elsewhere:
 
 1. **It trains in the browser.** Every detector is browser-trainable, so there is no server
    ML and no model-serving step.
-2. **Fusion, not keystrokes alone.** 28 features across mouse dynamics, keystroke timing,
+2. **Fusion, not keystrokes alone.** 34 features across mouse dynamics, keystroke timing,
    temporal rhythm, navigation and form interaction.
 3. **A drop-in library, not a notebook.** One tag, zero dependencies.
 4. **The response is included.** Most detectors emit a score and stop; BehaviorGuard ships
@@ -324,7 +340,7 @@ Raw events never leave the device, and typed characters are never stored anywher
 are computed locally and the baseline is stored locally (IndexedDB, falling back to
 localStorage, then memory). There is no telemetry and no default network destination.
 
-The optional server ([server/README.md](server/README.md)) syncs a **28-number feature
+The optional server ([server/README.md](server/README.md)) syncs a **34-number feature
 vector per window** to a server you run, so a baseline can follow a user across devices,
 and logs verdicts for an operator dashboard. It is off unless you supply a public key, an
 endpoint **and** a short-lived user token minted by your own backend.

@@ -85,29 +85,35 @@ membatalkannya).
 
 Diukur pada **653 sesi dari 16 relawan** dengan menjalankan **pustaka yang dikirim itu
 sendiri** (`node tools/eval_sdk.mjs --live`): tiap sesi riset diputar ulang lewat jalur
-asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di browser. Tiap sesi
-riset = satu kunjungan (muat halaman, status dibaca ulang dari penyimpanan). Pemilik
+asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di browser. Sesi
+diputar **menurut urutan rekamannya**, satu kunjungan per sesi (muat halaman, status dibaca
+ulang dari penyimpanan), jadi pendaftaran = sepuluh kunjungan pertama tiap pemilik. Pemilik
 menjawab verifikasi lewat API publik `reportStepUp`. Penyusup = 15 relawan lain, masing-masing
 datang lewat kunjungan baru ke akun pemilik.
 
 | Pemilik | |
 | --- | --- |
-| Vonis yang meminta pemilik verifikasi | **14,5%** |
+| Vonis yang meminta pemilik verifikasi | **11,4%** |
+| … di seperlima akhir riwayat tiap pemilik | 7,2% |
 | Pemilik diblokir | **0%** |
 
-| Penyusup (password curian, perangkat sendiri) | |
-| --- | --- |
-| Lolos vonis pertama tanpa gangguan | **13,3%** |
-| Lolos **seluruh** sesinya tanpa gangguan | **9,2%** |
-| Tidak pernah dinilai (sesinya terlalu pendek) | 0,6% |
+| Penyusup (password curian, perangkat sendiri) | di jamnya sendiri | di jam biasa pemilik |
+| --- | ---: | ---: |
+| Lolos vonis pertama tanpa gangguan | **10,5%** | 14,3% |
+| Lolos **seluruh** sesinya tanpa gangguan | **7,9%** | 10,8% |
+| Tidak pernah dinilai (sesinya terlalu pendek) | 0,6% | 0,6% |
 
 | Ambil-alih (penyusup terus memakai akun, 6 sesi) | |
 | --- | --- |
-| Ketahuan di sesi pertama | **89,6%** |
-| Ketahuan dalam 3 sesi | 98,3% |
-| Tidak pernah ketahuan dalam 6 sesi | **0%** |
+| Ketahuan di sesi pertama | **95,0%** |
+| Ketahuan dalam 3 sesi | 99,6% |
+| Tidak pernah ketahuan dalam 6 sesi | **0,4%** (1 dari 240 pasangan) |
 
-Daya pisah tanpa ambang, per pemilik: AUC **0,927**, EER **12,3%**.
+Daya pisah tanpa ambang, per pemilik: AUC **0,953**, EER **10,1%**.
+
+Kolom kanan penyusup = penyerang yang lebih pintar, login di jam yang sama dengan kebiasaan
+pemilik (`--same-hour`). Tiap relawan merekam di blok jam yang khas, jadi fitur jam-dalam-hari
+ikut menangkap sebagian penyusup di kolom kiri dengan gratis; kolom kanan membuang bantuan itu.
 
 ### Memilih titik operasi
 
@@ -115,23 +121,31 @@ Satu knob: `init({ calibration: { k_low } })`. Makin kecil makin ketat.
 
 | `k_low` | pemilik diminta verifikasi | penyusup lolos vonis-1 | penyusup lolos seluruh sesi | ambil-alih tak ketahuan |
 | --- | ---: | ---: | ---: | ---: |
-| 1,25 | 19,3% | 8,5% | 5,4% | 0% |
-| 1,5 | 16,5% | 11,1% | 7,4% | 0% |
-| **1,75 (default)** | **14,5%** | **13,3%** | **9,2%** | **0%** |
-| 2,0 | 13,0% | 15,6% | 11,2% | 0,4% |
-| 2,5 | 10,9% | 19,8% | 15,4% | 1,7% |
+| 1,25 | 17,0% | 6,5% | 4,8% | 0,4% |
+| 1,5 | 14,8% | 8,6% | 6,5% | 0,4% |
+| **1,75 (default)** | **11,4%** | **10,5%** | **7,9%** | **0,4%** |
+| 2,0 | 10,0% | 12,3% | 9,4% | 0,4% |
+| 2,5 | 7,7% | 16,6% | 12,9% | 0,4% |
 
-Default dipilih di 8 subjek dan diperiksa di 8 subjek lain (5 belahan acak), bukan
-dipas-paskan ke tabel ini.
+Default dipilih di 8 subjek dan diperiksa di 8 subjek lain (C-33). Di 8 subjek uji itu saja,
+default memberi gesekan pemilik 12,7% dan penyusup lolos vonis pertama 9,2%.
 
 **Mode ketat (opt-in):** `session: { contextEvents: 450 }` — vonis berikutnya dalam satu
-kunjungan ikut memakai bukti yang baru dinilai. Penyusup lolos vonis pertama 10,1% dan
-seluruh sesi 8,2% dengan gesekan pemilik yang sama, tapi satu penyusup (dari 15) lolos 6
-sesi di 3 akun, jadi tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42.
+kunjungan ikut memakai bukti yang baru dinilai.
+
+| mode ketat | pemilik diminta verifikasi | penyusup lolos vonis-1 | seluruh sesi | ambil-alih tak ketahuan |
+| --- | ---: | ---: | ---: | ---: |
+| `contextEvents: 450` | 12,5% | 7,0% | 6,3% | 0% |
+| `contextEvents: 450`, `k_low: 2.0` | 11,0% | 8,7% | 7,9% | 0% |
+
+Baris kedua mengalahkan default di semua kolom ini, tapi pada varian data AFK (pengguna yang
+meninggalkan layar di tengah sesi) penyusup lolos seluruh sesi 6,5% alih-alih 5,6%, jadi
+tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
 
 ### Membaca angka ini dengan jujur
 
-- **Sekitar 1 dari 8 penyusup lolos pemeriksaan pertama.** Ini lapisan verifikasi tambahan,
+- **Sekitar 1 dari 10 penyusup lolos pemeriksaan pertama** (1 dari 7 bila login di jam biasa
+  pemilik). Ini lapisan verifikasi tambahan,
   bukan gembok. HIGH artinya "suruh buktikan", bukan bukti penipuan. Aksi sensitif wajib
   `assessNow()`.
 - **Penyusupnya 15 pengguna biasa, bukan penyerang yang sengaja meniru korban.** Peniruan
@@ -139,7 +153,8 @@ sesi di 3 akun, jadi tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.m
 - **Gesekan pemilik bukan derau acak.** Ia rata di semua jendela dalam satu kunjungan:
   pemilik ditandai pada *hari* ketika perilakunya memang beda, di semua jendela hari itu.
   Itu tidak bisa dirata-rata; itulah tugas verifikasi tambahan — dan karena itu lolos
-  verifikasi kini memberi 15 menit tenang.
+  verifikasi kini memberi 15 menit tenang. Gesekan itu juga turun seiring model belajar dari
+  verifikasi tersebut: 10,0% di seperlima awal riwayat pemilik, 16,2% di tengah, 7,2% di akhir.
 - **16 relawan itu sampel kecil.** Di populasi dan situs lain angka bisa bergeser beberapa
   poin.
 - **Angka lama di repo ini mengukur mesin lain.** FRR 16,1% / FAR 5,4% berasal dari harness
@@ -154,15 +169,15 @@ sesi di 3 akun, jadi tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.m
 
 | Runtime | Jangkauan | Konformansi |
 | --- | --- | --- |
-| JavaScript | browser, Node, edge | 255/255 |
-| Python | server, data, ML | 255/255 |
-| Rust | sistem, CLI, embedded | 255/255 |
-| Java | JVM, **Android**, Kotlin | 255/255 |
-| WASM | host WASM mana pun | 255/255 |
+| JavaScript | browser, Node, edge | 319/319 |
+| Python | server, data, ML | 319/319 |
+| Rust | sistem, CLI, embedded | 319/319 |
+| Java | JVM, **Android**, Kotlin | 319/319 |
+| WASM | host WASM mana pun | 319/319 |
 
 Algoritmanya ditulis sebagai spesifikasi yang lepas dari bahasa ([core/SPEC.md](core/SPEC.md)
 v1.3.0), dan setiap implementasi dicek terhadap [core/golden.json](core/golden.json) yang
-sama: 255 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
+sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
 
 ---
 
@@ -177,7 +192,7 @@ kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor la
 Panduan lengkap: [demo/CARA-DEMO-PLUG-AND-PLAY.md](demo/CARA-DEMO-PLUG-AND-PLAY.md).
 
 ```bash
-python core/conformance.py         # mesin vs golden.json            -> 255/255
+python core/conformance.py         # mesin vs golden.json            -> 319/319
 node   core/lifecycle.test.mjs     # siklus hidup & API integrator   -> 49/49
 node   core/privacy.test.mjs       # huruf ketikan tidak tersimpan   -> 10/10
 python server/test_app.py          # server opsional: auth, XSS      -> 35/35
@@ -190,7 +205,7 @@ node   tools/eval_sdk.mjs --live   # ukur pustaka yang dikirim (butuh ekspor dat
 
 ```
 event DOM -> buang kembar -> pendekkan jeda idle -> kumpulkan 150 event
-         -> 28 fitur -> z-score vs pemilik -> IF 0,30 + Mahalanobis 0,70
+         -> 34 fitur -> z-score vs pemilik -> IF 0,30 + Mahalanobis 0,70
          -> ambang per pemilik (mean - k*std) -> LOW / MEDIUM / HIGH + alasan
          -> cek rekam-ulang, lantai lengket, aturan HIGH berturut, absen, masa berlaku
          -> verifikasi (ritme ketik bawaan, atau OTP Anda lewat reportStepUp)
@@ -213,7 +228,7 @@ Detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 Event mentah tidak pernah keluar perangkat, dan huruf yang diketik tidak pernah disimpan.
 Profil disimpan lokal (IndexedDB -> localStorage -> memori). Tidak ada telemetri.
 
-Server opsional ([server/README.md](server/README.md)) hanya menerima **28 angka fitur per
+Server opsional ([server/README.md](server/README.md)) hanya menerima **34 angka fitur per
 jendela** + vonis, dan hanya aktif kalau Anda memberi kunci publik, endpoint, **dan** token
 pengguna berumur pendek yang dicetak backend Anda sendiri.
 

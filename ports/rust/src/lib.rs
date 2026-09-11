@@ -667,7 +667,7 @@ fn build_model(vectors: &[Vec<f64>], n_features: usize) -> Model {
 }
 
 // ======================================================================
-// EKSTRAKSI FITUR (SPEC.md sec.8): event mentah -> vektor 28-float
+// EKSTRAKSI FITUR (SPEC.md sec.8): event mentah -> vektor 34-float
 // ======================================================================
 fn num(e: &J, key: &str) -> f64 {
     match e.get(key) {
@@ -725,6 +725,9 @@ fn f4_names() -> Vec<&'static str> {
         "temporal_activity_bursts", "nav_page_transition_pattern", "nav_scroll_depth_mean",
         "nav_page_count", "nav_step_transition_count", "form_focus_count", "form_blur_count",
         "form_field_switch_rate", "cart_action_count",
+        // SPEC 1.4 (C-44): ritme ketik
+        "keystroke_flight_median", "keystroke_flight_iqr", "keystroke_backspace_ratio",
+        "keystroke_cross_hand_ratio", "keystroke_dwell_median", "keystroke_shift_ratio",
     ]
 }
 
@@ -964,7 +967,120 @@ fn extract_features(events: &[J], session_start_ts: f64) -> Vec<f64> {
         safe(events.iter().filter(|e| etype(e) == "CART_ACTION").count() as f64),
     );
 
+    keystroke_rhythm(&key_ev, &mut out); // SPEC 1.4 (C-44)
+
     names.iter().map(|k| safe(*out.get(*k).unwrap_or(&0.0))).collect()
+}
+
+// ---- SPEC 1.4 (C-44): ritme ketik. Padanan keyClass()/keystrokeRhythm() di features.js.
+fn key_class(e: &J) -> &'static str {
+    if let Some(J::Str(kc)) = e.get("kc") {
+        match kc.as_str() {
+            "" => {}
+            "L" => return "L",
+            "R" => return "R",
+            "D" => return "D",
+            "S" => return "S",
+            "P" => return "P",
+            "E" => return "E",
+            "H" => return "H",
+            _ => return "O",
+        }
+    }
+    let k = match e.get("key") {
+        Some(J::Str(k)) => k.as_str(),
+        _ => return "O",
+    };
+    let b = k.as_bytes();
+    if b.len() == 1 && b[0] < 128 {
+        let mut c = b[0];
+        if (b'A'..=b'Z').contains(&c) {
+            c += 32;
+        }
+        if b"qwertasdfgzxcvb".contains(&c) {
+            return "L";
+        }
+        if b"yuiophjklnm".contains(&c) {
+            return "R";
+        }
+        if (b'0'..=b'9').contains(&c) {
+            return "D";
+        }
+        if c == b' ' {
+            return "S";
+        }
+        return "P";
+    }
+    match k {
+        "Backspace" | "Delete" => "E",
+        "Shift" => "H",
+        _ => "O",
+    }
+}
+fn median(a: &[f64]) -> f64 {
+    if a.is_empty() {
+        return 0.0;
+    }
+    let mut b = a.to_vec();
+    b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    let m = b.len() / 2;
+    if b.len() % 2 == 1 {
+        b[m]
+    } else {
+        (b[m - 1] + b[m]) / 2.0
+    }
+}
+fn keystroke_rhythm(key_ev: &[&J], out: &mut HashMap<&'static str, f64>) {
+    let (mut fl, mut same, mut cross, mut dw) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut back, mut shift, mut letters) = (0.0f64, 0.0f64, 0.0f64);
+    for i in 0..key_ev.len() {
+        let e = key_ev[i];
+        let c = key_class(e);
+        if c == "E" {
+            back += 1.0;
+        }
+        if c == "H" {
+            shift += 1.0;
+        }
+        if c == "L" || c == "R" {
+            letters += 1.0;
+        }
+        if let Some(h) = has_num(e, "hold_time") {
+            if h > 0.0 && h < 1000.0 {
+                dw.push(h);
+            }
+        }
+        if i > 0 {
+            let p = key_ev[i - 1];
+            let dt = num(e, "timestamp") - num(p, "timestamp");
+            if dt > 0.0 && dt < 1000.0 {
+                fl.push(dt);
+                let pc = key_class(p);
+                if (pc == "L" || pc == "R") && (c == "L" || c == "R") {
+                    if pc == c {
+                        same.push(dt);
+                    } else {
+                        cross.push(dt);
+                    }
+                }
+            }
+        }
+    }
+    let mut iqr = 0.0;
+    if fl.len() > 3 {
+        let mut b = fl.clone();
+        b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        let n = b.len() as f64;
+        iqr = b[(n * 0.75).floor() as usize] - b[(n * 0.25).floor() as usize];
+    }
+    let (ms, mc) = (median(&same), median(&cross));
+    let nk = key_ev.len() as f64;
+    out.insert("keystroke_flight_median", safe(median(&fl)));
+    out.insert("keystroke_flight_iqr", safe(iqr));
+    out.insert("keystroke_backspace_ratio", safe(if nk > 0.0 { back / nk } else { 0.0 }));
+    out.insert("keystroke_cross_hand_ratio", safe(if ms > 0.0 && mc > 0.0 { mc / ms } else { 0.0 }));
+    out.insert("keystroke_dwell_median", safe(median(&dw)));
+    out.insert("keystroke_shift_ratio", safe(if letters > 0.0 { shift / letters } else { 0.0 }));
 }
 
 // ======================================================================

@@ -36,6 +36,19 @@ export function createCapture(onEvent){
       if(!t){ t='k'+(keyTok.size+1); keyTok.set(k,t); }
       return t;
     };
+    // C-44: KELAS POSISI tombol (tangan kiri/kanan, angka, spasi) untuk
+    // keystroke_cross_hand_ratio — dari e.code (posisi FISIK, tak bergantung tata letak),
+    // bukan dari hurufnya. Di kolom kata sandi kelasnya TIDAK direkam: urutan kiri/kanan
+    // sandi mempersempit tebakan, jadi di sana hanya waktu tekan yang diambil.
+    const LEFT_CODES=new Set(['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyA','KeyS','KeyD','KeyF','KeyG','KeyZ','KeyX','KeyC','KeyV','KeyB']);
+    const codeClass=e=>{
+      try{ if(e.target && e.target.matches && e.target.matches('input[type=password]')) return undefined; }catch{}
+      const c=e.code||'';
+      if(c.startsWith('Key')) return LEFT_CODES.has(c)? 'L' : 'R';
+      if(c.startsWith('Digit') || c.startsWith('Numpad')) return 'D';
+      if(c==='Space') return 'S';
+      return undefined;                                    // tombol lain: cukup nama tombolnya
+    };
     // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami — itu frasa tetap
     // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
     // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
@@ -73,7 +86,7 @@ export function createCapture(onEvent){
       // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
       // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
       kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
-      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; push({event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}); },
+      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; push(ev); },
       focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),

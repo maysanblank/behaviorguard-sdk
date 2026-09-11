@@ -1,4 +1,4 @@
-# BehaviorGuard Core — Spesifikasi Mesin v1.2.0
+# BehaviorGuard Core — Spesifikasi Mesin v1.4.0
 
 Dokumen ini adalah **acuan normatif** mesin penilaian BehaviorGuard. Kalau kode dan
 dokumen ini berbeda, **dokumen ini yang benar dan kodenya yang bug.**
@@ -13,20 +13,20 @@ Tujuannya satu: siapa pun, di bahasa apa pun, bisa menulis ulang mesin ini dan
 Spec v1.1.0 mencakup **seluruh jalur perhitungan** — dari event mentah sampai vonis:
 
 ```
-event mentah  --[ §8 ekstraksi fitur ]-->  vektor 28-float  --[ §5 mesin ]-->  vonis
+event mentah  --[ §8 ekstraksi fitur ]-->  vektor 34-float  --[ §5 mesin ]-->  vonis
      (v1.1)                                     (format tukar)          (v1.0)
 ```
 
-- **§8 Ekstraksi fitur** (v1.1) — event mentah → vektor 28-float. Deterministik,
+- **§8 Ekstraksi fitur** (v1.1) — event mentah → vektor 34-float. Deterministik,
   murni angka, tanpa DOM. Acuan: `sdk/core/features.js` = `bg_core.py:extract_features`.
-- **§2–§7 Mesin penilaian** (v1.0) — vektor 28-float → vonis.
+- **§2–§7 Mesin penilaian** (v1.0) — vektor 34-float → vonis.
 
 **Tetap di luar** spec (khusus per platform, bukan angka murni):
 
 - Penangkapan event (DOM/touch/native) — cuma *mengisi* struktur event di §8.1
 - Penyimpanan, jaringan, siklus sesi, rate-limit, integrity, challenge
 
-**Vektor 28-float adalah titik-tukar utama** sistem ini: itu yang disimpan
+**Vektor 34-float adalah titik-tukar utama** sistem ini: itu yang disimpan
 `baselines.vectors_json` di server dan yang dibaca `reproduce_db.py` dari basis data
 riset. §8 kini menutup jalur *sebelum* titik-tukar itu, sehingga port bahasa lain bisa
 **membaca perilaku**, bukan cuma menghitung skor dari vektor jadi.
@@ -35,7 +35,7 @@ riset. §8 kini menutup jalur *sebelum* titik-tukar itu, sehingga port bahasa la
 
 ## 2. Vektor fitur
 
-28 nama, **urutan tetap dan mengikat** — indeks ke-*i* bermakna sama di semua bahasa.
+34 nama (28 + 6 fitur ritme ketik sejak v1.4.0), **urutan tetap dan mengikat** — indeks ke-*i* bermakna sama di semua bahasa.
 Daftar persisnya ada di `core/golden.json` kolom `features` dan di `bg_core.py:F4`.
 
 Setiap elemen: bilangan pecahan presisi ganda (IEEE-754 binary64), selalu finit.
@@ -166,11 +166,12 @@ FAR tetap. Lapisan ini **di luar** golden (golden menguji `to_action` stateless)
 Sebuah implementasi disebut **sesuai** hanya bila lulus `core/golden.json`,
 toleransi relatif **1e-9**:
 
-- **§8 ekstraksi fitur** — 5 kasus fitur × 28 elemen = **140 pemeriksaan** vektor,
+- **§8 ekstraksi fitur** — 6 kasus fitur × 34 elemen = **204 pemeriksaan** vektor,
   dari event mentah eksplisit di `feature_cases` (kasus kelima, `_fc_atan2_pi4_edges`,
-  berisi gerakan mouse nyata yang berbelok tepat di `pi/4`; v1.3.0).
+  berisi gerakan mouse nyata yang berbelok tepat di `pi/4`, v1.3.0; keenam,
+  `fc06_keystroke_rhythm`, menguji kelas tombol dari `kc` dan dari karakter ASCII, v1.4.0).
 - **§2–§7 mesin** — 3 kasus, 16 probe = **115 pemeriksaan** vonis, dari `cases`.
-- Total **255 pemeriksaan**.
+- Total **319 pemeriksaan**.
 
 Golden menyimpan **input eksplisit** (bukan generator), jadi port tidak perlu meniru
 generator apa pun. Titik antara juga disimpan (`stats_*`, `if_stats`, `svm_stats`,
@@ -178,12 +179,12 @@ generator apa pun. Titik antara juga disimpan (`stats_*`, `if_stats`, `svm_stats
 
 | Implementasi | Cara uji | Status |
 |---|---|---|
-| Python `core/bg_core.py` | `python core/conformance.py` | **SESUAI** 255/255 |
-| JS `sdk/core/*.js` (browser) | buka `core/conformance.html` lewat server lokal | **SESUAI** 255/255 |
-| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **SESUAI** 255/255 |
-| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **SESUAI** 255/255 |
-| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **SESUAI** 255/255 |
-| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (atau `ports/wasm/index.html`) | **SESUAI** 255/255 |
+| Python `core/bg_core.py` | `python core/conformance.py` | **SESUAI** 319/319 |
+| JS `sdk/core/*.js` (browser) | buka `core/conformance.html` lewat server lokal | **SESUAI** 319/319 |
+| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **SESUAI** 319/319 |
+| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **SESUAI** 319/319 |
+| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **SESUAI** 319/319 |
+| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (atau `ports/wasm/index.html`) | **SESUAI** 319/319 |
 | Port baru (Go/Swift/C#) | tiru logika `conformance.py`; lihat `ports/README.md` | — |
 
 Semua port **nol dependensi** (pustaka standar saja, termasuk pembaca JSON kecil
@@ -204,6 +205,11 @@ Semantik: **mayor** = angka berubah; **minor** = permukaan bertambah, angka lama
 **tambal** = klarifikasi dokumen saja. `golden.json` mencantumkan `spec_version` yang
 dipatuhinya.
 
+- **v1.4.0** (2026-09-11) — **MAYOR**: enam fitur ritme ketik ditambahkan ke F4 (28 → 34,
+  §8.10). Semua angka golden berubah. Diukur dengan SDK yang dikirim, sesi urut waktu:
+  pemilik diminta verifikasi 12,2% → 11,4%, penyusup lolos vonis pertama 12,6% → 10,5%,
+  AUC per-pemilik 0,942 → 0,953 (DRIFT C-44).
+
 - **v1.2.0** (2026-09-04) — **MAYOR**: detektor-2 centroid-RBF → **Mahalanobis+shrinkage**
   (§5.4), kalibrasi ambang → **parametrik** (§5.6), bobot IF/SVM 0.70/0.30 → **0.30/0.70**,
   aksi HIGH `BLOCK_SESSION` → **`REQUIRE_STEPUP`** + aturan-run block (§5.7). `golden.json`
@@ -217,7 +223,7 @@ dipatuhinya.
 
 ---
 
-## 8. Ekstraksi fitur (event mentah → vektor 28-float)
+## 8. Ekstraksi fitur (event mentah → vektor 34-float)
 
 Bagian ini **normatif**. Acuan kode: `sdk/core/features.js:extractF4` dan padanan
 persisnya `bg_core.py:extract_features`. Keduanya lulus `feature_cases` yang sama.
@@ -231,7 +237,8 @@ Masukan = **daftar event terurut** (list of records). Tiap event punya:
 | `event_type` | string | ya | pemilahan tipe |
 | `timestamp` | epoch **milidetik** | ya | hampir semua fitur waktu |
 | `x`, `y` | angka piksel | untuk gerak | kecepatan/arah/kurvatur |
-| `key` | string | untuk ketik | entropi transisi |
+| `key` | string | untuk ketik | entropi transisi, kelas tombol (§8.10) |
+| `kc` | string | opsional, ketik | kelas tombol (§8.10); ditulis capture dari posisi fisik tombol |
 | `hold_time` | milidetik | untuk ketik | dwell mean/std |
 | `velocity` | angka | opsional | `cursor_idle_ratio` (lihat 8.4) |
 | `page_url` | string | untuk navigasi | hitung halaman/transisi |
@@ -248,7 +255,7 @@ Tipe `event_type` yang dikenal: `MOUSE_MOVE`, `MOUSE_CLICK`, `MOUSE_SCROLL`,
 
 - **`mean`** = rata-rata aritmetika; array kosong → `0`.
 - **`std`** = simpangan baku **populasi** (pembagi *n*); array kosong → `0`.
-- **`safe(v)`** = `v` bila angka finit, selain itu `0`. Keluaran **selalu** 28 finit.
+- **`safe(v)`** = `v` bila angka finit, selain itu `0`. Keluaran **selalu** 34 finit.
 - **Urutan mouse gabungan** `mouse_ev` = `[…MOUSE_MOVE, …MOUSE_CLICK, …MOUSE_SCROLL]`
   (digabung menurut tipe, **bukan** diurut waktu). Loop kinematik jalan atas urutan ini.
 - Event tetap dalam urutan masukannya untuk `flight_time`, entropi, dan burst.
@@ -324,8 +331,41 @@ Tipe ditentukan oleh apakah `event_type` mengandung substring `"MOUSE"`.
 
 ### 8.9 Perakitan keluaran
 
-Susun ke-28 nilai **menurut urutan F4** (§2). Tiap nilai dibungkus `safe(value || 0)`.
-Hasil: dict/array 28 elemen, semua finit — siap masuk §5 sebagai vektor fitur.
+Susun ke-34 nilai **menurut urutan F4** (§2). Tiap nilai dibungkus `safe(value || 0)`.
+Hasil: dict/array 34 elemen, semua finit — siap masuk §5 sebagai vektor fitur.
+
+### 8.10 Ritme ketik (v1.4.0)
+
+`key_ev` = event KEYSTROKE menurut urutan masukan.
+
+**Kelas tombol** `cls(e)`:
+1. `e.kc` string tak kosong → string itu;
+2. `e.key` bukan string → `O`;
+3. `e.key` satu karakter berkode < 128: `A`–`Z` dikecilkan, lalu `qwertasdfgzxcvb` → `L`,
+   `yuiophjklnm` → `R`, `0`–`9` → `D`, spasi → `S`, selainnya → `P`;
+4. selain itu `Backspace`/`Delete` → `E`, `Shift` → `H`, selainnya → `O`.
+
+Capture menulis `kc` (`L`/`R`/`D`/`S`) dari tombol **fisik** (`KeyboardEvent.code`), jadi
+tak bergantung tata letak dan huruf tak pernah dibutuhkan. Di kolom sandi `kc` **tidak**
+ditulis; di sana dua fitur kelas bernilai `0`.
+
+Satu putaran atas `key_ev` (i = 0..):
+- `dw` ← `hold_time` bila ada dan `0 < hold_time < 1000`.
+- hitungan: `back` (kelas `E`), `shift` (kelas `H`), `letters` (kelas `L`/`R`).
+- untuk i ≥ 1, `dt = key_ev[i].ts − key_ev[i−1].ts`; bila `0 < dt < 1000`: `dt` → `fl`, dan
+  bila kedua kelas `L`/`R`, `dt` → `same` (kelas sama) atau `cross` (beda).
+
+`median` urut naik; panjang ganjil → elemen tengah, genap → rerata dua tengah, kosong → 0.
+`iqr` = `b[floor(0,75·n)] − b[floor(0,25·n)]` atas `fl` terurut bila `n > 3`, selain itu 0.
+
+| Fitur | Nilai |
+|---|---|
+| `keystroke_flight_median` | `median(fl)` |
+| `keystroke_flight_iqr` | `iqr` |
+| `keystroke_backspace_ratio` | `back / |key_ev|` (0 bila kosong) |
+| `keystroke_cross_hand_ratio` | `median(cross) / median(same)` bila keduanya > 0, selain itu 0 |
+| `keystroke_dwell_median` | `median(dw)` |
+| `keystroke_shift_ratio` | `shift / letters` (0 bila tak ada huruf) |
 
 ---
 

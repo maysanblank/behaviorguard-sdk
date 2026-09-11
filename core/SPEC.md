@@ -1,4 +1,4 @@
-# BehaviorGuard Core — Engine Specification v1.3.0
+# BehaviorGuard Core — Engine Specification v1.4.0
 
 This document is the **normative reference** for the BehaviorGuard scoring engine. If the
 code and this document disagree, **this document is right and the code is the bug.**
@@ -16,20 +16,20 @@ result is identical — not merely "looks about the same".
 The spec covers the **entire computation path** — from raw events to verdict:
 
 ```
-raw events  --[ §8 feature extraction ]-->  28-float vector  --[ §5 engine ]-->  verdict
+raw events  --[ §8 feature extraction ]-->  34-float vector  --[ §5 engine ]-->  verdict
     (v1.1)                                   (exchange format)         (v1.0)
 ```
 
-- **§8 Feature extraction** (v1.1) — raw events → 28-float vector. Deterministic, pure
+- **§8 Feature extraction** (v1.1) — raw events → 34-float vector. Deterministic, pure
   arithmetic, no DOM. Reference: `sdk/core/features.js` = `bg_core.py:extract_features`.
-- **§2–§7 Scoring engine** (v1.0) — 28-float vector → verdict.
+- **§2–§7 Scoring engine** (v1.0) — 34-float vector → verdict.
 
 **Explicitly out of scope** (platform-specific, not pure arithmetic):
 
 - Event capture (DOM/touch/native) — it only *populates* the event structure in §8.1
 - Storage, networking, session lifecycle, rate limiting, integrity checks, the challenge
 
-**The 28-float vector is this system's primary exchange point**: it is what the server
+**The 34-float vector is this system's primary exchange point**: it is what the server
 stores in `baselines.vectors_json` and what `reproduce_db.py` reads from the research
 database. §8 now closes the path *before* that exchange point, so a port in another
 language can **read behavior**, not just score an already-computed vector.
@@ -38,7 +38,7 @@ language can **read behavior**, not just score an already-computed vector.
 
 ## 2. Feature vector
 
-28 names, in a **fixed and binding order** — index *i* means the same thing in every
+34 names (28 + 6 keystroke-rhythm features added in v1.4.0), in a **fixed and binding order** — index *i* means the same thing in every
 language. The exact list is in `core/golden.json` under `features`, and in `bg_core.py:F4`.
 
 Every element is a double-precision float (IEEE-754 binary64), and is always finite.
@@ -184,11 +184,12 @@ That layer is **outside** the golden file (which tests the stateless `to_action`
 An implementation is **conformant** only if it passes `core/golden.json` at a relative
 tolerance of **1e-9**:
 
-- **§8 feature extraction** — 5 feature cases × 28 elements = **140 vector checks**, from
+- **§8 feature extraction** — 6 feature cases × 34 elements = **204 vector checks**, from
   the explicit raw events in `feature_cases` (the fifth, `_fc_atan2_pi4_edges`, holds real
-  mouse moves that turn exactly on `pi/4`; v1.3.0).
+  mouse moves that turn exactly on `pi/4`, v1.3.0; the sixth, `fc06_keystroke_rhythm`,
+  covers key classes from `kc` and from ASCII characters, v1.4.0).
 - **§2–§7 engine** — 3 cases, 16 probes = **115 verdict checks**, from `cases`.
-- **255 checks** in total.
+- **319 checks** in total.
 
 The golden file stores **explicit inputs** (not generators), so a port never has to
 reproduce any generator. Intermediate values are stored too (`stats_*`, `if_stats`,
@@ -197,12 +198,12 @@ reproduce any generator. Intermediate values are stored too (`stats_*`, `if_stat
 
 | Implementation | How to test | Status |
 |---|---|---|
-| Python `core/bg_core.py` | `python core/conformance.py` | **CONFORMANT** 255/255 |
-| JS `sdk/core/*.js` (browser) | open `core/conformance.html` over a local server | **CONFORMANT** 255/255 |
-| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **CONFORMANT** 255/255 |
-| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **CONFORMANT** 255/255 |
-| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **CONFORMANT** 255/255 |
-| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (or `ports/wasm/index.html`) | **CONFORMANT** 255/255 |
+| Python `core/bg_core.py` | `python core/conformance.py` | **CONFORMANT** 319/319 |
+| JS `sdk/core/*.js` (browser) | open `core/conformance.html` over a local server | **CONFORMANT** 319/319 |
+| JS `sdk/core/*.js` (Node/CI) | `node core/conformance.node.mjs` | **CONFORMANT** 319/319 |
+| Rust `ports/rust` | `cd ports/rust && cargo run --release` | **CONFORMANT** 319/319 |
+| Java `ports/java` (JVM/Android) | `java ports/java/BgConformance.java core/golden.json` | **CONFORMANT** 319/319 |
+| **WASM** `ports/wasm/bg_core.wasm` | `node ports/wasm/run.mjs` (or `ports/wasm/index.html`) | **CONFORMANT** 319/319 |
 | A new port (Go/Swift/C#) | mirror the logic of `conformance.py`; see `ports/README.md` | — |
 
 All ports are **dependency-free** (standard library only, including a small hand-written
@@ -223,6 +224,12 @@ Semantics: **major** = numbers change; **minor** = surface added, existing numbe
 unchanged; **patch** = documentation clarification only. `golden.json` records the
 `spec_version` it complies with.
 
+- **v1.4.0** (2026-09-11) — **MAJOR**: six keystroke-rhythm features appended to F4
+  (28 → 34, §8.10): in-burst flight median and IQR, backspace ratio, cross-hand/same-hand
+  flight ratio, dwell median, shift ratio. Every golden number changes (the engine cases
+  are generated with d = |F4|). Measured with the shipped SDK on time-ordered sessions:
+  owner asked to verify 12.2% → 11.4%, impostor passes first verdict 12.6% → 10.5%,
+  per-owner AUC 0.942 → 0.953 (DRIFT C-44).
 - **v1.3.0** (2026-09-11) — **MAJOR** (numbers change in two places):
   (1) §8 `direction_changes` compares against `π/4 + 1e-9`. Without the tolerance, `atan2`
   differences of 1–2 ulp between libm implementations flipped the comparison in one
@@ -246,7 +253,7 @@ unchanged; **patch** = documentation clarification only. `golden.json` records t
 
 ---
 
-## 8. Feature extraction (raw events → 28-float vector)
+## 8. Feature extraction (raw events → 34-float vector)
 
 This section is **normative**. Code reference: `sdk/core/features.js:extractF4` and its
 exact counterpart `bg_core.py:extract_features`. Both pass the same `feature_cases`.
@@ -260,7 +267,8 @@ The input is an **ordered list of events**. Each event has:
 | `event_type` | string | yes | type dispatch |
 | `timestamp` | epoch **milliseconds** | yes | nearly every temporal feature |
 | `x`, `y` | pixel numbers | for movement | velocity / direction / curvature |
-| `key` | string | for keystrokes | transition entropy |
+| `key` | string | for keystrokes | transition entropy, key class (§8.10) |
+| `kc` | string | optional, keystrokes | key class (§8.10); written by capture from the physical key position |
 | `hold_time` | milliseconds | for keystrokes | dwell mean and std |
 | `velocity` | number | optional | `cursor_idle_ratio` (see 8.4) |
 | `page_url` | string | for navigation | page and transition counts |
@@ -277,7 +285,7 @@ Recognized `event_type` values: `MOUSE_MOVE`, `MOUSE_CLICK`, `MOUSE_SCROLL`, `KE
 
 - **`mean`** = arithmetic mean; an empty array gives `0`.
 - **`std`** = **population** standard deviation (divisor *n*); an empty array gives `0`.
-- **`safe(v)`** = `v` if it is a finite number, otherwise `0`. The output is **always** 28
+- **`safe(v)`** = `v` if it is a finite number, otherwise `0`. The output is **always** 34
   finite values.
 - **The combined mouse ordering** `mouse_ev` = `[…MOUSE_MOVE, …MOUSE_CLICK, …MOUSE_SCROLL]`
   (concatenated by type, **not** sorted by time). The kinematics loop runs over this order.
@@ -354,9 +362,44 @@ The type is decided by whether `event_type` contains the substring `"MOUSE"`.
 
 ### 8.9 Output assembly
 
-Arrange all 28 values **in F4 order** (§2). Each value is wrapped as `safe(value || 0)`.
-The result is a dict/array of 28 elements, all finite — ready to enter §5 as the feature
+Arrange all 34 values **in F4 order** (§2). Each value is wrapped as `safe(value || 0)`.
+The result is a dict/array of 34 elements, all finite — ready to enter §5 as the feature
 vector.
+
+### 8.10 Keystroke rhythm (v1.4.0)
+
+`key_ev` = KEYSTROKE events in input order.
+
+**Key class** `cls(e)`:
+1. if `e.kc` is a non-empty string → that string;
+2. else if `e.key` is not a string → `O`;
+3. else if `e.key` is a single character with code < 128: fold `A`–`Z` to lower case, then
+   `qwertasdfgzxcvb` → `L`, `yuiophjklnm` → `R`, `0`–`9` → `D`, space → `S`, anything
+   else → `P`;
+4. else `Backspace` or `Delete` → `E`, `Shift` → `H`, anything else → `O`.
+
+Capture writes `kc` (`L`/`R`/`D`/`S`) from the **physical** key (`KeyboardEvent.code`), so
+the class does not depend on the layout and the typed character is never needed. It is
+**not** written in password fields; there these two class features read `0`.
+
+One pass over `key_ev` (i = 0..):
+- `dw` ← `hold_time` when it is present and `0 < hold_time < 1000`.
+- counts: `back` (class `E`), `shift` (class `H`), `letters` (class `L` or `R`).
+- for i ≥ 1, `dt = key_ev[i].ts − key_ev[i−1].ts`; if `0 < dt < 1000`: `dt` → `fl`, and
+  when both classes are `L`/`R`, `dt` → `same` (equal classes) or `cross` (different).
+
+`median` sorts ascending; odd length → middle element, even → mean of the two middle
+elements, empty → 0. `iqr` = `b[floor(0.75·n)] − b[floor(0.25·n)]` over sorted `fl` when
+`n > 3`, else 0.
+
+| Feature | Value |
+|---|---|
+| `keystroke_flight_median` | `median(fl)` |
+| `keystroke_flight_iqr` | `iqr` |
+| `keystroke_backspace_ratio` | `back / |key_ev|` (0 if empty) |
+| `keystroke_cross_hand_ratio` | `median(cross) / median(same)` when both > 0, else 0 |
+| `keystroke_dwell_median` | `median(dw)` |
+| `keystroke_shift_ratio` | `shift / letters` (0 if no letters) |
 
 ---
 

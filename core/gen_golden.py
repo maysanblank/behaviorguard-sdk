@@ -8,8 +8,8 @@ per bahasa), supaya port bahasa lain tidak perlu meniru generator apa pun -
 cukup baca angka, hitung, bandingkan.
 
 Sejak v1.1.0 golden mencakup DUA jalur:
-  - `feature_cases`: event mentah -> vektor 28-float   (SPEC v1.1)
-  - `cases`        : vektor 28-float -> vonis           (SPEC v1.0)
+  - `feature_cases`: event mentah -> vektor 34-float   (SPEC v1.1)
+  - `cases`        : vektor 34-float -> vonis           (SPEC v1.0)
 
 Jalankan ulang HANYA kalau SPEC berubah, dan catat alasannya di core/DRIFT.md.
 """
@@ -20,7 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bg_core as bg  # noqa: E402
 
-SPEC_VERSION = '1.3.0'   # C-34: toleransi pi/4 di direction_changes
+SPEC_VERSION = '1.4.0'   # C-44: 6 fitur ritme ketik (28 -> 34)
 ROUND = 6
 
 
@@ -54,7 +54,7 @@ def make_case(case_id, seed, n_baseline, n_probe, drift):
 
 
 # ---------------------------------------------------------------------------
-# KASUS FITUR (SPEC v1.1): event mentah EKSPLISIT -> vektor 28-float
+# KASUS FITUR (SPEC v1.1): event mentah EKSPLISIT -> vektor 34-float
 # ---------------------------------------------------------------------------
 # base = 2023-11-14T22:13:20.000Z (UTC bulat, aman lintas zona waktu). Timestamp &
 # koordinat bilangan bulat, arah gerak dijauhkan dari ambang pi/4, supaya port
@@ -146,9 +146,27 @@ def _fc_atan2_pi4_edges():
     return {'id': 'fc05_atan2_pi4_edges', 'session_start_ts': FBASE, 'events': ev}
 
 
+def _fc_keystroke_rhythm():
+    # C-44: kelas tangan dari `kc` (capture) DAN dari karakter ASCII (data riset), huruf
+    # besar, Backspace/Delete/Shift, jeda >= 1 dtk (dibuang), hold di luar (0,1000).
+    seq = [('a', 'L', 90), ('s', None, 85), ('k1', 'R', 70), ('J', None, 110), ('Shift', None, 60),
+           ('Backspace', None, 75), ('k2', 'L', 95), ('7', None, 80), (' ', None, 0), ('Delete', None, 1200),
+           ('p', None, 100), ('q', None, 88), ('é', None, 92), ('Enter', None, 70)]
+    gaps = [0, 140, 95, 180, 120, 210, 160, 1500, 130, 150, 110, 170, 125, 140]
+    ev, ts = [], FBASE
+    for (k, kc, h), g in zip(seq, gaps):
+        ts += g
+        e = _ev('KEYSTROKE', ts, key=k, hold_time=h)
+        if kc:
+            e['kc'] = kc
+        ev.append(e)
+    return {'id': 'fc06_keystroke_rhythm', 'session_start_ts': FBASE, 'events': ev}
+
+
 def make_feature_cases():
     return [_fc_rich_desktop(), _fc_keyboard_heavy(),
-            _fc_mouse_only_velfield(), _fc_sparse_edges(), _fc_atan2_pi4_edges()]
+            _fc_mouse_only_velfield(), _fc_sparse_edges(), _fc_atan2_pi4_edges(),
+            _fc_keystroke_rhythm()]
 
 
 def build():
@@ -183,9 +201,9 @@ def build():
             'k_low': bg.DEFAULTS['k_low'],
             'k_med_extra': bg.DEFAULTS['k_med_extra'],
         },
-        # SPEC v1.1: event mentah -> vektor 28-float
+        # SPEC v1.1: event mentah -> vektor 34-float
         'feature_cases': [],
-        # SPEC v1.0: vektor 28-float -> vonis
+        # SPEC v1.0: vektor 34-float -> vonis
         'cases': [],
     }
     for fc in feature_cases:
@@ -236,8 +254,8 @@ def main():
              os.path.getsize(dest) / 1024))
     for fc in out['feature_cases']:
         nz = sum(1 for v in fc['expect_vector'] if v != 0)
-        print('  %-24s %d event -> vektor %d/28 nonzero'
-              % (fc['id'], len(fc['events']), nz))
+        print('  %-24s %d event -> vektor %d/%d nonzero'
+              % (fc['id'], len(fc['events']), nz, len(bg.F4)))
     for c in out['cases']:
         lv = [v['level'] for v in c['expect']['verdicts']]
         print('  %-20s thresholds low=%.6f med=%.6f  verdict=%s'

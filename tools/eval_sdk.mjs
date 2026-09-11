@@ -92,6 +92,18 @@ const ALL_SUBJ = Object.keys(raw.subjects).map(Number);
 const SUBJ = ALL_SUBJ;
 const OWNERS = ONLY ? ONLY.split(',').map(Number) : ALL_SUBJ;
 const TRACE = process.argv.includes('--trace');
+// --same-hour : penyerang PINTAR yang login di jam-dalam-hari yang sama dengan kebiasaan
+// pemilik. Tanpa ini sesi penyusup memakai jam rekamannya sendiri, dan karena tiap relawan
+// merekam di blok jam yang khas, fitur temporal_time_of_day_score ikut "menangkap" penyusup
+// — sinyal yang di dunia nyata jauh lebih lemah (C-44).
+const SAME_HOUR = process.argv.includes('--same-hour');
+const todOf = evs => { const t0 = Math.min(...evs.map(e => e.timestamp)); return ((t0 % DAY) + DAY) % DAY; };
+let _k = 0;
+function impShift(uid, evs) {
+  if (!SAME_HOUR || !LIVE) return null;
+  const own = raw.subjects[uid], target = todOf(own[(_k++) % own.length]);
+  return shiftFor(evs) + ((target - todOf(evs)) % DAY + DAY) % DAY;
+}
 
 async function freshGuard(uid) {
   const g = new BehaviorGuard();
@@ -200,6 +212,7 @@ for (const uid of OWNERS) {
      g.onRisk = e => pre.push(e); await new Promise(r => setTimeout(r, 120)); g.onRisk = () => {};
      if (OWNER_MFA === 'pass') for (const e of pre) if (needsStepUp(e)) await g.reportStepUp({ passed: true });
    }
+   if (TRACE) console.error(`  [${uid}] -- kunjungan ${sess.indexOf(evs) + 1}/${sess.length} ${new Date(Math.min(...evs.map(e => e.timestamp))).toISOString().slice(0, 16)} ${evs.length} event`);
    const got = [...pre, ...await feed(g, evs, LIVE && OWNER_MFA === 'pass', sh)];
    if (TRACE) for (const e of got) console.error(`  [${uid}] ${e.level} ${e.action} el=${e.eligible} n=${e.idle ? e.idle.events : '-'} ctx=${e.context ?? '-'} ${(e.reasons || [])[0] || ''}`);
    for (const e of got) {
@@ -229,7 +242,7 @@ for (const uid of OWNERS) {
       const c = cloneGuard(g, `imp-${uid}-${vid}-${Math.random().toString(36).slice(2)}`);
       c._lastEventAt = 0;
       tick(2_000);
-      const vs = (await feed(c, evs)).filter(e => !e.abstain && !e.enrollment);
+      const vs = (await feed(c, evs, false, impShift(uid, evs))).filter(e => !e.abstain && !e.enrollment);
       // sesi penyusup yang TIDAK PERNAH mendapat vonis (bukti tak pernah cukup) bukan
       // 'tidak dihitung' — ia lolos tanpa diperiksa. Dicatat terpisah.
       if (!vs.length) { noVerdict.push({ uid, vid }); continue; }
@@ -245,7 +258,7 @@ for (const uid of OWNERS) {
     const seq = [];
     c._lastEventAt = 0;
     for (const evs of raw.subjects[vid].slice(0, TAKEOVER)) {
-      const vs = (await feed(c, evs)).filter(e => !e.abstain);
+      const vs = (await feed(c, evs, false, impShift(uid, evs))).filter(e => !e.abstain);
       // satu entri per SESI penyusup: sesi dianggap lolos hanya kalau tak satu jendela pun tersandung
       if (vs.length) seq.push(vs.some(e => e.blocked) ? 'BLOCK' : (vs.every(e => e.level === 'LOW') ? 'LOW' : vs.find(e => e.level !== 'LOW').level));
     }
@@ -319,12 +332,19 @@ if (DUMP) {
               clean: i.filter(x => x.wholeSessionClean).length,
               tk: t.length, never: t.filter(x => x.seq.length && x.seq.every(s => s === 'LOW')).length,
               det1: t.filter(x => x.seq[0] && x.seq[0] !== 'LOW').length,
-              os: o.map(x => x.score), is: i.map(x => x.score) };
+              os: o.map(x => x.score), is: i.map(x => x.score),
+              // urutan vonis pemilik (L/M/H, 'g' = MEDIUM yang tak ditanya ulang) dan rincian
+              // per penyusup: [sesi dinilai, lolos vonis pertama, lolos seluruh sesi]
+              ol: o.map(x => x.graced ? 'g' : x.level[0]).join(''),
+              iv: Object.fromEntries([...new Set(i.map(x => x.vid))].map(v => { const q = i.filter(x => x.vid === v);
+                    return [v, [q.length, q.filter(x => x.level === 'LOW').length, q.filter(x => x.wholeSessionClean).length]]; })),
+              tq: Object.fromEntries(t.map(x => [x.vid, x.seq.map(s => s[0]).join('')])) };
   }
   fs.writeFileSync(DUMP, JSON.stringify({ k_low: K_LOW, data: path.basename(DATA), compress: COMPRESS, ownerMfa: OWNER_MFA, by }));
 }
 if (DUMP_VEC) fs.writeFileSync(DUMP_VEC, JSON.stringify({ features: (await import('../sdk/core/config.js')).DEFAULTS?.features ?? null, log: VEC_LOG }));
 console.log(`MODE: ${LIVE ? 'LIVE (jendela ' + 30 + ' dtk, seperti produksi)' : 'SESI UTUH (satuan riset, BUKAN produksi)'}`);
+console.log(`PENYUSUP: ${SAME_HOUR ? 'jam-dalam-hari DISAMAKAN dengan pemilik (--same-hour)' : 'jam rekamannya sendiri'}`);
 console.log(`SDK: sdk/behaviorguard.js | k_low=${K_LOW ?? 'default'} | data ${path.basename(DATA)} (afk=${raw.afk}) | kompresi ${COMPRESS} dtk | pemilik-MFA=${OWNER_MFA}`);
 const rl = own.filter(x => x.rateLimited).length + imp.filter(x => x.rateLimited).length;
 if (rl) console.log(`PERINGATAN: ${rl} vonis kena rate-limit — jam simulasi terlalu rapat, angka TIDAK sah`);

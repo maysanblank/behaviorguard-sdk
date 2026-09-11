@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 BehaviorGuard VPS - backend minimal multi-tenant (Flask + sqlite3, dependency-ringan).
-Model HYBRID: yang MASUK server cuma VEKTOR FITUR teragregasi (28 angka/sesi) + verdict.
+Model HYBRID: yang MASUK server cuma VEKTOR FITUR teragregasi (34 angka/sesi) + verdict.
 Event mentah (timing ketik/mouse) TIDAK pernah dikirim - tetap di device.
 
 Skema per tenant + per akun (userId), BUKAN per device:

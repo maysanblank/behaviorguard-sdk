@@ -7,6 +7,8 @@
  */
 import { DEFAULTS, normalizeWeights } from './core/config.js';
 import { extractF4, featuresToVector, F4 } from './core/features.js';
+const RHYTHM_C44=new Set(['keystroke_flight_median','keystroke_flight_iqr','keystroke_backspace_ratio',
+  'keystroke_cross_hand_ratio','keystroke_dwell_median','keystroke_shift_ratio']);
 import { computeStats, standardize, standardizeBatch } from './core/standardize.js';
 import { IsolationForest } from './core/isolation_forest.js';
 import { OCSVM } from './core/ocsvm.js';
@@ -88,6 +90,13 @@ class BehaviorGuard {
     try{ this.fingerprint=await getFingerprint(); }catch{ this.fingerprint='unknown'; }
     try{ this.secret=await getOrCreateSecret(userId, storage); this.token=await generateToken({secret:this.secret, userId}); }catch{}
     const saved=await storage.get(ns(userId));
+    // C-44: jumlah fitur berubah (28 -> 34). Vektor lama tidak bisa dibandingkan dengan
+    // vektor baru, dan menambal kolom kosong dengan nol akan meracuni model. Profil lama
+    // dibuang sekali; pengguna mendaftar ulang (10 langkah) dengan fitur yang baru.
+    if(saved && Array.isArray(saved.sessions) && saved.sessions.some(s=> s && Array.isArray(s.vector) && s.vector.length!==this.cfg.features.length)){
+      console.warn('[BG] profil tersimpan memakai jumlah fitur lama - pendaftaran diulang');
+      saved.sessions=[]; saved.stats=null;
+    }
     if(saved){ this.sessions=saved.sessions||[]; this.stats=saved.stats||null; this.lastRisk=saved.lastRisk||'LOW'; this._highRun=saved.highRun||0; this.challengeTemplate=saved.challengeTemplate||null;
       // C-32: streak LOW dulu TIDAK disimpan. Lantai lengket turun hanya setelah 3 LOW
       // berturut dalam SATU muat-halaman, jadi pengguna yang kunjungannya pendek (1-2
@@ -299,9 +308,14 @@ class BehaviorGuard {
       mfaEnrollSnoozeUntil:this._mfaEnrollSnoozeUntil||0, mfaPassedAt:this._mfaPassedAt||null, lastActiveAt:Date.now()});
   }
   // C-35: sesi tersimpan terdekat dalam ruang terstandar, tanpa fitur temporal.
+  // C-44: juga tanpa 6 fitur ritme ketik baru. Median & IQR jeda adalah statistik urutan
+  // yang peka jitter milidetik: rekaman yang diputar dengan jitter +-2 ms menggeser
+  // mediannya penuh 1-2 ms, dan pada pemilik yang ritmenya sangat rata (std median ~8 ms)
+  // itu cukup untuk mendorong jaraknya melewati replayEps -> rekaman lolos. Ambang
+  // replayEps dikalibrasi (C-35) pada 28 fitur lama, jadi deteksinya tetap di ruang itu.
   _nearestPastSession(xstd){
     if(!this.stats || !this.sessions.length) return null;
-    const idx=this._behIdx || (this._behIdx=F4.map((_,i)=>i).filter(i=>!F4[i].startsWith('temporal_')));
+    const idx=this._behIdx || (this._behIdx=F4.map((_,i)=>i).filter(i=>!F4[i].startsWith('temporal_') && !RHYTHM_C44.has(F4[i])));
     let best=null;
     for(const s of this.sessions){
       if(!s || !s.vector) continue;
