@@ -38,6 +38,8 @@
   .pd-big{font-size:20px;font-weight:700;letter-spacing:-.01em}
   .pd-m{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:11.5px;color:#aab3c2}
   .pd-bar{height:6px;border-radius:9px;background:#1f2735;overflow:hidden;margin-top:6px}.pd-bar i{display:block;height:100%;background:#60a5fa;transition:width .3s}
+  .pd-sub{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:10.5px;color:#8b95a6;margin-top:6px;line-height:1.4}
+  .pd-sub.pd-warn{color:#e3a14a}
   .pd-g{position:relative;height:26px;margin-top:10px;border-radius:6px;overflow:hidden;display:flex}
   .pd-g span{height:100%}
   .pd-g .dot{position:absolute;top:2px;width:3px;height:22px;background:#fff;border-radius:2px;box-shadow:0 0 0 2px #0f141b}
@@ -59,7 +61,8 @@
   root.innerHTML = `<div class="pd-b" hidden id="pd-b">
       <div class="pd-h"><div><b>Panel demo</b> <span id="pd-v"></span></div><span>alat presentasi</span></div>
       <div class="pd-s"><div class="pd-l"><span>Fase</span><span id="pd-mode"></span></div><div class="pd-big" id="pd-phase"></div>
-        <div class="pd-m" id="pd-enr"></div><div class="pd-bar"><i id="pd-enrbar"></i></div></div>
+        <div class="pd-m" id="pd-enr"></div><div class="pd-bar"><i id="pd-enrbar"></i></div>
+        <div class="pd-sub" id="pd-pool"></div></div>
       <div class="pd-s"><div class="pd-l"><span>Bukti untuk penilaian berikut</span><span id="pd-next"></span></div>
         <div class="pd-m" id="pd-ev"></div><div class="pd-bar"><i id="pd-evbar" style="background:#a78bfa"></i></div></div>
       <div class="pd-s"><div class="pd-l"><span>Vonis terakhir</span><span id="pd-at"></span></div>
@@ -126,6 +129,15 @@
     $('pd-phase').innerHTML = !s.ready ? 'menyala…' : learning ? '<span class="lv-LEARN">Mengenali pemilik</span>' : '<span class="lv-LOW">Melindungi</span>';
     $('pd-enr').textContent = `pendaftaran ${s.enrollment.done}/${s.enrollment.need} jendela layak · irama ketik ${s.mfa.enrolled ? 'terdaftar (' + s.mfa.mode + ')' : 'belum'} · cadangan ${s.mfa.fallback ? 'ada' : 'tidak'}`;
     $('pd-enrbar').style.width = Math.round(s.enrollment.done / s.enrollment.need * 100) + '%';
+    // Kolam latih & gerbang detektor-2. Batang pendaftaran berhenti di 10, tapi mesinnya baru
+    // utuh di 20 (Mahalanobis, bobot 0,70, dibungkam di bawah itu). Tanpa baris ini presenter
+    // tidak punya cara tahu ia sedang mendemokan mesin yang separuh.
+    if (s.model) {
+      $('pd-pool').textContent = !s.model.trained
+        ? 'model belum terbentuk'
+        : `kolam latih ${s.model.pool} vektor · detektor utama (Mahalanobis, 70%) ${s.model.mainDetector ? 'AKTIF' : 'belum aktif — butuh ' + s.model.mainDetectorNeeds}`;
+      $('pd-pool').className = s.model.trained && !s.model.mainDetector ? 'pd-warn' : '';
+    }
     const need = s.evidence.need, have = s.evidence.buffered;
     $('pd-ev').textContent = `${have} event terkumpul · vonis butuh ≥ ${need}` + (s.mfa.graceLeftSec > 0 ? ` · masa verifikasi ${Math.ceil(s.mfa.graceLeftSec / 60)} mnt` : '');
     $('pd-evbar').style.width = Math.min(100, Math.round(have / need * 100)) + '%';

@@ -3831,6 +3831,14 @@ class BehaviorGuard {
       lastVerdict: e ? { level:e.level, action:e.action, score:e.score, blocked:!!e.blocked, at:e.at,
                          reasons:(e.reasons||[]).slice(0,3), mfa:e.mfa||null } : null,
       evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess },
+      // C-46: `enrollment` berhenti di baseline (10) dan tidak pernah bergerak lagi, padahal
+      // mesinnya BELUM utuh di sana: gerbang ensemble membungkam detektor-2 (Mahalanobis,
+      // bobot 0,70) sampai kolam latih mencapai `ensembleMinSamples.svm` = 20 vektor (C-15).
+      // Antara 10 dan 20 jendela, sistem berjalan dengan Isolation Forest SENDIRIAN - dan
+      // tidak ada satu pun keadaan yang bisa dilihat integrator untuk tahu itu. Sekarang ada.
+      model: { trained: !!this.model, pool: this.model ? (this.model.n||0) : 0,
+               mainDetector: !!(this.model && (this.model.n||0) >= this.cfg.ensembleMinSamples.svm),
+               mainDetectorNeeds: this.cfg.ensembleMinSamples.svm },
       // C-46: `canEnroll` supaya halaman pengaturan tahu apakah tombol "atur verifikasi irama"
       // layak ditampilkan SEKARANG. Tanpa ini integrator hanya bisa menebak, lalu menampilkan
       // tombol yang setiap kali ditekan menjawab "sesi sedang dicurigai" - syarat C-2 yang
