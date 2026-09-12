@@ -67,6 +67,7 @@ const TEXT = {
     pasteBlocked: 'Menempel tidak bisa dipakai. Ketik frasanya.',
     suggestion: 'Saran kata dari keyboard terdeteksi. Ketik per huruf.',
     incomplete: 'Irama tidak terekam utuh. Ketik ulang dari awal tanpa menempel.',
+    synthetic: 'Ketikan tidak berasal dari keyboard perangkat ini. Ketik langsung dengan tanganmu.',
     mismatchText: 'Teks belum sama dengan frasa.',
     again: 'Bagus. Sekali lagi.',
     tryAgain: (i, n) => `Iramanya belum cocok. Coba lagi (${i} dari ${n}).`,
@@ -108,6 +109,7 @@ const TEXT = {
     pasteBlocked: 'Pasting is not accepted. Please type the phrase.',
     suggestion: 'Keyboard word suggestion detected. Type one letter at a time.',
     incomplete: 'Rhythm was not fully recorded. Type it again without pasting.',
+    synthetic: 'The input did not come from this device’s keyboard. Please type it yourself.',
     mismatchText: 'The text does not match the phrase yet.',
     again: 'Good. Once more.',
     tryAgain: (i, n) => `The rhythm did not match. Try again (${i} of ${n}).`,
@@ -229,13 +231,18 @@ function el(tag, cls, html) {
  *  - soft: waktu tiap karakter bertambah di event `input` - keyboard layar sentuh.
  * Mode dipilih di akhir: soft hanya bila keyboard memang melaporkan tombol `Unidentified`.
  */
-function createRecorder(input, hooks) {
+export function createRecorder(input, hooks) {
   // Per tombol, bukan "tombol terakhir": pengetik cepat menekan huruf berikut SEBELUM
   // melepas huruf sebelumnya (rollover). Versi lama menyimpan satu `downAt`, sehingga
   // rollover mengacaukan pasangan tekan/lepas dan sampel sering tidak utuh.
-  let tainted = false, sawSoft = false, prevLen = 0;
+  // C-46: `synth` = ada event ketik yang DIBUAT SKRIP (isTrusted false). Ini bukan soal
+  // kenyamanan melainkan pintu belakang: template irama tersimpan di perangkat, jadi skrip
+  // yang bisa membacanya (XSS, ekstensi jahat) dulu tinggal menembakkan keydown/keyup dengan
+  // jeda persis median template itu untuk LOLOS verifikasi tanpa satu pun jari menyentuh
+  // keyboard. Sampel yang tersentuh event tiruan ditolak seluruhnya - gagal-tertutup.
+  let tainted = false, sawSoft = false, prevLen = 0, synth = false;
   const downs = [], ups = [], open = new Map(), softT = [];
-  const reset = () => { tainted = false; prevLen = 0; downs.length = 0; ups.length = 0; open.clear(); softT.length = 0; };
+  const reset = () => { tainted = false; synth = false; prevLen = 0; downs.length = 0; ups.length = 0; open.clear(); softT.length = 0; };
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const isSoftKey = e => e.isComposing || e.keyCode === 229 || e.key === 'Unidentified' || e.key === 'Process';
 
@@ -251,6 +258,7 @@ function createRecorder(input, hooks) {
     }
   });
   input.addEventListener('keydown', e => {
+    if (e.isTrusted === false) { synth = true; return; }
     if (e.key === 'CapsLock' || (e.getModifierState && e.getModifierState('CapsLock'))) hooks.onCaps(!!(e.getModifierState && e.getModifierState('CapsLock')));
     if (isSoftKey(e)) { sawSoft = true; return; }
     if (e.key === 'Enter') return;
@@ -264,6 +272,7 @@ function createRecorder(input, hooks) {
     downs.push(now());
   });
   input.addEventListener('keyup', e => {
+    if (e.isTrusted === false) { synth = true; return; }
     if (isSoftKey(e)) return;
     const id = e.code || e.key;
     const i = open.get(id);
@@ -290,6 +299,7 @@ function createRecorder(input, hooks) {
     reset,
     sample() {
       const n = input.value.length;
+      if (synth) return { error: 'synthetic' };
       if (tainted) return { error: 'suggestion' };
       if (sawSoft) {
         if (softT.length !== n || n < 2) return { error: 'incomplete' };
@@ -479,15 +489,25 @@ export function runMfaChallenge(o) {
       setTimeout(() => { done = false; cleanup(); resolve(result); }, screen.kind === 'ok' ? 900 : 1600);
     }
 
+    // C-46: mengosongkan kolom dari KODE (sesudah sampel ditolak / satu putaran selesai) tidak
+    // menerbitkan event `input`, jadi timer kirim-otomatis yang sudah dijadwalkan tetap hidup
+    // dan menembak ~200 ms kemudian pada kolom yang sudah kosong. Akibatnya pesan yang baru
+    // saja menjelaskan KENAPA ketikan ditolak langsung tertimpa "Teks belum sama dengan
+    // frasa." - pengguna melihat keluhan yang salah dan tidak tahu harus berbuat apa.
+    const clearInput = () => {
+      if (autoT) { clearTimeout(autoT); autoT = null; }
+      inp.value = ''; rec.reset(); paint();
+    };
     function submit() {
       if (done) return;
       if (norm(inp.value) !== norm(phrase)) { say(L.mismatchText, 'err'); inp.focus(); return; }
       const s = rec.sample();
       if (s.error) {
-        say(s.error === 'suggestion' ? L.suggestion : L.incomplete, 'err');
-        inp.value = ''; rec.reset(); paint(); inp.focus(); return;
+        clearInput();
+        say(s.error === 'suggestion' ? L.suggestion : s.error === 'synthetic' ? L.synthetic : L.incomplete, 'err');
+        inp.focus(); return;
       }
-      inp.value = ''; rec.reset(); paint();
+      clearInput();
       if (enrollMode) {
         samples.push(s); paintDots();
         if (samples.length < need) {

@@ -6,10 +6,18 @@
  *   1. menyalakan pustaka sesudah login          -> BehaviorGuard.init({ userId })
  *   2. menanggapi vonis                          -> onRisk: catat, kunci, atau hentikan sesi
  *   3. gerbang aksi sensitif (transfer, sandi)   -> assessNow() lalu stepUp() bila perlu
- *   4. jalur verifikasi cadangan (OTP SMS)       -> mfa.onFallback
+ *   4. jalur verifikasi CADANGAN (kode sekali pakai)  -> mfa.onFallback
  *
- * Dialog "ketik frasa" yang muncul saat vonis MEDIUM/HIGH milik PUSTAKA, bukan situs ini.
- * Dialog OTP di bawah milik SITUS (di produksi kodenya dikirim & dicek server-mu).
+ * URUTANNYA PENTING, dan sering disalahpahami. Cara verifikasi UTAMA di sini bukan kode
+ * sekali pakai melainkan PERILAKU: dialog "ketik frasa" milik PUSTAKA, yang mencocokkan
+ * irama ketik (berapa lama tiap tombol ditekan, jeda antar-tombol) dengan irama pemilik
+ * yang tersimpan di perangkat ini. Kode sekali pakai hanya muncul kalau jalur itu tidak
+ * bisa dipakai: pemiliknya belum mengatur irama, memakai keyboard yang berbeda dari saat
+ * mendaftar, atau menekan "Gunakan cara lain". Ia jalan KELUAR, bukan pintu depan —
+ * tanpanya, pemilik yang gagal ritme tidak punya pilihan selain diblokir.
+ *
+ * Dialog kode di bawah milik SITUS. Di produksi, kodenya dikirim DAN dicek oleh server-mu;
+ * `onFallback` hanya boleh mengembalikan true kalau server sudah bilang kodenya benar.
  */
 (function () {
   'use strict';
@@ -23,12 +31,12 @@
   if (!s || !BG) {
     // Pustaka gagal dimuat (diblokir ekstensi, CDN mati, salah alamat): GAGAL-TERTUTUP.
     // Tanpa penilaian perilaku, setiap aksi sensitif diperlakukan "belum terverifikasi"
-    // dan memakai OTP. Jangan pernah membiarkan aksi sensitif lolos hanya karena skrip
+    // dan memakai kode sekali pakai. Jangan pernah membiarkan aksi sensitif lolos hanya karena skrip
     // keamanan tidak ada.
-    if (s && !BG) console.warn('[Arunika] BehaviorGuard tidak termuat - aksi sensitif memakai OTP');
+    if (s && !BG) console.warn('[Arunika] BehaviorGuard tidak termuat - aksi sensitif memakai kode sekali pakai');
     window.Guard = {
       ready: Promise.resolve(),
-      gerbang: async () => (s ? { ok: await verifikasiOtp({ why: 'pustaka-tidak-termuat' }), penilaian: { level: 'UNKNOWN' } } : { ok: false }),
+      gerbang: async () => (s ? { ok: await verifikasiKode({ why: 'pustaka-tidak-termuat' }), penilaian: { level: 'UNKNOWN' } } : { ok: false }),
       status: () => null, onChange: () => {}, log: () => [], jelaskan: () => [], catat: () => {},
       keteranganLevel: lv => lv,
     };
@@ -44,7 +52,7 @@
       brand: 'Arunika',
       accent: '#b4501a',
       theme: 'light',                    // situs selalu terang
-      onFallback: verifikasiOtp,         // "Gunakan cara lain" -> OTP SMS milik situs
+      onFallback: verifikasiKode,        // "Gunakan cara lain" -> kode sekali pakai milik situs
     },
   };
   // Mode presentasi: bukti per vonis lebih kecil supaya pendaftaran selesai ~2x lebih cepat.
@@ -113,7 +121,7 @@
     const lv = e.level;
     if (e.action === 'MFA_PASSED') {
       kunci(false);
-      catat({ lv: 'ok', t1: 'Verifikasi berhasil', t2: (e.mfa && e.mfa.fallback ? 'Lewat kode OTP. ' : 'Lewat irama ketik. ') + (alasan[0] ? 'Pemicu: ' + alasan[0] + '.' : '') });
+      catat({ lv: 'ok', t1: 'Verifikasi berhasil', t2: (e.mfa && e.mfa.fallback ? 'Lewat kode sekali pakai. ' : 'Lewat irama ketik. ') + (alasan[0] ? 'Pemicu: ' + alasan[0] + '.' : '') });
       return;
     }
     if (e.action === 'BLOCK_SESSION' || (e.action === 'MFA_FAILED' && lv === 'HIGH')) {
@@ -135,7 +143,7 @@
     bd.className = 'dlg-bd';
     bd.innerHTML = `<div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="blk-t">
       <h2 id="blk-t">Sesi dihentikan demi keamanan</h2>
-      <p class="sub">Cara akun ini dipakai tidak cocok dengan pemiliknya dan verifikasi tidak berhasil. Kamu akan dikeluarkan. Kalau ini memang kamu, masuk kembali lalu verifikasi dengan kode OTP.</p>
+      <p class="sub">Cara akun ini dipakai tidak cocok dengan pemiliknya dan verifikasi tidak berhasil. Kamu akan dikeluarkan. Kalau ini memang kamu, masuk kembali lalu verifikasi dengan kode sekali pakai.</p>
       <div class="acts"><button class="btn btn-pri" data-ok>Keluar sekarang</button></div></div>`;
     document.body.appendChild(bd);
     const go = () => A.keluar('diblokir');
@@ -184,7 +192,7 @@
     const v = await BG.stepUp({ level: r.level === 'HIGH' ? 'HIGH' : 'MEDIUM', reason: label });
     if (v.verified) {
       kunci(false);
-      catat({ lv: 'ok', t1: 'Verifikasi sebelum ' + label, t2: (v.method === 'fallback' ? 'Lewat kode OTP.' : 'Lewat irama ketik.') + ' Penilaian saat itu: ' + keteranganLevel(r.level) + '.' });
+      catat({ lv: 'ok', t1: 'Verifikasi sebelum ' + label, t2: (v.method === 'fallback' ? 'Lewat kode sekali pakai.' : 'Lewat irama ketik.') + ' Penilaian saat itu: ' + keteranganLevel(r.level) + '.' });
       return { ok: true, penilaian: r, verifikasi: v };
     }
     catat({ lv: 'warn', t1: label[0].toUpperCase() + label.slice(1) + ' dibatalkan', t2: 'Verifikasi tidak diselesaikan. Penilaian saat itu: ' + keteranganLevel(r.level) + '.' });
@@ -192,17 +200,26 @@
   }
   const keteranganLevel = lv => ({ LOW: 'wajar', MEDIUM: 'tidak biasa', HIGH: 'sangat tidak biasa', UNKNOWN: 'belum cukup bukti' }[lv] || lv);
 
-  // ------------------------------------------------------------------ 4. OTP cadangan
-  // Di produksi: server mengirim SMS dan memeriksa kodenya, lalu mengembalikan true/false.
-  // Di demo: kodenya "dikirim" sebagai notifikasi di pojok layar.
-  function verifikasiOtp(ctx) {
+  // ------------------------------------------------------------------ 4. kode cadangan
+  // Di produksi: server mengirim kode (SMS/email/authenticator) DAN memeriksanya, lalu
+  // mengembalikan true/false. Di demo: kodenya "dikirim" sebagai notifikasi di pojok layar.
+  // Perhatikan `ctx.why` — pustaka memberi tahu KENAPA jalur cadangan dipakai, dan alasan
+  // itu ditampilkan ke pengguna. Tanpa itu, dialog kode muncul seakan-akan tanpa sebab.
+  const ALASAN_CADANGAN = {
+    'no-template': 'Verifikasi irama ketik belum diatur di perangkat ini.',
+    'rhythm-locked': 'Irama ketik gagal beberapa kali berturut-turut, jadi jalur itu dikunci sementara.',
+    'user-choice': 'Kamu memilih cara lain.',
+    'pustaka-tidak-termuat': 'Pemeriksaan perilaku tidak aktif di halaman ini.',
+  };
+  function verifikasiKode(ctx) {
     return new Promise(resolve => {
       const a = A.akun();
       const hp = a ? a.hp.replace(/(\+62 \d{3})-(\d{4})-(\d{2})(\d{2})/, '$1-••••-••$4') : 'nomor terdaftar';
       let kode = '', salah = 0, sms = null, timer = null, sisa = 0;
       const d = A.dialog(`<div data-bg-mfa>
         <h2>Masukkan kode verifikasi</h2>
-        <p class="sub">Kami mengirim kode 6 digit lewat SMS ke <b style="white-space:nowrap">${A.esc(hp)}</b>. Kode berlaku 5 menit.</p>
+        <p class="sub">${A.esc(ALASAN_CADANGAN[(ctx && ctx.why) || ''] || 'Kami perlu memastikan ini kamu.')}
+        Kami mengirim kode 6 digit ke <b style="white-space:nowrap">${A.esc(hp)}</b>. Kode berlaku 5 menit.</p>
         <div class="otp" role="group" aria-label="Kode 6 digit">${'<input inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="digit">'.repeat(6)}</div>
         <div class="err" id="otp-err" role="alert"></div>
         <div class="acts"><button class="btn btn-ghost btn-sm" data-ulang disabled>Kirim ulang</button><span style="flex:1"></span>
@@ -213,7 +230,7 @@
       const kirim = () => {
         kode = String(Math.floor(100000 + Math.random() * 900000));
         if (sms) sms.remove();
-        setTimeout(() => { sms = A.toast(`ARUNIKA: Kode verifikasi <span class="code">${kode}</span>. Jangan berikan kode ini kepada siapa pun, termasuk petugas Arunika.`, { kind: 'sms', label: 'SMS · baru saja', ms: 60000 }); }, 900);
+        setTimeout(() => { sms = A.toast(`ARUNIKA: Kode verifikasi <span class="code">${kode}</span>. Jangan berikan kode ini kepada siapa pun, termasuk petugas Arunika.`, { kind: 'sms', label: 'Pesan masuk · baru saja', ms: 60000 }); }, 900);
         sisa = 30; ulang.disabled = true;
         clearInterval(timer);
         timer = setInterval(() => { sisa--; ulang.textContent = sisa > 0 ? `Kirim ulang (${sisa})` : 'Kirim ulang'; if (sisa <= 0) { ulang.disabled = false; clearInterval(timer); } }, 1000);
@@ -269,5 +286,5 @@
   document.addEventListener('DOMContentLoaded', tampilkanBanner);
   if (document.readyState !== 'loading') tampilkanBanner();
 
-  window.Guard = { ready, gerbang, status, onChange, jelaskan, log: () => A.baca(LOG_KEY, []), catat, keteranganLevel, verifikasiOtp };
+  window.Guard = { ready, gerbang, status, onChange, jelaskan, log: () => A.baca(LOG_KEY, []), catat, keteranganLevel, verifikasiKode };
 })();

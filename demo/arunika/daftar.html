@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buka rekening · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-l">
+    <div class="auth-box">
+      <a class="logo" href="index.html" id="logo"></a>
+      <h1>Buka rekening Arunika</h1>
+      <p class="lead">Gratis, tanpa saldo minimum. Isi datamu, lalu kami kenali caramu memakai akun ini.</p>
+
+      <form id="f" novalidate>
+        <div class="field">
+          <label for="nama">Nama lengkap</label>
+          <input class="input" id="nama" type="text" autocomplete="name" required placeholder="Sesuai KTP">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input class="input" id="email" type="email" autocomplete="email" required placeholder="nama@contoh.id">
+        </div>
+        <div class="field">
+          <label for="hp">Nomor ponsel</label>
+          <div class="prefix"><span>+62</span><input class="input" id="hp" type="tel" inputmode="numeric" autocomplete="tel-national" required placeholder="812 3456 7890"></div>
+          <span class="hint">Dipakai untuk mengirim kode verifikasi kalau kamu butuh cara lain.</span>
+        </div>
+        <div class="field">
+          <label for="sandi">Kata sandi</label>
+          <input class="input" id="sandi" type="password" autocomplete="new-password" required>
+          <span class="hint">Minimal 8 karakter, campuran huruf dan angka.</span>
+        </div>
+        <div class="field">
+          <label for="sandi2">Ulangi kata sandi</label>
+          <input class="input" id="sandi2" type="password" autocomplete="new-password" required>
+        </div>
+        <label class="small" style="display:flex;gap:9px;align-items:flex-start;margin:4px 0 16px;color:var(--ink-2)">
+          <input type="checkbox" id="setuju" style="margin-top:3px">
+          <span>Saya setuju Arunika mempelajari <b>cara saya memakai perangkat ini</b> (irama ketik, gerak kursor, alur halaman) untuk melindungi rekening saya. Datanya tidak keluar dari browser ini.</span>
+        </label>
+        <div class="err" id="err" role="alert"></div>
+        <button class="btn btn-pri btn-block" type="submit">Buka rekening</button>
+      </form>
+
+      <p class="small" style="margin-top:18px;text-align:center;color:var(--ink-3)">
+        Sudah punya akun? <a href="index.html"><b>Masuk</b></a>
+      </p>
+      <div class="note"><b>Situs demo.</b> Tidak ada data yang dikirim ke mana pun; semuanya disimpan di browser ini dan bisa dihapus kapan saja dari halaman Keamanan.</div>
+    </div>
+  </div>
+  <div class="auth-r" aria-hidden="true">
+    <p class="q">Sesudah rekeningmu jadi, Arunika mulai dari nol: ia belum tahu apa-apa tentang kamu, dan belajar dari pemakaian biasamu sendiri.</p>
+    <p class="who">Tidak ada profil siap pakai. Tidak ada data dari pengguna lain.</p>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  const A = Arunika;
+  document.getElementById('logo').innerHTML = A.I.logo + '<span>arunika</span>';
+  if (A.sesi()) { location.replace('beranda.html'); return; }
+  const $ = id => document.getElementById(id);
+  const f = $('f'), err = $('err');
+  $('nama').focus();
+
+  const tandai = (el, pesan) => { err.textContent = pesan; el.setAttribute('aria-invalid', 'true'); el.focus(); };
+
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    err.textContent = '';
+    ['nama', 'email', 'hp', 'sandi', 'sandi2'].forEach(id => $(id).removeAttribute('aria-invalid'));
+    const nama = $('nama').value.trim(), email = $('email').value.trim().toLowerCase();
+    const hp = $('hp').value.replace(/\D/g, ''), s1 = $('sandi').value, s2 = $('sandi2').value;
+    if (nama.length < 3 || !nama.includes(' ')) return tandai($('nama'), 'Tulis nama lengkap (minimal dua kata).');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return tandai($('email'), 'Email tidak valid.');
+    if (A.adaAkun(email)) { err.innerHTML = 'Email ini sudah terdaftar. <a href="index.html">Masuk saja</a>.'; $('email').setAttribute('aria-invalid', 'true'); $('email').focus(); return; }
+    if (hp.length < 9) return tandai($('hp'), 'Nomor ponsel belum lengkap.');
+    if (s1.length < 8 || !/\d/.test(s1) || !/[a-z]/i.test(s1)) return tandai($('sandi'), 'Kata sandi minimal 8 karakter, campuran huruf dan angka.');
+    if (s1 !== s2) return tandai($('sandi2'), 'Kata sandi tidak sama.');
+    if (!$('setuju').checked) return (err.textContent = 'Centang persetujuan dulu untuk melanjutkan.');
+
+    const r = A.daftar({ email, nama });
+    if (!r.ok) { err.textContent = 'Tidak bisa mendaftar. Coba email lain.'; return; }
+    const akun = r.akun;
+    akun.hp = '+62 ' + hp.slice(0, 3) + '-' + hp.slice(3, 7) + '-' + hp.slice(7, 11);
+    A.simpanAkun(akun);
+    localStorage.setItem('arunika:email-terakhir', email);
+    location.href = 'mulai.html';
+  });
+})();
+</script>
+</body>
+</html>

@@ -124,7 +124,7 @@
     $('pd-cepat').innerHTML = cepat ? 'Mode presentasi: NYALA<small>60 event/vonis, jam 15 dtk · klik untuk kembali ke standar</small>' : 'Mode presentasi: MATI<small>standar 150 event/vonis, jam 30 dtk · klik untuk mempercepat</small>';
     const learning = s.phase === 'learning';
     $('pd-phase').innerHTML = !s.ready ? 'menyala…' : learning ? '<span class="lv-LEARN">Mengenali pemilik</span>' : '<span class="lv-LOW">Melindungi</span>';
-    $('pd-enr').textContent = `pendaftaran ${s.enrollment.done}/${s.enrollment.need} jendela layak · irama ketik ${s.mfa.enrolled ? 'terdaftar (' + s.mfa.mode + ')' : 'belum'} · OTP ${s.mfa.fallback ? 'ada' : 'tidak'}`;
+    $('pd-enr').textContent = `pendaftaran ${s.enrollment.done}/${s.enrollment.need} jendela layak · irama ketik ${s.mfa.enrolled ? 'terdaftar (' + s.mfa.mode + ')' : 'belum'} · cadangan ${s.mfa.fallback ? 'ada' : 'tidak'}`;
     $('pd-enrbar').style.width = Math.round(s.enrollment.done / s.enrollment.need * 100) + '%';
     const need = s.evidence.need, have = s.evidence.buffered;
     $('pd-ev').textContent = `${have} event terkumpul · vonis butuh ≥ ${need}` + (s.mfa.graceLeftSec > 0 ? ` · masa verifikasi ${Math.ceil(s.mfa.graceLeftSec / 60)} mnt` : '');
@@ -141,8 +141,8 @@
       if (e.modelLevel && e.modelLevel !== e.level) bits.push(`model ${e.modelLevel}${e.stepUpGrace ? ', diredam (baru terverifikasi)' : e.stickyFloor ? ', lantai lengket' : ''}`);
       if (e.mfa && e.mfa.awaiting) bits.push('menunggu verifikasi…');
       else if (e.mfa && e.mfa.busy) bits.push('dialog lain sedang terbuka');
-      else if (e.mfa && e.mfa.shown) bits.push('dialog: ' + (e.mfa.verified ? 'lolos' : e.mfa.fallback ? 'OTP ' + (e.mfa.verified ? 'lolos' : 'gagal') : e.mfa.cancelled ? 'dibatalkan' : 'gagal'));
-      else if (e.mfa && e.mfa.fallback) bits.push('OTP ' + (e.mfa.verified ? 'lolos' : 'gagal'));
+      else if (e.mfa && e.mfa.shown) bits.push('dialog: ' + (e.mfa.verified ? 'lolos' : e.mfa.fallback ? 'kode ' + (e.mfa.verified ? 'lolos' : 'gagal') : e.mfa.cancelled ? 'dibatalkan' : 'gagal'));
+      else if (e.mfa && e.mfa.fallback) bits.push('kode ' + (e.mfa.verified ? 'lolos' : 'gagal'));
       $('pd-act').textContent = bits.join(' · ');
       $('pd-at').textContent = e.at ? A.jam(e.at) : '';
       gauge(e);

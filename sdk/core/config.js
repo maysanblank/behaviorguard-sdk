@@ -93,6 +93,9 @@ export const DEFAULTS = {
     //   brand, accent (warna CSS), theme ('auto'|'light'|'dark'), lang ('id'|'en'), texts
     autoEnroll: true,
     theme: 'auto',
+    // C-46: batas waktu untuk `onFallback` MILIK INTEGRATOR. Promise yang tak pernah selesai
+    // dulu menyangkutkan seluruh lapisan step-up seumur halaman. 0 = tanpa batas (jangan).
+    fallbackTimeoutMs: 300000,
     // C-45: sesudah N dialog irama gagal BERTURUT (lintas kunjungan), jalur irama dikunci dan
     // verifikasi hanya lewat onFallback sampai berhasil. 0 = tanpa batas (tidak disarankan).
     lockAfterFailures: 3,

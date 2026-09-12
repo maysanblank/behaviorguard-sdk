@@ -55,6 +55,8 @@ jobs:
         run: node core/privacy.test.mjs
       - name: Step-up versi produksi & kondisi nyata (C-45)
         run: node core/stepup.test.mjs
+      - name: Masukan buatan skrip & batas waktu jalur cadangan (C-46)
+        run: node core/c46.test.mjs
       - name: Bundel kecil (min) berperilaku identik dengan bundel penuh
         run: node tools/min_check.mjs
       - name: Idle, kompresi, invariansi (C-23, C-24, C-28)

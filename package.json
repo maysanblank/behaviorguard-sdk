@@ -1,6 +1,6 @@
 {
   "name": "behaviorguard-sdk",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "type": "module",
   "description": "On-device behavioral-biometrics ATO detection with built-in step-up MFA. One brain, five runtimes, zero dependencies.",
   "scripts": {
@@ -27,7 +27,9 @@
     "conformance:rust": "cd ports/rust && cargo run --release",
     "conformance:java": "java ports/java/BgConformance.java core/golden.json",
     "build:wasm": "cd ports/rust && cargo build --release --target wasm32-unknown-unknown --lib && cp target/wasm32-unknown-unknown/release/bg_core.wasm ../wasm/bg_core.wasm",
-    "conformance:wasm": "node ports/wasm/run.mjs"
+    "conformance:wasm": "node ports/wasm/run.mjs",
+    "test:c46": "node core/c46.test.mjs",
+    "eval:typing": "node tools/eval_typing.mjs --sweep"
   },
   "license": "MIT",
   "author": "May San",

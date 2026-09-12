@@ -193,6 +193,19 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
   in the first fifth of an owner's history, 16.2% in the middle, 7.2% in the last.
 - **16 subjects is a small sample.** Expect several points of movement on a different
   population and a different site.
+- **Two promising ideas were measured and rejected.** Honest negative results, both in
+  [core/DRIFT.md](core/DRIFT.md):
+  - *Behavioral step-up with no enrolled phrase* — scoring free typing from a single field
+    (~20 keys) against the owner's statistics. EER 29–38%; at an operating point that rejects
+    7% of owners, two of three impostors still pass. Typing rhythm only separates people when
+    the *same text at the same positions* is compared, or when the evidence is a full window.
+    So the phrase template stays, and the fix was to enroll it *earlier* (at onboarding).
+  - *Outlier-robust mouse features* (median/IQR/rates replacing mean/counts, the C-44 idea
+    moved to the pointer). Won on the tuning fold (AUC 0.963 vs 0.955) and **lost on the
+    report fold** (0.949 vs 0.952). The only effect consistent across both folds was a
+    stricter operating point — which `calibration: { k_low }` already gives for free, without
+    changing a formula, breaking stored profiles, or touching four ports. An improvement that
+    does not replicate on the split it was not chosen on is not an improvement.
 - **Earlier numbers in this repository described other engines.** FRR 16.1% / FAR 5.4% came
   from a Python harness scoring whole research sessions (~700 events), a unit the library
   never scores; FRR 35.1% / FAR 0.9% came from scikit-learn's One-Class SVM, which does not
@@ -215,7 +228,7 @@ the *same* numeric contract — not asserted to match, **proven** to match.
 | Java | JVM, **Android**, Kotlin | 319/319 |
 | WASM | any WASM host | 319/319 |
 
-- [`core/SPEC.md`](core/SPEC.md) — the normative specification (v1.3.0). *If the code and
+- [`core/SPEC.md`](core/SPEC.md) — the normative specification (v1.4.0). *If the code and
   the spec disagree, the spec is right and the code is the bug.*
 - [`core/golden.json`](core/golden.json) — 319 explicit input/output checks, tolerance 1e-9,
   including real mouse-move pairs that sit exactly on a `pi/4` turn, where `atan2` differs by
@@ -241,12 +254,21 @@ python -m http.server 8080
 ```
 
 **A realistic site with the library installed:** <http://localhost:8080/demo/arunika/> — a
-fictional digital bank with login, transfer, bill payment, history and security settings.
-Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integrasi.js`
-(init, verdict handling, a risk-based gate for transfers, and an OTP fallback). A presenter
-panel in the bottom-left corner shows the live phase, evidence, verdict gauge and
-plain-language reasons, and can simulate a lunch-break return, a replay of your own recorded
-behavior, and a bot.
+fictional digital bank with account opening, transfer, bill payment, history and security
+settings.
+
+It **starts at account opening**, on purpose: you watch a profile being built from zero for an
+account the library knows nothing about. Signing up leads to an onboarding page with a live
+`0/10` progress ring, an evidence counter, a plain statement of what is measured and what is
+never stored, and the step that matters — enrolling the typing rhythm. Enroll it there and the
+behavioral check is what users actually meet; skip it and every verification falls through to
+the one-time code, which is the recovery path, not the product.
+
+Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integrasi.js` (init,
+verdict handling, a risk-based gate for transfers, and the code fallback). A presenter panel in
+the bottom-left corner shows the live phase, evidence, verdict gauge and plain-language
+reasons, and can simulate a lunch-break return, a replay of your own recorded behavior, and a
+bot. Security → *Ulangi demo dari awal* wipes everything and returns you to the sign-up screen.
 
 **The zero-code view:** <http://localhost:8080/demo/pemantau/>.
 
@@ -260,6 +282,7 @@ move.
 python core/conformance.py         # engine vs golden.json        -> 319/319
 node   core/lifecycle.test.mjs     # long-run lifecycle & APIs    -> 49/49
 node   core/stepup.test.mjs        # step-up, fallback, lockout   -> 61/61
+node   core/c46.test.mjs           # script-made input rejected   -> 25/25
 node   core/privacy.test.mjs       # no typed characters stored   -> 14/14
 node   core/challenge.test.mjs     # step-up regression
 python server/test_app.py          # optional server: auth, XSS   -> 35/35
@@ -334,8 +357,14 @@ client-only check. For a real security boundary, pair it with a server-verified 
 
 We audited our own defenses adversarially and fixed more than forty logic flaws, each with
 its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/DRIFT.md)
-(C-1 to C-45). A few that defeated the product entirely:
+(C-1 to C-47). A few that defeated the product entirely:
 
+- **Script-generated events counted as behavior.** The capture layer never checked
+  `isTrusted`, so anything running JavaScript in the page could `dispatchEvent` a humanlike
+  stream until the verdict came back `LOW` — and since eligible `LOW` windows train the
+  model, the forged vectors joined the owner's baseline. Not a bypassed check: the owner's
+  profile dragged toward the attacker, permanently. Untrusted events are now never recorded,
+  are counted, and mark the window ineligible for training (C-46).
 - **A complete step-up bypass.** Pasting the phrase produced zero keystroke events, and
   `NaN > x` silently returns false in JavaScript — so an empty rhythm passed every check.
 - **The main detector was never active.** The convergence rule froze the model before the
@@ -344,6 +373,11 @@ its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/D
 - **Passwords were stored in plain text.** The capture layer kept the characters users
   typed and banked them to localStorage. Keys are now per-page tokens; the one feature that
   needs them is bit-identical (C-30).
+- **The measurement harness silently ignored its own knobs.** After C-45 reset config inside
+  `init()`, `eval_sdk.mjs` set `--k-low`, `--cfg` and `--compress` *before* `init()`, so every
+  sweep re-ran the default. The symptom was results identical to the last decimal, which reads
+  as "the knob does nothing" rather than as a bug. Fixed, and every non-default number it
+  produced was re-measured (C-46).
 - **The public key opened everything.** On the optional server, the `pk` embedded in every
   page could read and overwrite any account's behavior template. Per-user HMAC tokens now
   gate every account call, and the operator dashboard escapes all client-supplied fields

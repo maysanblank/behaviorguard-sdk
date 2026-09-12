@@ -79,9 +79,11 @@
     ];
     return list.map(([hari, ket, kat, jml], i) => ({ id: 'TX' + (900100 + i), t: now - hari * D, ket, kat, jml }));
   }
-  function akunBaru(email) {
+  function akunBaru(email, namaDiisi) {
     const nm = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim() || 'Nasabah';
-    const nama = nm.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+    const nama = namaDiisi && namaDiisi.trim()
+      ? namaDiisi.trim().replace(/\s+/g, ' ')
+      : nm.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
     let h = 0; for (const c of email) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     const rek = String(1000000000 + (h % 8999999999)).slice(0, 10);
     return {
@@ -101,13 +103,43 @@
   const sesi = () => baca(KEY_SESI, null);
   function akun() { const s = sesi(); return s ? baca(keyAkun(s.email), null) : null; }
   function simpanAkun(a) { tulis(keyAkun(a.email), a); }
+  // Daftar dan masuk DIPISAH, seperti situs sungguhan. Sebelum ini `masuk()` diam-diam
+  // membuat akun untuk email apa pun, sehingga demo tidak pernah punya momen "akun baru,
+  // profil perilaku masih kosong" - padahal justru itu yang ingin diperlihatkan.
+  const adaAkun = email => !!baca(keyAkun(String(email || '').trim().toLowerCase()), null);
+  function daftar({ email, nama }) {
+    email = String(email || '').trim().toLowerCase();
+    if (adaAkun(email)) return { ok: false, alasan: 'terdaftar' };
+    const a = akunBaru(email, nama);
+    a.tx = [];                       // akun BARU: riwayat masih kosong, saldo setoran awal
+    a.saldo = 250000;
+    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Setoran awal pembukaan rekening', kat: 'Pemasukan', jml: 250000 });
+    a.penerima = [];
+    a.baruDaftar = true;
+    simpanAkun(a);
+    tulis(KEY_SESI, { email, masukPada: Date.now(), baru: true });
+    return { ok: true, akun: a };
+  }
   function masuk(email) {
-    email = email.trim().toLowerCase();
-    let a = baca(keyAkun(email), null);
-    const baru = !a;
-    if (!a) { a = akunBaru(email); simpanAkun(a); }
+    email = String(email || '').trim().toLowerCase();
+    const a = baca(keyAkun(email), null);
+    if (!a) return { ok: false, alasan: 'tidak-terdaftar' };
     tulis(KEY_SESI, { email, masukPada: Date.now() });
-    return { akun: a, baru };
+    return { ok: true, akun: a };
+  }
+  // Akun contoh untuk presentasi: riwayat sudah terisi, supaya halaman tidak kosong
+  // saat menunjukkan fitur transfer/riwayat. Profil PERILAKUnya tetap dari nol.
+  function akunContoh(email, nama) {
+    const a = akunBaru(email, nama);
+    a.tx = contohTransaksi(); a.saldo = 12847300;
+    a.penerima = [
+      { nama: 'Budi Santoso', bank: 'Arunika', rek: '2203419876' },
+      { nama: 'Rina Wulandari', bank: 'Bank Lain', rek: '0081223344' },
+      { nama: 'Ibu', bank: 'Arunika', rek: '1900345671' },
+    ];
+    simpanAkun(a);
+    tulis(KEY_SESI, { email: a.email, masukPada: Date.now() });
+    return a;
   }
   async function keluar(alasan) {
     try { if (window.BehaviorGuard) await window.BehaviorGuard.stop(); } catch {}
@@ -172,5 +204,22 @@
     });
   }
 
-  window.Arunika = { I, KAT, rupiah, tanggal, jam, esc, angka, salam, inisial, sesi, akun, simpanAkun, masuk, keluar, catatTx, shell, toast, dialog, konfirmasi, nominalInput, baca, tulis };
+  // Bersihkan SEMUA jejak demo di browser ini (akun, sesi, log, profil perilaku pustaka),
+  // supaya demo bisa diulang dari layar pendaftaran tanpa membuka jendela penyamaran.
+  async function resetDemo() {
+    try { if (window.BehaviorGuard) { await window.BehaviorGuard.forget(); await window.BehaviorGuard.stop(); } } catch {}
+    try {
+      const buang = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('arunika:') || k.startsWith('bg:'))) buang.push(k);
+      }
+      buang.forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
+      if (window.indexedDB && indexedDB.deleteDatabase) indexedDB.deleteDatabase('bg_store');
+    } catch {}
+  }
+
+  window.Arunika = { I, KAT, rupiah, tanggal, jam, esc, angka, salam, inisial, sesi, akun, simpanAkun,
+    daftar, masuk, adaAkun, akunContoh, keluar, resetDemo, catatTx, shell, toast, dialog, konfirmasi, nominalInput, baca, tulis };
 })();

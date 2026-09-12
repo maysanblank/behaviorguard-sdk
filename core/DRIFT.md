@@ -1917,9 +1917,231 @@ dihentikan, suntik bot -> BLOCK, jalur live penuh dengan jam 30 dtk, tata letak 
 | Privasi capture C-30, C-44 | `node core/privacy.test.mjs` | 14/14 SESUAI |
 | Siklus hidup C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 SESUAI |
 | Step-up versi produksi, API integrator, kondisi nyata C-45 | `node core/stepup.test.mjs` | 61/61 SESUAI |
+| Masukan buatan skrip, batas waktu cadangan C-46 | `node core/c46.test.mjs` | 25/25 SESUAI |
+| Ritme ketik rentetan pendek (ide C-46 yang ditolak) | `node tools/eval_typing.mjs --sweep` | EER 29-38% -> tidak dikirim |
 | Server auth + sanitasi log C-39, C-41 | `python server/test_app.py` | 35/35 SESUAI |
 | SDK yang dikirim, jendela 30 dtk, urut waktu (C-44) | `node tools/eval_sdk.mjs --live` | pemilik 11,4%, penyusup vonis-1 10,5%, seluruh sesi 7,9%, AUC 0,953 |
 | Kesesuaian Java / Rust / WASM | `npm run conformance:java` / `:rust` / `:wasm` | 319/319 SESUAI |
+
+## C-46 - perilaku yang dibuat skrip, dan harness yang diam-diam mengukur konfigurasi lain
+
+Tiga hal di satu putaran: satu lubang keamanan yang mendasar, satu bug ALAT UKUR yang
+membuat sebagian tabel titik-operasi tidak bisa dipercaya, dan satu ide yang DIUKUR LALU
+DITOLAK. Vonis default tidak berubah: `eval_sdk --live` sesudah semua ini tetap pemilik
+11,4% / penyusup vonis-1 10,5% / seluruh sesi 7,9% / AUC 0,953 / EER 10,1%.
+
+### 1. Event yang dibuat skrip dihitung sebagai perilaku manusia
+
+Sampai di sini, `capture.js` menerima SETIAP event DOM yang lewat. `isTrusted` tidak pernah
+diperiksa. Konsekuensinya jauh lebih besar daripada "satu vonis bisa ditipu":
+
+```js
+// dulu: cukup ini, dari konsol atau XSS mana pun di origin yang sama
+for (let i = 0; i < 400; i++) {
+  document.dispatchEvent(new MouseEvent('mousemove', {clientX: x(i), clientY: y(i)}));
+  document.dispatchEvent(new KeyboardEvent('keyup', {key: 'a', code: 'KeyA'}));
+}
+```
+
+Penyerang tidak perlu menebak perilaku pemilik. Ia menyiarkan aliran event bergaya manusia
+(jitter acak, jeda wajar) sampai vonisnya LOW - dan karena jendela LOW yang layak IKUT
+MELATIH, vektor palsu itu masuk kolam baseline. Yang terjadi bukan satu pemeriksaan yang
+terlewat, melainkan **profil pemiliknya tergeser ke arah penyerang**, permanen, dan tiap
+pemuatan halaman berikutnya memperkuatnya. Ini kerabat C-35 (rekam-ulang) lewat pintu yang
+lebih murah: rekam-ulang butuh rekaman pemilik, ini tidak butuh apa-apa.
+
+Kini event dengan `isTrusted === false` **tidak pernah masuk buffer**. Yang dipakai
+`!== false`, bukan `=== true`, supaya peramban sangat lama tanpa properti itu jatuh ke
+perilaku lama, bukan diam-diam buta.
+
+Batas saringannya sengaja tidak di semua tipe event:
+
+| tipe | disaring? | alasan |
+|---|---|---|
+| mousemove, click, keydown/keyup, touchmove | ya | inilah biometrik waktu; tidak ada alasan sah ia datang dari skrip |
+| focus / blur | **tidak** | `el.focus()` yang dipanggil situs (autofocus, pindah kolom otomatis sesudah 4 digit) tak-tepercaya tapi normal, dan ikut terhitung saat data riset dikumpulkan. Menyaringnya hanya menciptakan ketidakcocokan latih-vs-pakai pada `form_focus_count` |
+| scroll | **tidak bisa** | `window.scrollTo()` menerbitkan event dengan `isTrusted` TRUE. Jangan mengaku menyaring apa yang tidak tersaring |
+
+Yang dijatuhkan tetap DIHITUNG (`capture.synthetic`, kumulatif seumur kunjungan). Selisihnya
+per vonis dipakai orkestrator: bila >= 20 event tiruan DAN >= 10% ukuran bukti, jendelanya
+**tidak boleh melatih** (`eligible:false`) dan alasannya diumumkan (`evt.automation`).
+Sengaja TIDAK memblokir dan TIDAK menaikkan level: beberapa pustaka UI (polyfill geser,
+carousel) menerbitkan event tiruan yang sah, dan memblokir karenanya akan mengunci pemilik
+yang tidak berbuat apa-apa. Pertahanan intinya ada di "tidak melatih", bukan di "memblokir".
+
+Jalur kedua yang sama: **dialog verifikasi**. Template irama tersimpan di perangkat, jadi
+skrip yang bisa membacanya tinggal menembakkan keydown/keyup dengan jeda persis median
+template untuk LOLOS tanpa satu jari pun menyentuh keyboard. `createRecorder` kini menolak
+seluruh sampel yang tersentuh event tiruan (`error:'synthetic'`), gagal-tertutup.
+
+Satu cacat di tambalannya sendiri ikut ditemukan sebelum dikirim: saringan mula-mula
+diletakkan di DALAM `handlers.move`, yaitu SESUDAH throttle 50 ms. Event tiruan tetap lolos
+throttle lebih dulu dan memperbarui `lastMove`, sehingga skrip yang membanjiri `mousemove`
+1000/dtk membuat gerakan mouse SUNGGUHAN selalu jatuh di dalam jendela throttle dan tak pernah
+terekam. Menolak masukan palsu justru jadi cara membungkam yang asli - penyerang tidak perlu
+memalsukan perilaku, cukup menghapusnya. Saringan dipindah ke DEPAN throttle (uji A6).
+
+Terverifikasi di browser sungguhan: 120 event tiruan disiarkan -> 0 masuk buffer, 91 tercatat
+sintetis; ketikan sungguhan sesudahnya tetap terekam normal.
+
+### 2. `--k-low`, `--cfg`, dan `--compress` tidak berpengaruh apa pun sejak C-45
+
+C-45 menambahkan `this.cfg = clone(DEFAULTS)` di `_init()` supaya opsi `init()` sebelumnya
+tidak terbawa ke `init()` berikutnya (C-38, logout A -> login B). Benar untuk SDK-nya. Tetapi
+`tools/eval_sdk.mjs` memasang override-nya ke `g.cfg` **sebelum** `init()`:
+
+```js
+if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);   // <- dihapus oleh _init()
+deepMerge(g.cfg, CFG);                             // <- dihapus oleh _init()
+g.cfg.session.idleCompressSec = COMPRESS;          // <- dihapus oleh _init()
+await g.init({ userId: uid, mfa: { enabled: false } });
+```
+
+Sejak itu setiap sapuan `--k-low` menjalankan DEFAULT berulang-ulang. Gejalanya bukan error
+melainkan **hasil yang identik sampai desimal terakhir** - yang terbaca sebagai "knobnya
+memang tidak berpengaruh", bukan sebagai bug. Baru ketahuan karena k=1,75 dan k=2,0 memberi
+angka yang sama persis di lima metrik sekaligus.
+
+Diperbaiki lewat pintu resmi: apa pun yang dikenali `init()` dikirim sebagai OPSI `init()`
+(`calibration.k_low`, `session.*`, `weights`, `baseline`, ...), yang diterapkan sesudah reset
+dan sebelum `_rebuildModel()`; sisa kunci `--cfg` yang tak punya pintu (progressiveMaxPool,
+replayEps) digabung sesudah init karena hanya dibaca saat penilaian. Diperiksa: k_low
+1,25 / 1,75 / 2,5 kini memberi gesekan pemilik 14,4% / 10,4% / 7,7% (belahan tuning).
+
+**Akibat ke angka yang sudah terbit: TIDAK ADA — tapi itu baru diketahui sesudah diukur
+ulang.** Seluruh tabel titik-operasi (k_low 1,25 / 1,5 / 1,75 / 2,0 / 2,5) dan kedua baris
+mode ketat (`contextEvents: 450`, dengan dan tanpa k_low 2,0) dijalankan ulang dengan harness
+yang sudah benar, 16 subjek, data yang sama. Kesembilan baris **identik sampai desimal
+terakhir** dengan yang sudah terbit - karena semuanya memang diukur SEBELUM C-45 menanam
+bugnya. Bug ini tidak pernah sempat menghasilkan satu angka terbit yang salah; ia hanya
+membuat setiap sapuan SESUDAHNYA sia-sia tanpa memberi tanda.
+
+Yang tetap harus dicatat: selama jendela itu, "knob ini tidak berpengaruh" adalah kesimpulan
+yang sangat mungkin diambil orang, dan itu kesimpulan yang salah. Karena itu sekarang ada
+pemeriksaan murah yang wajib dilakukan tiap sapuan: kalau dua nilai knob yang berbeda memberi
+hasil yang sama persis di beberapa metrik sekaligus, yang rusak adalah alat ukurnya, bukan
+knob-nya.
+
+### 3. DITOLAK: verifikasi perilaku tanpa template pendaftaran
+
+Pertanyaannya sah dan sering ditanyakan: kalau pustaka ini mengenali orang dari cara
+mengetik, kenapa verifikasi step-up perlu template frasa yang harus didaftarkan 3 putaran
+lebih dulu? Sebelum template itu ada - yaitu di setiap pemasangan baru - step-up jatuh 100%
+ke jalur cadangan integrator (OTP), tanpa satu bit perilaku pun dinilai.
+
+Ide: nilai ritme ketik BEBAS dari satu kolom isian (~20 tombol) terhadap statistik pemilik,
+memakai sub-ruang F4 yang bebas-skala (dwell mean/std/median, flight median/IQR, rasio
+backspace / pindah-tangan / shift). Diukur `tools/eval_typing.mjs`, held-out per pemilik
+(latih dari 10 sesi pertama, uji dari sesi sesudahnya, penyusup = 15 subjek lain):
+
+| rentetan | pemilik ditolak (k=2,5) | penyusup lolos | AUC | EER |
+|---:|---:|---:|---:|---:|
+| 12 tombol | 3,7% | 86,3% | 0,667 | 37,9% |
+| 20 tombol | 5,6% | 80,5% | 0,711 | 33,8% |
+| 30 tombol | 5,9% | 72,5% | 0,738 | 32,2% |
+| 40 tombol | 7,1% | 64,1% | 0,769 | 29,3% |
+
+EER 29-38%. Itu bukan gerbang keamanan; itu lemparan koin dengan langkah tambahan. Bahkan di
+40 tombol - dua kali panjang frasa - dua dari tiga penyusup lolos pada titik operasi yang
+menolak 7% pemilik. **Tidak dikirim.** Ritme ketik BARU memisahkan orang kalau yang
+dibandingkan adalah teks YANG SAMA di posisi YANG SAMA (template frasa, C-20), atau kalau
+buktinya seukuran jendela penuh (150 event, seluruh 34 fitur).
+
+Jawaban yang benar untuk keluhan aslinya karena itu bukan algoritma baru melainkan
+**KAPAN template didaftarkan**: `enrollMfa()` sudah boleh dipanggil sejak pengguna baru
+(belum ada model - kepercayaannya sama dengan baseline itu sendiri, C-2), jadi tempatnya di
+ONBOARDING, bukan menunggu vonis LOW pertama sesudah model jadi. `status().mfa.canEnroll`
+ditambahkan supaya halaman pengaturan tahu kapan tombolnya layak tampil, dan
+`demo/arunika/mulai.html` menunjukkan alurnya.
+
+### 4. Dua kunci mati di jalur step-up
+
+| cacat | akibat | kini |
+|---|---|---|
+| `onFallback` milik integrator di-`await` tanpa batas waktu | Promise yang tak pernah selesai (dialog OTP yang lupa resolve, panggilan jaringan tanpa timeout) menyangkutkan `_mfaBusy` SELAMANYA: seluruh lapisan step-up mati untuk sisa umur halaman, tiap vonis pulang `mfa:{busy:true}` | `mfa.fallbackTimeoutMs` (default 300 dtk); habis waktu = tidak terverifikasi |
+| `lockAfterFailures` tanpa `onFallback` | kunci irama hanya dibuka verifikasi yang BERHASIL; tanpa jalur cadangan tidak ada cara berhasil -> pemilik (mis. sedang memakai keyboard lain) terkunci permanen, integrator tidak tahu kenapa | diperingatkan di `init()`, dengan dua jalan keluar yang disebut eksplisit |
+
+## C-47 - DITOLAK: fitur mouse yang tahan pencilan (perbaikan yang tidak replikasi)
+
+C-44 memberi kemenangan nyata dengan satu ide sederhana: sembilan fitur ketikan memakai
+mean/std yang gampang ditarik satu pencilan, jadi ditambahkan median/IQR yang membuang jeda
+panjang. Pertanyaan yang wajar: **sembilan fitur MOUSE punya cacat yang persis sama - kenapa
+tidak diperlakukan sama?**
+
+`mouse_velocity_mean/std/max` ditarik satu lompatan kursor (pindah jendela, tangan
+lepas-pegang). `mouse_direction_changes` dan `mouse_pause_count` adalah CACAHAN MENTAH yang
+membesar bersama panjang sesi, yaitu cacat C-24 yang belum pernah ditambal di jalur mouse.
+`mouse_click_interval_mean` tercemar jeda berpikir yang panjang.
+
+Dua kandidat diukur, keduanya lewat `eval_sdk --live --sdk <salinan>` (SDK ablasi utuh,
+bukan tiruan), data urut waktu yang sama, 16 subjek:
+
+**A - ADITIF (34 -> 42 fitur):** tambahkan `mouse_velocity_median/iqr`, `mouse_step_median`,
+`mouse_pause_ratio`, `mouse_direction_change_ratio`, `mouse_curvature_median`,
+`mouse_click_interval_median`, `scroll_delta_median`, semuanya dengan pasangan event berjeda
+>= 1 dtk dibuang (trik C-44 dipindah ke mouse).
+
+**B - PENGGANTI (tetap 34 fitur):** empat fitur cacah/mean di atas diganti padanan
+median/rasio. Dimensinya tidak bertambah - ini penting, karena kolam latih maksimum 90 vektor
+dan d=42 berarti n≈2,1d (peringatan n-lawan-d C-22).
+
+| varian | pemilik | penyusup vonis-1 | seluruh sesi | AUC | EER |
+|---|---:|---:|---:|---:|---:|
+| dikirim (34) | 11,4% | 10,5% | 7,9% | 0,953 | 10,1% |
+| A (42, aditif) | 13,2% | 9,9% | 7,8% | 0,949 | 10,2% |
+| B (34, pengganti) | 12,9% | 8,1% | 6,1% | **0,956** | 10,0% |
+
+A kalah telak: gesekan pemilik +1,8 poin untuk penyusup -0,6 poin, dan AUC turun. Persis yang
+diperkirakan C-22 - delapan dimensi tambahan lebih mahal daripada isinya.
+
+B terlihat menang. AUC naik 0,953 -> 0,956, penyusup vonis-1 turun 10,5% -> 8,1%. Titik
+operasinya memang bergeser lebih ketat (gesekan pemilik naik), tapi AUC yang naik berarti
+geseran itu bisa dibayar balik dengan `k_low` yang lebih longgar. Disapu di belahan TUNING
+(8 subjek yang sama yang dipakai memilih k_low di C-33):
+
+| konfigurasi | pemilik | penyusup vonis-1 | seluruh sesi | AUC | EER |
+|---|---:|---:|---:|---:|---:|
+| dikirim, k_low 1,5 | 12,7% | 9,0% | 5,8% | 0,955 | 9,4% |
+| **B, k_low 1,75** | **11,4%** | **7,7%** | **4,6%** | **0,963** | **8,9%** |
+| B, k_low 2,0 | 10,0% | 9,9% | 5,9% | 0,963 | 8,8% |
+
+B mengalahkan konfigurasi yang dikirim di SETIAP kolom. Di titik itu keputusannya tampak
+sudah selesai: ganti empat rumus, bump SPEC ke 1.5, regenerasi golden, sinkron empat port.
+
+### Kenapa akhirnya TIDAK dikirim
+
+Belahan-lapor (8 subjek yang TIDAK pernah dipakai memilih apa pun), k_low sama-sama 1,75:
+
+| | dikirim | B |
+|---|---:|---:|
+| pemilik diminta verifikasi | 12,7% | **14,8%** |
+| penyusup lolos vonis-1 | 9,2% | 8,6% |
+| penyusup lolos seluruh sesi | 8,2% | 7,5% |
+| AUC per pemilik | **0,952** | 0,949 |
+| EER per pemilik | **10,7%** | 11,0% |
+
+**Dua belahan memberi dua jawaban.** Di belahan tuning, daya pisah B lebih baik (AUC 0,963 vs
+0,955). Di belahan lapor, lebih buruk (0,949 vs 0,952). Angka 16-subjek yang tampak menang
+(0,956 vs 0,953) hanyalah rata-rata yang didominasi belahan tuning - yaitu belahan yang
+seluruh titik operasinya memang sudah dipilih di sana.
+
+Yang tersisa dan konsisten di kedua belahan hanya SATU arah: penyusup lebih jarang lolos,
+pemilik lebih sering ditanya. Itu bukan daya pisah yang membaik, itu **ambang yang bergeser
+lebih ketat** - dan itu sudah tersedia gratis lewat `calibration: { k_low }`, tanpa mengubah
+satu rumus pun, tanpa memecah kompatibilitas profil tersimpan, tanpa menyentuh empat port.
+
+Ini pola yang sama dengan C-24 (kanonikalisasi: tiga konfigurasi protokol, tiga jawaban) dan
+dengan C-26/C-27 (klaim "pendaftaran 16 lebih baik" yang ditarik). Aturannya tetap: perbaikan
+yang tidak replikasi di belahan yang tidak dipakai memilihnya BUKAN perbaikan. Tetap 34 fitur
+seperti SPEC 1.4.
+
+Satu catatan per-pengguna yang ikut memperkuat penolakan: dengan B, subjek 19 melonjak dari
+22% ke 37% gesekan. Rata-rata yang membaik sambil satu pengguna memburuk sepertiga bukan
+pertukaran yang layak dikirim tanpa bukti yang jauh lebih kuat.
+
+Salinan ablasinya bukan bagian repo (ditulis ke temp OS); yang direproduksi adalah caranya:
+salin `sdk/`, ubah rumusnya, lalu `node tools/eval_sdk.mjs --live --sdk <salinan>` dan
+bandingkan **belahan-lapor**, bukan angka 16-subjek.
 
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu

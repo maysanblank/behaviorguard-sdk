@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mulai · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+/* Halaman ini punya beberapa elemen yang tidak dipakai halaman lain. */
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:26px 24px;box-shadow:var(--shadow);margin-bottom:18px}
+.hero h1{font-size:24px;margin-bottom:6px}
+.hero p{color:var(--ink-3);font-size:14.5px;max-width:62ch}
+.ring{display:flex;align-items:center;gap:18px}
+.ring .dial{width:104px;height:104px;flex:none;position:relative}
+.ring .dial svg{transform:rotate(-90deg);width:104px;height:104px}
+.ring .dial circle{fill:none;stroke-width:9;stroke-linecap:round}
+.ring .dial .bgc{stroke:var(--line-2)}
+.ring .dial .fg{stroke:var(--brand);transition:stroke-dasharray .5s ease}
+.ring .dial.done .fg{stroke:var(--ok)}
+.ring .dial b{position:absolute;inset:0;display:grid;place-items:center;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.ring .txt{min-width:0}
+.ring .txt .st{font-weight:650;font-size:15px}
+.ring .txt .sd{color:var(--ink-3);font-size:13.5px;margin-top:3px}
+.what{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:4px}
+.what div{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px 14px}
+.what .t{font-weight:650;font-size:13.5px;display:flex;gap:8px;align-items:center}
+.what .t svg{width:16px;height:16px;color:var(--brand)}
+.what .d{font-size:12.5px;color:var(--ink-3);margin-top:5px}
+@media (max-width:760px){.what{grid-template-columns:minmax(0,1fr)}}
+.tulis{font:inherit;font-size:15px;line-height:1.6;min-height:120px;resize:vertical}
+.contoh-tx{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px 15px;font-size:15px;line-height:1.65;color:var(--ink-2);margin-bottom:12px}
+.meter{display:flex;gap:18px;font-size:13px;color:var(--ink-3);margin-top:10px;flex-wrap:wrap}
+.meter b{color:var(--ink);font-variant-numeric:tabular-nums}
+.gulir{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+</style>
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="steps" id="steps"></div>
+
+  <div class="hero">
+    <h1 id="halo">Rekeningmu sudah jadi.</h1>
+    <p id="lead">Mulai sekarang Arunika mengenali <b>caramu</b> memakai akun ini — bukan hanya kata sandimu. Profilnya dibangun dari nol, di perangkat ini, dari pemakaian biasamu sendiri.</p>
+  </div>
+
+  <div class="grid g-2">
+    <div class="grid" style="align-content:start">
+
+      <section class="card">
+        <div class="card-h">
+          <div><h2>Mengenali perangkat ini</h2><p>Arunika perlu beberapa potong pemakaian normal sebelum bisa membedakan kamu dari orang lain.</p></div>
+        </div>
+        <div class="card-b">
+          <div class="ring">
+            <div class="dial" id="dial">
+              <svg viewBox="0 0 104 104" aria-hidden="true">
+                <circle class="bgc" cx="52" cy="52" r="45"></circle>
+                <circle class="fg" cx="52" cy="52" r="45" id="arc" stroke-dasharray="0 283"></circle>
+              </svg>
+              <b id="pct">0%</b>
+            </div>
+            <div class="txt">
+              <div class="st" id="st">Belum ada bukti yang terkumpul</div>
+              <div class="sd" id="sd">Pakai saja situsnya seperti biasa — mengetik, menggulir, berpindah halaman. Setiap 30 detik pemakaian jadi satu potong bukti.</div>
+              <div class="progress" style="margin-top:12px"><i id="bar" style="width:0%"></i></div>
+              <div class="meter">
+                <span>Potong bukti <b id="m-win">0 / 10</b></span>
+                <span>Sedang dikumpulkan <b id="m-ev">0 / 150</b> kejadian</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="what" style="margin-top:20px" id="what"></div>
+          <p class="small muted" style="margin-top:14px" id="privasi"></p>
+        </div>
+      </section>
+
+      <section class="card" id="latihan">
+        <div class="card-h"><div><h2>Cara tercepat: ketik sesuatu</h2><p>Mengetik memberi bukti paling banyak per detik. Salin kalimat di bawah dengan kecepatan biasamu.</p></div></div>
+        <div class="card-b">
+          <div class="contoh-tx" id="contoh"></div>
+          <label class="sr" for="tulis">Salin kalimat di atas</label>
+          <textarea class="input tulis" id="tulis" spellcheck="false" placeholder="Ketik di sini…"></textarea>
+          <div class="meter">
+            <span>Huruf diketik <b id="m-char">0</b></span>
+            <span>Kecepatan <b id="m-wpm">—</b></span>
+            <span><a href="#" id="ganti">ganti kalimat</a></span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="grid" style="align-content:start">
+      <section class="card" id="verif">
+        <div class="card-h"><div><h2>Verifikasi kalau ada yang janggal</h2></div></div>
+        <div class="card-b" id="verif-b"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><div><h2>Sambil menunggu, gulir ini</h2><p>Menggulir dan menggerakkan kursor juga terhitung.</p></div></div>
+        <ul class="list gulir" id="kabar"></ul>
+      </section>
+
+      <section class="card">
+        <div class="card-b">
+          <label class="small" style="display:flex;gap:9px;align-items:flex-start;color:var(--ink-2)">
+            <input type="checkbox" id="cepat" style="margin-top:3px">
+            <span><b>Mode presentasi.</b> Perkecil ukuran bukti supaya pengenalan selesai ±3x lebih cepat.
+            <span class="muted">Angka akurasi resmi tidak berlaku di mode ini — ia diukur dengan 150 kejadian per penilaian.</span></span>
+          </label>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integrasi.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('mulai.html');
+  if (!a) return;
+  const $ = id => document.getElementById(id);
+  const I = A.I;
+
+  $('halo').textContent = `Halo ${a.nama.split(' ')[0]}, rekeningmu sudah jadi.`;
+  $('what').innerHTML = [
+    [I.keys, 'Irama ketik', 'Berapa lama tiap tombol ditekan dan jeda antar-tombol. Isi ketikanmu tidak pernah disimpan.'],
+    [I.device, 'Gerak kursor', 'Kecepatan, kelengkungan lintasan, dan jeda sebelum mengeklik.'],
+    [I.shield, 'Alur pemakaian', 'Halaman mana yang kamu buka, seberapa dalam menggulir, urutan mengisi kolom.'],
+  ].map(([ic, t, d]) => `<div><div class="t">${ic}${A.esc(t)}</div><div class="d">${A.esc(d)}</div></div>`).join('');
+  $('privasi').textContent = 'Semua perhitungan terjadi di browser ini. Tidak ada rekaman layar, tidak ada isi ketikan, dan tidak ada yang dikirim ke server Arunika. Kamu bisa menghapusnya kapan saja lewat halaman Keamanan.';
+
+  // ---- kabar (bahan gulir) ----
+  const KABAR = [
+    ['Biaya transfer antarbank turun', 'Mulai bulan ini biaya transfer ke bank lain jadi Rp 2.500.'],
+    ['Tips: kenali modus penipuan', 'Petugas Arunika tidak pernah meminta kode verifikasi lewat telepon.'],
+    ['Tarik tunai tanpa kartu', 'Ambil uang di ATM Arunika hanya dengan kode dari aplikasi.'],
+    ['Bunga deposito naik', 'Deposito 6 bulan kini 4,25% per tahun.'],
+    ['Bayar tagihan otomatis', 'Atur sekali, tagihan listrik dan air terbayar sendiri tiap bulan.'],
+    ['Jadwal pemeliharaan sistem', 'Minggu, 02.00–04.00 WIB layanan transfer sementara tidak tersedia.'],
+    ['Kartu debit desain baru', 'Ganti kartu lamamu gratis di cabang mana pun.'],
+    ['Arunika untuk usaha kecil', 'Rekening bisnis tanpa biaya admin tahun pertama.'],
+  ];
+  $('kabar').innerHTML = KABAR.map(([t, d]) => `<li class="row"><div class="ico">${I.info}</div><div class="main"><div class="t" style="white-space:normal">${A.esc(t)}</div><div class="s">${A.esc(d)}</div></div></li>`).join('');
+
+  // ---- latihan mengetik ----
+  const KALIMAT = [
+    'Saya menabung sedikit demi sedikit supaya bisa membeli sepeda baru tahun depan.',
+    'Kopi pagi ini terasa lebih pahit dari biasanya, tapi hujannya enak sekali dilihat.',
+    'Tolong ingatkan saya membayar tagihan listrik sebelum tanggal dua puluh bulan ini.',
+    'Perjalanan ke Bandung memakan waktu tiga jam kalau berangkat sebelum matahari terbit.',
+  ];
+  let ki = Math.floor(Math.random() * KALIMAT.length);
+  const pasangKalimat = () => { $('contoh').textContent = KALIMAT[ki % KALIMAT.length]; };
+  pasangKalimat();
+  $('ganti').onclick = e => { e.preventDefault(); ki++; pasangKalimat(); $('tulis').value = ''; hitungKetik(); };
+
+  let mulaiKetik = 0, huruf = 0;
+  function hitungKetik() {
+    const v = $('tulis').value;
+    huruf = v.length;
+    $('m-char').textContent = huruf;
+    if (!huruf) { mulaiKetik = 0; $('m-wpm').textContent = '—'; return; }
+    if (!mulaiKetik) mulaiKetik = Date.now();
+    const menit = (Date.now() - mulaiKetik) / 60000;
+    $('m-wpm').textContent = menit > 0.08 ? Math.round((huruf / 5) / menit) + ' kpm' : '—';
+  }
+  $('tulis').addEventListener('input', hitungKetik);
+  // kalimat selesai -> ganti otomatis, supaya orang terus mengetik tanpa berpikir
+  $('tulis').addEventListener('input', () => {
+    const v = $('tulis').value.trim();
+    if (v.length >= KALIMAT[ki % KALIMAT.length].length) { ki++; pasangKalimat(); $('tulis').value = ''; mulaiKetik = 0; hitungKetik(); }
+  });
+
+  // ---- mode presentasi ----
+  const cepatOn = localStorage.getItem('arunika:mode-cepat') === '1';
+  $('cepat').checked = cepatOn;
+  $('cepat').onchange = () => {
+    if ($('cepat').checked) localStorage.setItem('arunika:mode-cepat', '1');
+    else localStorage.removeItem('arunika:mode-cepat');
+    location.reload();
+  };
+
+  // ---- kemajuan ----
+  const KEL = 283;                       // keliling lingkaran r=45
+  let selesai = false;
+  function langkah(n) {
+    const el = $('steps');
+    const L = [['Kenali perangkat', 1], ['Atur verifikasi', 2], ['Selesai', 3]];
+    el.innerHTML = L.map(([t, i], k) => (k ? '<i></i>' : '')
+      + `<span class="${n === i ? 'on' : n > i ? 'done' : ''}"><b>${n > i ? '✓' : i}</b>${A.esc(t)}</span>`).join('');
+  }
+
+  function verif(st) {
+    const b = $('verif-b');
+    if (!st) { b.innerHTML = '<p class="small muted">Pustaka keamanan tidak termuat.</p>'; return; }
+    if (st.mfa.enrolled) {
+      b.innerHTML = `<div class="banner bn-ok" style="margin:0">${I.check}<div><div class="t">Irama ketik sudah diatur</div>
+        <div>Kalau ada aktivitas janggal, kamu cukup mengetik ulang satu frasa pendek — tidak perlu menunggu kode.</div></div></div>`;
+      return;
+    }
+    const bisa = st.mfa.canEnroll;
+    b.innerHTML = `<p style="font-size:14px;color:var(--ink-2)">Kalau Arunika melihat sesuatu yang tidak biasa, ia akan meminta kamu membuktikan diri.
+      Cara utamanya <b>bukan kode SMS</b>, melainkan <b>irama ketikmu sendiri</b>: ketik satu frasa pendek, yang dicocokkan adalah ritmenya, bukan hurufnya.</p>
+      <button class="btn btn-pri" id="atur" style="margin-top:14px"${bisa ? '' : ' disabled'}>${I.keys}Atur verifikasi irama ketik</button>
+      <p class="small muted" style="margin-top:10px">${bisa ? 'Kamu akan diminta mengetik frasa itu 3 kali.'
+        : 'Tersedia setelah penilaian terakhir kembali wajar.'}</p>
+      <p class="small muted" style="margin-top:10px">Kode verifikasi ke ponsel tetap ada sebagai <b>jalan cadangan</b>, untuk saat kamu memakai keyboard lain atau tanganmu sedang tidak bisa mengetik.</p>`;
+    if (bisa) $('atur').onclick = async () => {
+      $('atur').disabled = true;
+      const r = await BehaviorGuard.enrollMfa();
+      $('atur').disabled = false;
+      if (r.enrolled) { Guard.catat({ lv: 'ok', t1: 'Verifikasi irama ketik diatur', t2: 'Tersimpan di perangkat ini.' }); A.toast('Irama ketikmu tersimpan. Verifikasi siap dipakai.'); }
+      else if (!/dibatalkan|waktu/.test(r.reason || '')) A.toast('Belum berhasil: ' + (r.reason || 'coba lagi'));
+      render();
+    };
+  }
+
+  // Bagian yang membangun ulang HTML (langkah & kartu verifikasi) hanya digambar saat
+  // keadaannya BERUBAH. Kalau digambar tiap detik, tombol yang sedang difokus hilang
+  // fokusnya dan penanganan kliknya terpasang ulang di tengah klik pengguna.
+  let sigLama = '';
+  function render() {
+    const st = window.Guard && Guard.status ? Guard.status() : null;
+    if (!st || !st.ready) { langkah(1); if (sigLama !== 'off') { sigLama = 'off'; verif(st); } return; }
+    const done = st.enrollment.done, need = st.enrollment.need;
+    const p = Math.min(1, done / need);
+    $('arc').setAttribute('stroke-dasharray', `${(p * KEL).toFixed(1)} ${KEL}`);
+    $('dial').classList.toggle('done', p >= 1);
+    $('pct').textContent = Math.round(p * 100) + '%';
+    $('bar').style.width = (p * 100) + '%';
+    $('m-win').textContent = `${done} / ${need}`;
+    $('m-ev').textContent = `${st.evidence.buffered} / ${st.evidence.need}`;
+
+    if (p >= 1) {
+      $('st').textContent = 'Profil perilakumu sudah terbentuk';
+      $('sd').textContent = 'Arunika sekarang bisa membedakan pemakaian biasamu dari pemakaian orang lain. Profil ini terus menyesuaikan diri selama kamu memakai akunmu.';
+      if (!selesai) {
+        selesai = true;
+        A.toast('Profil perilakumu selesai dibangun. Perlindungan aktif.', { label: 'Keamanan' });
+        $('latihan').querySelector('.card-h p').textContent = 'Sudah cukup. Kamu boleh berhenti mengetik.';
+        const go = document.createElement('div');
+        go.className = 'card-b';
+        go.style.borderTop = '1px solid var(--line-2)';
+        go.innerHTML = '<a class="btn btn-pri" href="beranda.html">Masuk ke Beranda</a>';
+        $('verif').appendChild(go);
+      }
+    } else {
+      $('st').textContent = done ? `Sudah ${done} dari ${need} potong bukti` : 'Belum ada bukti yang terkumpul';
+    }
+    const sig = `${p >= 1 ? 1 : 0}|${st.mfa.enrolled}|${st.mfa.canEnroll}`;
+    if (sig !== sigLama) {
+      sigLama = sig;
+      langkah(p < 1 ? 1 : st.mfa.enrolled ? 3 : 2);
+      verif(st);
+    }
+  }
+
+  if (window.Guard) Guard.onChange(render);
+  render();
+  setInterval(render, 1000);        // penghitung bukti bergerak tiap detik, bukan tiap vonis
+  // fokus ke kotak ketik TANPA menggulir: kalau halaman melompat ke bawah, orang tidak
+  // pernah melihat lingkaran kemajuan - padahal itu yang menjelaskan apa yang sedang terjadi
+  try { $('tulis').focus({ preventScroll: true }); } catch { }
+})();
+</script>
+</body>
+</html>

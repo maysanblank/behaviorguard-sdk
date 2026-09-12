@@ -26,7 +26,7 @@ import { checkCollect } from './core/ratelimit.js';
 import { buildTemplate, verify as verifyChallenge } from './core/challenge.js';
 import { runMfaChallenge } from './core/mfa.js';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 // C-45: structuredClone baru ada sejak Chrome 98 / Safari 15.4; di browser lebih tua pustaka
 // dulu melempar saat dimuat. DEFAULTS murni data (tanpa fungsi), jadi JSON sudah cukup.
 const clone = o => (typeof structuredClone==='function') ? structuredClone(o) : JSON.parse(JSON.stringify(o));
@@ -91,6 +91,18 @@ class BehaviorGuard {
     // -> pendaftaran selalu gagal dan MFA bawaan tak pernah tersedia, tanpa pesan apa pun.
     if(this.cfg.mfa && this.cfg.mfa.enabled && String(this.cfg.mfa.phrase||'').replace(/\s+/g,' ').trim().length < 8){
       try{ console.warn('[BG] mfa.phrase terlalu pendek (minimal 8 karakter) - verifikasi irama ketik tidak akan bisa didaftarkan'); }catch{}
+    }
+    // C-46: KUNCI MATI. `lockAfterFailures` mengunci jalur irama sesudah N dialog gagal
+    // beruntun, dan satu-satunya yang membuka kunci itu adalah verifikasi yang BERHASIL.
+    // Tanpa `onFallback`, tidak ada jalur lain untuk berhasil: pemiliknya - yang mungkin cuma
+    // sedang memakai keyboard lain - terkunci dari verifikasi secara permanen, dan integrator
+    // tidak akan tahu kenapa. Ini fail-closed yang benar secara keamanan tapi salah secara
+    // produk, jadi diperingatkan di awal, bukan ditemukan pengguna saat sudah terkunci.
+    if(this.cfg.mfa && this.cfg.mfa.enabled && (this.cfg.mfa.lockAfterFailures ?? 3) > 0
+       && typeof this.cfg.mfa.onFallback!=='function'){
+      try{ console.warn('[BG] mfa.onFallback kosong sedangkan mfa.lockAfterFailures aktif - sesudah '
+        + (this.cfg.mfa.lockAfterFailures ?? 3) + ' kegagalan beruntun, pemilik tidak punya jalan verifikasi lain. '
+        + 'Isi mfa.onFallback (OTP/WebAuthn yang dicek server), atau set mfa.lockAfterFailures: 0.'); }catch{}
     }
     // C-23: sama pola dengan `mfa` — digabung, bukan ditimpa, supaya konfigurasi
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
@@ -521,6 +533,22 @@ class BehaviorGuard {
       this._emit(rlEvt);
       return rlEvt;
     }
+    // C-46: MASUKAN SINTETIS. capture.js sudah MENOLAK event yang dibuat skrip (isTrusted
+    // false) sehingga ia tak pernah jadi perilaku; yang tersisa di sini adalah keputusan atas
+    // FAKTA bahwa seseorang mencoba. Dua hal yang dilakukan, dan dua yang sengaja tidak:
+    //  - jendelanya TIDAK boleh melatih (eligible:false). Inilah pertahanan inti: tanpa ini,
+    //    penyerang cukup menyiarkan event manusiawi sampai profil pemilik tergeser ke arahnya.
+    //  - alasannya diumumkan ke integrator, supaya terlihat di log keamanan.
+    //  - TIDAK memblokir, dan TIDAK menaikkan level. Beberapa pustaka UI (polyfill geser,
+    //    carousel) menerbitkan event tiruan yang sah; memblokir karenanya akan mengunci
+    //    pemilik yang tidak berbuat apa-apa. Kebijakan itu milik integrator.
+    const synthTotal=this.capture ? (this.capture.synthetic||0) : 0;
+    const synthNew=Math.max(0, synthTotal-(this._synthSeen||0));
+    this._synthSeen=synthTotal;
+    // ambang: jendela bukti 150 event; belasan event tiruan masih bisa datang dari pustaka UI,
+    // ratusan tidak. Dijaga relatif terhadap bukti supaya jendela kecil tidak gampang tertuduh.
+    const synthetic = synthNew >= 20 && synthNew >= 0.1*Math.max(1,(events?events.length:0));
+    if(synthetic) eligible=false;
     // integrity (bot/replay) - jika events tersedia
     if(events){
       const integ=checkIntegrity(events, {throttled:true});
@@ -694,6 +722,7 @@ class BehaviorGuard {
     // challenge step-up
     let reasons=reasonsFrom(top);
     if(M.keystrokeBypassed) reasons=['bukti keystroke dialihkan (autofill/tempel) - blok ritme ketik tidak dinilai', ...reasons];
+    if(synthetic) reasons=[`${synthNew} masukan dibuat skrip (bukan dari keyboard/mouse) - tidak dihitung sebagai perilaku, jendela ini tidak melatih model`, ...reasons];
     if(M.replay) reasons=[`perilaku identik dengan sesi lama (jarak ${M.replay.distance.toFixed(4)}) - kemungkinan rekam-ulang`, ...reasons];
     if(reverifyAfterAway) reasons=[`kembali setelah absen ${Math.round(awayInfo.awayMs/60000)} menit (${awayInfo.reason}) - verifikasi ulang`, ...reasons];
     if(stepUpGrace) reasons=[`model: MEDIUM, tidak ditanya ulang - terverifikasi ${Math.round(stepUpGrace.verifiedAgoSec/60)} menit lalu`, ...reasons];
@@ -711,7 +740,8 @@ class BehaviorGuard {
       resumedAfterAway: awayInfo, reverifyAfterAway, stepUpGrace,
       // topFeatures/features berasal dari jendela TERAKHIR; skornya dari rata-rata M.
       aggregated: aggMembers ? {windows: aggMembers.length} : null,
-      partialEvidence: M.keystrokeBypassed ? 'keystroke' : null};
+      partialEvidence: M.keystrokeBypassed ? 'keystroke' : null,
+      automation: synthetic ? { syntheticInputs: synthNew } : null};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
     // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu —
     // kalau hanya yang terakhir yang disimpan, kolam latih tumbuh M kali lebih lambat.
@@ -822,9 +852,27 @@ class BehaviorGuard {
    * server integrator sudah memverifikasi faktornya (batas kepercayaan = reportStepUp).
    */
   async _runFallback(ctx){
-    const f=this.cfg.mfa && this.cfg.mfa.onFallback;
+    const m=this.cfg.mfa||{};
+    const f=m.onFallback;
     if(typeof f!=='function') return null;
-    try{ return (await f(ctx))===true; }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+    // C-46: BATAS WAKTU. `onFallback` adalah kode MILIK INTEGRATOR. Kalau Promise-nya tidak
+    // pernah selesai - dialog OTP yang tombol batalnya lupa me-resolve, panggilan jaringan
+    // tanpa timeout, tab yang ditinggal - maka `_mfaBusy` tersangkut SELAMANYA. Akibatnya
+    // bukan satu verifikasi yang gagal, melainkan seluruh lapisan step-up mati untuk sisa
+    // umur halaman: tiap vonis berikutnya pulang dengan mfa:{busy:true} dan integrator yang
+    // (benar) menunggu hasil dialog tidak pernah bertindak. Habis waktu = TIDAK terverifikasi.
+    const ms=Number.isFinite(m.fallbackTimeoutMs) ? m.fallbackTimeoutMs : 300000;
+    let timer=null;
+    try{
+      const p=Promise.resolve(f(ctx)).then(v=> v===true);
+      if(!(ms>0)) return await p;
+      const race=new Promise(res=>{ timer=setTimeout(()=>{
+        try{ console.warn(`[BG] mfa.onFallback tidak selesai dalam ${ms>=1000? Math.round(ms/1000)+' dtk' : ms+' ms'} - dianggap tidak terverifikasi`); }catch{}
+        res(false);
+      }, ms); });
+      return await Promise.race([p, race]);
+    }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+    finally{ if(timer) clearTimeout(timer); }
   }
   // Popup MFA otomatis saat vonis MEDIUM/HIGH (bila cfg.mfa.enabled & ada DOM).
   // Verifikasi memakai template irama; tanpa template -> jalur cadangan integrator.
@@ -1352,7 +1400,14 @@ class BehaviorGuard {
       lastVerdict: e ? { level:e.level, action:e.action, score:e.score, blocked:!!e.blocked, at:e.at,
                          reasons:(e.reasons||[]).slice(0,3), mfa:e.mfa||null } : null,
       evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess },
+      // C-46: `canEnroll` supaya halaman pengaturan tahu apakah tombol "atur verifikasi irama"
+      // layak ditampilkan SEKARANG. Tanpa ini integrator hanya bisa menebak, lalu menampilkan
+      // tombol yang setiap kali ditekan menjawab "sesi sedang dicurigai" - syarat C-2 yang
+      // benar, tapi disampaikan di saat yang paling membingungkan bagi pengguna.
       mfa: { enabled: !!(this.cfg.mfa && this.cfg.mfa.enabled), enrolled: !!this.challengeTemplate,
+             canEnroll: !!(this.inited && this.userId && typeof document!=='undefined' && !this.challengeTemplate
+               && !this._mfaBusy && this.lastRisk==='LOW'
+               && !(this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000)),
              mode: this.challengeTemplate ? (this.challengeTemplate.mode||'hard') : null,
              fallback: !!(this.cfg.mfa && typeof this.cfg.mfa.onFallback==='function'),
              verifiedAt: this._mfaPassedAt||null, graceLeftSec: Math.round(graceLeft/1000), busy: !!this._mfaBusy,
@@ -1408,6 +1463,11 @@ class BehaviorGuard {
     this._newSinceRebuild=0; this._mfaEnrollSnoozeUntil=0; this._stepUpFailures=0;
     this._pendingEvents=null; this._ctx=[];
     this._lastEvt=null; this._lastKeyAt=0; this._mfaFailStreak=0;
+    // C-46: hitungan masukan sintetis KUMULATIF milik capture, dan init() memasang capture
+    // BARU yang mulai dari nol. Kalau penanda ini tidak ikut direset, sesudah logout->login
+    // `synthNew = max(0, 0 - nilai_lama)` = 0 sampai kunjungan baru melewati angka lama:
+    // deteksi mati diam-diam persis di sesi yang paling mungkin diserang.
+    this._synthSeen=0;
   }
   async clear(){
     // C-7: dulu challengeTemplate/_highRun/_mfaPassedAt tetap hidup di memori

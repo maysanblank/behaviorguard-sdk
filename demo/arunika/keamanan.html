@@ -21,11 +21,11 @@
       <section class="card" id="irama">
         <div class="card-h"><div><h2>Cara verifikasi</h2><p>Dipakai saat aktivitas terlihat tidak biasa atau sebelum aksi sensitif.</p></div></div>
         <div class="sec-item"><div class="ico"></div>
-          <div class="main"><div class="t">Irama ketik <span id="b-irama"></span></div>
+          <div class="main"><div class="t">Irama ketik <span class="badge b-plain">Cara utama</span> <span id="b-irama"></span></div>
             <div class="d" id="d-irama"></div></div>
           <div id="a-irama"></div></div>
         <div class="sec-item"><div class="ico" id="ic-sms"></div>
-          <div class="main"><div class="t">Kode OTP lewat SMS <span class="badge b-ok">Aktif</span></div>
+          <div class="main"><div class="t">Kode sekali pakai <span class="badge b-plain">Cadangan</span> <span class="badge b-ok">Aktif</span></div>
             <div class="d" id="d-sms"></div></div></div>
       </section>
 
@@ -51,6 +51,9 @@
         <div class="card-b">
           <p class="small muted">Profil perilaku dan irama ketik disimpan hanya di browser ini, tidak dikirim ke server Arunika. Menghapusnya membuat Arunika mengenali kamu dari awal.</p>
           <button class="btn btn-danger" id="hapus" style="margin-top:12px"></button>
+          <hr style="border:0;border-top:1px solid var(--line-2);margin:16px 0">
+          <p class="small muted">Untuk mengulang demo dari layar pembukaan rekening: hapus akun contoh, sesi, dan profil perilaku sekaligus.</p>
+          <button class="btn" id="ulangi" style="margin-top:12px">Ulangi demo dari awal</button>
         </div>
       </section>
     </div>
@@ -70,19 +73,20 @@
   document.querySelector('#irama .sec-item .ico').innerHTML = A.I.keys;
   $('ic-sms').innerHTML = A.I.msg;
   $('hapus').innerHTML = A.I.trash + 'Hapus profil perilaku';
-  $('d-sms').textContent = 'Dikirim ke ' + a.hp.replace(/(\+62 \d{3})-(\d{4})-(\d{2})(\d{2})/, '$1-••••-••$4') + '. Selalu tersedia sebagai cara lain.';
+  $('d-sms').textContent = 'Dikirim ke ' + a.hp.replace(/(\+62 \d{3})-(\d{4})-(\d{2})(\d{2})/, '$1-••••-••$4')
+    + '. Hanya dipakai kalau irama ketik tidak bisa: belum diatur, keyboard berbeda, atau kamu memilih cara lain.';
 
   function irama(st) {
     const en = st && st.mfa.enrolled;
     $('b-irama').innerHTML = en ? '<span class="badge b-ok">Aktif</span>' : '<span class="badge">Belum diatur</span>';
     $('d-irama').textContent = en
-      ? 'Saat diminta, ketik frasa pendek dengan irama biasamu. Tidak perlu menunggu SMS.' + (st.mfa.mode === 'soft' ? ' Diatur dengan keyboard layar sentuh.' : '')
+      ? 'Saat diminta, ketik frasa pendek dengan irama biasamu. Yang dicocokkan ritmenya, bukan hurufnya — jadi frasanya boleh dilihat orang lain.' + (st.mfa.mode === 'soft' ? ' Diatur dengan keyboard layar sentuh.' : '')
       : 'Ketik frasa pendek 3 kali untuk mengajari Arunika irama ketikmu. Setelah itu, verifikasi cukup mengetik frasa sekali.';
     $('a-irama').innerHTML = en ? '<button class="btn btn-sm" id="x-irama">Hapus</button>' : '<button class="btn btn-sm btn-pri" id="x-irama">Atur</button>';
     $('x-irama').onclick = async () => {
       if (en) {
         const r = await BehaviorGuard.forgetMfa();
-        if (r.removed) { Guard.catat({ lv: 'info', t1: 'Verifikasi irama ketik dihapus', t2: 'Verifikasi berikutnya memakai kode OTP.' }); A.toast('Verifikasi irama ketik dihapus.'); }
+        if (r.removed) { Guard.catat({ lv: 'info', t1: 'Verifikasi irama ketik dihapus', t2: 'Verifikasi berikutnya memakai kode sekali pakai.' }); A.toast('Verifikasi irama ketik dihapus.'); }
         else A.toast('Tidak dihapus: ' + r.reason);
       } else {
         const r = await BehaviorGuard.enrollMfa();
@@ -137,6 +141,12 @@
     Guard.catat({ lv: 'info', t1: 'Profil perilaku dihapus', t2: 'Pengenalan dimulai dari awal.' });
     A.toast('Profil perilaku dihapus.');
     render();
+  };
+  $('ulangi').onclick = async () => {
+    const ok = await A.konfirmasi({ judul: 'Ulangi demo dari awal?', isi: 'Semua akun demo, riwayat, dan profil perilaku di browser ini dihapus. Kamu kembali ke layar pembukaan rekening.', ya: 'Hapus semuanya', bahaya: true });
+    if (!ok) return;
+    await A.resetDemo();
+    location.href = 'daftar.html';
   };
   StatusGuard.mount($('guard'));
   if (location.hash === '#irama') setTimeout(() => $('irama').scrollIntoView({ behavior: 'smooth' }), 200);

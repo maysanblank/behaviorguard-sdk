@@ -124,13 +124,53 @@ This is not defensible client-side. Enforce server-side.
 
 ### 4.3 Synthetic input and replay — PARTLY covered
 
-`core/integrity.js` rejects sessions with tell-tale machine signatures: near-constant
-inter-event intervals (std < 3 ms), identical key hold times (std < 1.5 ms), constant
-mouse velocity, event rates above 80/s, non-monotonic or duplicated timestamps.
+**Script-generated events (C-46).** Until C-46 the capture layer accepted every DOM event
+that reached it, without ever checking `isTrusted`. Anything running JavaScript in the page —
+stored XSS, a malicious extension, a tampered third-party tag, or just the console — could do
+this:
 
-This catches naive automation. It does **not** catch an attacker who injects humanlike
-jitter, and a synthetic profile tuned against these specific thresholds will pass. The
-checks are heuristics, not a bot-detection product.
+```js
+for (let i = 0; i < 400; i++) {
+  document.dispatchEvent(new MouseEvent('mousemove', {clientX: x(i), clientY: y(i)}));
+  document.dispatchEvent(new KeyboardEvent('keyup', {key: 'a', code: 'KeyA'}));
+}
+```
+
+The attacker did not have to guess the owner's behaviour or beat the 10.5% figure: they could
+broadcast a humanlike stream until the verdict came back `LOW`, and because eligible `LOW`
+windows **train the model**, the forged vectors entered the baseline pool. That is not one
+bypassed check — it is the owner's profile being dragged toward the attacker, permanently,
+reinforced on every page load. It is a cheaper relative of replay (4.3 below): replay needs a
+recording of the victim, this needs nothing.
+
+Events with `isTrusted === false` now never enter the buffer. The test is `!== false`, not
+`=== true`, so very old browsers without the property fall back to the previous behaviour
+rather than going silently blind. Dropped events are still **counted**: when a window sees at
+least 20 of them and they are at least 10% of the evidence, the window is marked ineligible
+for training and the reason is reported to the integrator (`evt.automation`). It deliberately
+does **not** block or raise the level — some UI libraries emit legitimate synthetic pointer
+events, and blocking on that would lock out an owner who did nothing. The defence is "never
+teaches the model", not "blocks".
+
+Two deliberate gaps: `focus`/`blur` are **not** filtered, because `el.focus()` called by the
+site (autofocus, auto-advance between OTP digits) is untrusted yet completely normal, and
+filtering it would only create a train-vs-serve mismatch on `form_focus_count`. And `scroll`
+**cannot** be filtered — `window.scrollTo()` produces an event with `isTrusted` true.
+
+The same hole existed inside the verification dialog. The rhythm template lives on the device,
+so a script that can read it could fire `keydown`/`keyup` pairs spaced at the template's own
+median timings and pass verification with no finger touching a key. A sample touched by any
+untrusted key event is now rejected in full (fail-closed).
+
+**Naive automation.** `core/integrity.js` rejects sessions with tell-tale machine signatures:
+near-constant inter-event intervals (std < 3 ms), identical key hold times (std < 1.5 ms),
+constant mouse velocity, event rates above 80/s, non-monotonic or duplicated timestamps.
+
+This catches naive automation. It does **not** catch an attacker who drives a real browser
+through the OS or a debugging protocol — those events are genuinely trusted — nor one who
+injects humanlike jitter into a stream that does pass the `isTrusted` gate. A synthetic
+profile tuned against these specific thresholds will pass. The checks are heuristics, not a
+bot-detection product.
 
 **Replay** of the victim's own recorded behavior (XSS, a malicious extension, a recorder)
 produces a feature vector identical to a stored session, which the model would call `LOW`.
@@ -299,6 +339,23 @@ After `mfa.lockAfterFailures` (default 3) exhausted dialogs in a row, persisted 
 loads, the rhythm path is locked and only the fallback can verify; a passed verification
 unlocks it. Without a fallback configured the locked state is fail-closed (`unavailable`),
 not a pass.
+
+### 4.16 The step-up layer could deadlock — FIXED (C-46)
+
+Two ways the verification layer could stop working entirely, both of them fail-*closed* in
+the security sense but broken as a product:
+
+- `mfa.onFallback` is the integrator's code and was awaited with no timeout. A promise that
+  never settles — an OTP dialog whose cancel button forgets to resolve, a network call with no
+  timeout of its own — pinned `_mfaBusy` forever. Every later verdict came back
+  `mfa: {busy: true}`, and an integrator that (correctly) waits for the dialog result never
+  acted again for the lifetime of the page. There is now a timeout
+  (`mfa.fallbackTimeoutMs`, default 300 s); timing out counts as *not verified*.
+- `mfa.lockAfterFailures` locks the rhythm path after N consecutive failed dialogs, and only a
+  *successful* verification unlocks it. With no `onFallback` configured there is no way to
+  succeed, so an owner — possibly just using a different keyboard — is locked out of
+  verification permanently, with nothing in the integrator's logs explaining why. `init()` now
+  warns when that combination is configured, naming both escapes.
 
 ### 4.15 Deployment conditions that used to silence the library — FIXED (C-45)
 

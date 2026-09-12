@@ -9,6 +9,7 @@
 <body>
 <header id="top"></header>
 <main class="wrap">
+  <div id="bn-mulai"></div>
   <div class="page-hd"><div><h1 id="hai"></h1><p id="tgl"></p></div></div>
   <div class="grid g-2">
     <div class="grid">
@@ -64,19 +65,40 @@
     const k = A.KAT[t.kat] || A.KAT.Transfer;
     return `<li class="row"><div class="ico">${A.I[k.ic]}</div><div class="main"><div class="t">${A.esc(t.ket)}</div><div class="s">${A.esc(t.kat)} · ${A.tanggal(t.t)}, ${A.jam(t.t)}</div></div>
       <div class="amt ${t.jml > 0 ? 'in' : ''}">${t.jml > 0 ? '+' : '−'}${A.rupiah(Math.abs(t.jml)).replace('Rp', 'Rp')}</div></li>`;
-  }).join('');
+  }).join('') || '<li class="empty">Belum ada transaksi di rekening ini.</li>';
   const batas = Date.now() - 30 * 86400000;
   const per = {};
   for (const t of a.tx) if (t.t >= batas && t.jml < 0) per[t.kat] = (per[t.kat] || 0) - t.jml;
   const tot = Object.values(per).reduce((x, y) => x + y, 0);
   document.getElementById('total').textContent = A.rupiah(tot);
   const urut = Object.entries(per).sort((x, y) => y[1] - x[1]);
-  document.getElementById('bar').innerHTML = urut.map(([k, v]) => `<i style="width:${(v / tot * 100).toFixed(1)}%;background:${(A.KAT[k] || {}).c}" title="${A.esc(k)}"></i>`).join('');
-  document.getElementById('legend').innerHTML = urut.map(([k, v]) => `<span style="--c:${(A.KAT[k] || {}).c}">${A.esc(k)}</span><b class="num">${A.rupiah(v)}</b>`).join('');
+  if (tot > 0) {
+    document.getElementById('bar').innerHTML = urut.map(([k, v]) => `<i style="width:${(v / tot * 100).toFixed(1)}%;background:${(A.KAT[k] || {}).c}" title="${A.esc(k)}"></i>`).join('');
+    document.getElementById('legend').innerHTML = urut.map(([k, v]) => `<span style="--c:${(A.KAT[k] || {}).c}">${A.esc(k)}</span><b class="num">${A.rupiah(v)}</b>`).join('');
+  } else {
+    document.getElementById('bar').remove();
+    document.getElementById('legend').innerHTML = '<span class="muted" style="grid-column:1/-1">Belum ada pengeluaran 30 hari terakhir.</span>';
+  }
   document.getElementById('penerima').innerHTML = a.penerima.slice(0, 4).map(p => `<li class="row"><div class="avatar" style="background:#e5e7eb;color:#374151">${A.esc(A.inisial(p.nama))}</div>
     <div class="main"><div class="t">${A.esc(p.nama)}</div><div class="s num">${A.esc(p.bank)} · ${A.esc(p.rek)}</div></div>
-    <a class="btn btn-sm" href="transfer.html?ke=${encodeURIComponent(p.rek)}">Kirim</a></li>`).join('');
+    <a class="btn btn-sm" href="transfer.html?ke=${encodeURIComponent(p.rek)}">Kirim</a></li>`).join('')
+    || '<li class="empty">Belum ada penerima tersimpan. Tambahkan saat transfer pertama.</li>';
   StatusGuard.mount(document.getElementById('guard'), { ringkas: true });
+
+  // Pengenalan belum selesai -> ajak balik ke halaman onboarding. Ini bagian dari cerita
+  // produknya: pengguna baru harus tahu perlindungannya BELUM penuh, bukan mengira sudah.
+  function ajakan() {
+    const st = window.Guard && Guard.status ? Guard.status() : null;
+    const box = document.getElementById('bn-mulai');
+    if (!st || !st.ready || st.phase !== 'learning') { box.innerHTML = ''; return; }
+    const sisa = st.enrollment.need - st.enrollment.done;
+    box.innerHTML = `<div class="banner bn-info">${A.I.info}<div class="grow">
+      <div class="t">Arunika masih berkenalan denganmu</div>
+      <div>Kurang ${sisa} potong bukti lagi sebelum perlindungan perilaku aktif penuh. Sampai saat itu, transfer besar tetap diverifikasi dengan kode.</div></div>
+      <a class="btn btn-sm" href="mulai.html">Lanjutkan</a></div>`;
+  }
+  if (window.Guard) Guard.onChange(ajakan);
+  ajakan();
 })();
 </script>
 </body>

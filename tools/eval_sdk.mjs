@@ -107,12 +107,33 @@ function impShift(uid, evs) {
 
 async function freshGuard(uid) {
   const g = new BehaviorGuard();
-  // konfigurasi DIPASANG SEBELUM init(): init() sudah membangun model + ambang dari
-  // state tersimpan, jadi mengubah cfg sesudahnya baru berlaku di latih-ulang berikut.
-  if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);
+  // C-46: HARNESS INI SEMPAT MENGUKUR KONFIGURASI YANG SALAH. Override dulu dipasang ke
+  // `g.cfg` SEBELUM init(). Sejak C-45, `_init()` mengerjakan `this.cfg = clone(DEFAULTS)`
+  // supaya opsi init() sebelumnya tidak terbawa ke init() berikutnya - perbaikan yang benar
+  // untuk SDK-nya, tapi ia MENGHAPUS override itu. Akibatnya `--k-low`, `--cfg`, dan
+  // `--compress` tidak berpengaruh apa pun: sapuan k_low 1,25..2,5 yang dijalankan sesudah
+  // C-45 sebenarnya menjalankan DEFAULT berulang-ulang, dan hasilnya identik karena memang
+  // konfigurasinya identik. Gejalanya terlihat seperti "knob-nya tidak berpengaruh", bukan
+  // seperti bug - itulah kenapa ia lolos lama.
+  //
+  // Perbaikannya lewat PINTU RESMI: apa pun yang dikenali init() dikirim sebagai opsi init(),
+  // yang diterapkan SESUDAH reset dan SEBELUM `_rebuildModel()`. Sisa kunci `--cfg` yang tidak
+  // punya pintu di init() (progressiveMaxPool, replayEps, blockAfterConsecutiveHigh) hanya
+  // dibaca saat penilaian, jadi aman digabung sesudahnya.
+  const initOpts = { userId: uid, mfa: { enabled: false } };
+  initOpts.session = { ...(CFG.session || {}), idleCompressSec: COMPRESS };
+  for (const k of ['weights', 'baseline', 'retrainEvery', 'features', 'thresholds', 'idle', 'aggregateWindows', 'calibrationHoldout'])
+    if (k in CFG) initOpts[k] = CFG[k];
+  if (K_LOW !== null || CFG.calibration || 'k_low' in CFG || 'k_med_extra' in CFG) {
+    initOpts.calibration = { ...(CFG.calibration || {}) };
+    if ('k_low' in CFG) initOpts.calibration.k_low = CFG.k_low;
+    if ('k_med_extra' in CFG) initOpts.calibration.k_med_extra = CFG.k_med_extra;
+    if (K_LOW !== null) initOpts.calibration.k_low = Number(K_LOW);
+  }
+  await g.init(initOpts);
   deepMerge(g.cfg, CFG);
+  if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);
   g.cfg.session.idleCompressSec = COMPRESS;
-  await g.init({ userId: uid, mfa: { enabled: false } });
   try { clearInterval(g._autoTimer); } catch {}
   g.onRisk = () => {};
   return g;

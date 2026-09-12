@@ -101,6 +101,9 @@ const DEFAULTS = {
     //   brand, accent (warna CSS), theme ('auto'|'light'|'dark'), lang ('id'|'en'), texts
     autoEnroll: true,
     theme: 'auto',
+    // C-46: batas waktu untuk `onFallback` MILIK INTEGRATOR. Promise yang tak pernah selesai
+    // dulu menyangkutkan seluruh lapisan step-up seumur halaman. 0 = tanpa batas (jangan).
+    fallbackTimeoutMs: 300000,
     // C-45: sesudah N dialog irama gagal BERTURUT (lintas kunjungan), jalur irama dikunci dan
     // verifikasi hanya lewat onFallback sampai berhasil. 0 = tanpa batas (tidak disarankan).
     lockAfterFailures: 3,
@@ -834,6 +837,19 @@ function createCapture(onEvent){
   const MAX_BUF=2000; // cap 2000 event per sesi (hindari volume gila mousemove)
   const buf=[];
   let dropped=0;
+  // C-46: PERILAKU HARUS DATANG DARI MANUSIA. `isTrusted` false = event yang DIBUAT skrip
+  // (`el.click()`, `dispatchEvent(new KeyboardEvent(...))`), bukan dari perangkat masukan.
+  // Tanpa saringan ini, penyerang yang sudah menjalankan skrip di halaman tidak perlu
+  // menebak perilaku pemilik sama sekali: ia cukup MENYIARKAN aliran event bergaya manusia
+  // (jitter acak, jeda wajar) sampai modelnya sendiri yang meyakinkan pustaka bahwa
+  // pemiliklah yang duduk di sini - dan karena vektor palsu itu dinilai LOW, ia bahkan ikut
+  // MELATIH kolam baseline. Itu meracuni profil, bukan sekadar melewati satu vonis.
+  // `!== false` (bukan `=== true`): peramban sangat lama tanpa properti ini tidak ikut
+  // disaring - gagal ke perilaku lama, bukan diam-diam buta.
+  // Yang dijatuhkan tetap DIHITUNG: banyaknya masukan sintetis adalah sinyal tersendiri
+  // (lihat behaviorguard._assessEvents), bukan sesuatu yang boleh hilang tanpa jejak.
+  let synthetic=0;
+  const real=e=>{ if(e && e.isTrusted===false){ synthetic++; return false; } return true; };
   const push=e=>{
     e.timestamp=Date.now();
     if(buf.length >= MAX_BUF){ dropped++; return; }
@@ -916,17 +932,26 @@ function createCapture(onEvent){
     };
     handlers={
       move: e=> push({event_type:'MOUSE_MOVE', x:e.clientX, y:e.clientY, velocity: withVelocity(e), page_url: location.href}),
-      click: e=> { if(fromBg(e)) return; push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}); },
+      click: e=> { if(fromBg(e) || !real(e)) return; push({event_type:'MOUSE_CLICK', x:e.clientX, y:e.clientY, page_url: location.href}); },
+      // `scroll` tidak bisa disaring dengan isTrusted: menggulir lewat window.scrollTo()
+      // menerbitkan event dengan isTrusted TRUE. Yang diukur di sini memang selisih posisi,
+      // bukan gerak tangan; biarkan apa adanya dan jangan mengaku menyaringnya.
       scroll: e=> { const cur=window.scrollY; const delta=Math.abs(cur-lastScrollY); lastScrollY=cur; if(delta===0) return; push({event_type:'MOUSE_SCROLL', scroll_delta: delta, scroll_velocity: 0, page_url: location.href}); },
       // auto-repeat (tombol ditahan) menembakkan keydown berulang; yang dihitung tahan
       // adalah tekanan PERTAMA, jadi pengulangan diabaikan. Entri dihapus di keyup supaya
       // keydown yang hilang (fokus pindah) tidak meninggalkan t0 basi bermenit-menit.
-      kd: e=> { if(fromBg(e) || e.repeat) return; downAt.set(e.code, Date.now()); },
-      ku: e=> { if(fromBg(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; if(e.key==='Unidentified' || e.keyCode===229 || e.isComposing) ev.soft=true; push(ev); },
+      kd: e=> { if(fromBg(e) || e.repeat || !real(e)) return; downAt.set(e.code, Date.now()); },
+      ku: e=> { if(fromBg(e) || !real(e)) return; const t0=downAt.get(e.code); downAt.delete(e.code); const hold=t0? Date.now()-t0 : 80; const ev={event_type:'KEYSTROKE', key:tokenOf(e.key), hold_time: hold, page_url: location.href}; const kc=codeClass(e); if(kc) ev.kc=kc; if(e.key==='Unidentified' || e.keyCode===229 || e.isComposing) ev.soft=true; push(ev); },
       // C-45: `txt` = kolom yang MEMANG diisi dengan mengetik. Fokus ke <select>, kotak
       // centang, atau tombol radio tidak pernah menghasilkan ketikan, dan dulu terbaca sebagai
       // "form tersentuh tapi tidak diketik" (A3, autofill) -> jendelanya tak layak melatih dan
       // ditandai bukti sebagian. Fiturnya (form_focus_count) tidak berubah: event yang sama.
+      // C-46: fokus/blur SENGAJA tidak disaring isTrusted. `el.focus()` yang dipanggil situs
+      // (autofocus kolom pertama, pindah kolom otomatis sesudah 4 digit) menerbitkan event
+      // tak-tepercaya, padahal itu perilaku aplikasi yang normal dan ikut terhitung saat data
+      // riset dikumpulkan. Menyaringnya di sini hanya akan membuat form_focus_count di
+      // pemakaian berbeda dari saat model dilatih. Kedua fitur itu struktural, bukan biometrik
+      // waktu — nilai sinyalnya tidak sepadan dengan risiko ketidakcocokan latih-vs-pakai.
       focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', txt: isTextEntry(e.target), page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
@@ -953,11 +978,19 @@ function createCapture(onEvent){
         const t=e.touches && e.touches[0]; if(!t) return;
         push({event_type:'MOUSE_MOVE', x:t.clientX, y:t.clientY, velocity: withVelocity(t), touch:true, page_url: location.href});
       }catch{} },
-      cart: e=>{ try{ const t=e.target && e.target.closest && e.target.closest('[data-bg-cart], .add-to-cart, [data-cart]'); if(t) push({event_type:'CART_ACTION', page_url: location.href}); }catch{} }
+      // klik yang sama sudah dihitung di handler `click`, jadi di sini disaring TANPA menghitung
+      cart: e=>{ try{ if(e && e.isTrusted===false) return; const t=e.target && e.target.closest && e.target.closest('[data-bg-cart], .add-to-cart, [data-cart]'); if(t) push({event_type:'CART_ACTION', page_url: location.href}); }catch{} }
     };
     // mousemove throttled: 1 per 50ms untuk cap volume
+    //
+    // C-46: saringan isTrusted WAJIB di depan throttle, bukan di dalam handler.move. Kalau
+    // di dalam, event tiruan tetap lolos throttle lebih dulu dan MEMPERBARUI `lastMove` —
+    // sehingga skrip yang membanjiri mousemove 1000/dtk membuat gerakan mouse ASLI selalu
+    // jatuh di dalam jendela 50 ms dan tak pernah terekam. Menolak event palsu jadi malah
+    // membungkam yang asli; penyerang tidak perlu memalsukan perilaku, cukup menghapusnya.
     let lastMove=0;
     const throttledMove=e=>{
+      if(!real(e)) return;
       const now=Date.now();
       if(now-lastMove < 50) return;
       lastMove=now; handlers.move(e);
@@ -976,7 +1009,7 @@ function createCapture(onEvent){
     document.addEventListener('submit', handlers.nav, opts);
     document.addEventListener('paste', handlers.paste, opts);
     // touchmove di-throttle memakai penjaga yang sama dengan mousemove
-    handlers.throttledTouch=e=>{ const now=Date.now(); if(now-lastMove < 50) return; lastMove=now; handlers.touch(e); };
+    handlers.throttledTouch=e=>{ if(!real(e)) return; const now=Date.now(); if(now-lastMove < 50) return; lastMove=now; handlers.touch(e); };
     document.addEventListener('touchmove', handlers.throttledTouch, opts);
   }
   function detach(){
@@ -997,9 +1030,12 @@ function createCapture(onEvent){
     document.removeEventListener('touchmove', h.throttledTouch);
     handlers=null;
   }
+  // `synthetic` sengaja TIDAK direset di drain: ia hitungan KUMULATIF seumur kunjungan,
+  // supaya orkestrator bisa mengambil selisihnya per vonis (lihat behaviorguard._ingestVector).
   function drain(){ const c=[...buf]; buf.length=0; dropped=0; return c; }
   function peek(){ return [...buf]; }
-  return { attach, detach, drain, peek, get buffer(){ return buf; }, get dropped(){ return dropped; } };
+  return { attach, detach, drain, peek, get buffer(){ return buf; }, get dropped(){ return dropped; },
+           get synthetic(){ return synthetic; } };
 }
 return {createCapture: createCapture};
 })();
@@ -1474,6 +1510,7 @@ const TEXT = {
     pasteBlocked: 'Menempel tidak bisa dipakai. Ketik frasanya.',
     suggestion: 'Saran kata dari keyboard terdeteksi. Ketik per huruf.',
     incomplete: 'Irama tidak terekam utuh. Ketik ulang dari awal tanpa menempel.',
+    synthetic: 'Ketikan tidak berasal dari keyboard perangkat ini. Ketik langsung dengan tanganmu.',
     mismatchText: 'Teks belum sama dengan frasa.',
     again: 'Bagus. Sekali lagi.',
     tryAgain: (i, n) => `Iramanya belum cocok. Coba lagi (${i} dari ${n}).`,
@@ -1515,6 +1552,7 @@ const TEXT = {
     pasteBlocked: 'Pasting is not accepted. Please type the phrase.',
     suggestion: 'Keyboard word suggestion detected. Type one letter at a time.',
     incomplete: 'Rhythm was not fully recorded. Type it again without pasting.',
+    synthetic: 'The input did not come from this device’s keyboard. Please type it yourself.',
     mismatchText: 'The text does not match the phrase yet.',
     again: 'Good. Once more.',
     tryAgain: (i, n) => `The rhythm did not match. Try again (${i} of ${n}).`,
@@ -1640,9 +1678,14 @@ function createRecorder(input, hooks) {
   // Per tombol, bukan "tombol terakhir": pengetik cepat menekan huruf berikut SEBELUM
   // melepas huruf sebelumnya (rollover). Versi lama menyimpan satu `downAt`, sehingga
   // rollover mengacaukan pasangan tekan/lepas dan sampel sering tidak utuh.
-  let tainted = false, sawSoft = false, prevLen = 0;
+  // C-46: `synth` = ada event ketik yang DIBUAT SKRIP (isTrusted false). Ini bukan soal
+  // kenyamanan melainkan pintu belakang: template irama tersimpan di perangkat, jadi skrip
+  // yang bisa membacanya (XSS, ekstensi jahat) dulu tinggal menembakkan keydown/keyup dengan
+  // jeda persis median template itu untuk LOLOS verifikasi tanpa satu pun jari menyentuh
+  // keyboard. Sampel yang tersentuh event tiruan ditolak seluruhnya - gagal-tertutup.
+  let tainted = false, sawSoft = false, prevLen = 0, synth = false;
   const downs = [], ups = [], open = new Map(), softT = [];
-  const reset = () => { tainted = false; prevLen = 0; downs.length = 0; ups.length = 0; open.clear(); softT.length = 0; };
+  const reset = () => { tainted = false; synth = false; prevLen = 0; downs.length = 0; ups.length = 0; open.clear(); softT.length = 0; };
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const isSoftKey = e => e.isComposing || e.keyCode === 229 || e.key === 'Unidentified' || e.key === 'Process';
 
@@ -1658,6 +1701,7 @@ function createRecorder(input, hooks) {
     }
   });
   input.addEventListener('keydown', e => {
+    if (e.isTrusted === false) { synth = true; return; }
     if (e.key === 'CapsLock' || (e.getModifierState && e.getModifierState('CapsLock'))) hooks.onCaps(!!(e.getModifierState && e.getModifierState('CapsLock')));
     if (isSoftKey(e)) { sawSoft = true; return; }
     if (e.key === 'Enter') return;
@@ -1671,6 +1715,7 @@ function createRecorder(input, hooks) {
     downs.push(now());
   });
   input.addEventListener('keyup', e => {
+    if (e.isTrusted === false) { synth = true; return; }
     if (isSoftKey(e)) return;
     const id = e.code || e.key;
     const i = open.get(id);
@@ -1697,6 +1742,7 @@ function createRecorder(input, hooks) {
     reset,
     sample() {
       const n = input.value.length;
+      if (synth) return { error: 'synthetic' };
       if (tainted) return { error: 'suggestion' };
       if (sawSoft) {
         if (softT.length !== n || n < 2) return { error: 'incomplete' };
@@ -1886,15 +1932,25 @@ function runMfaChallenge(o) {
       setTimeout(() => { done = false; cleanup(); resolve(result); }, screen.kind === 'ok' ? 900 : 1600);
     }
 
+    // C-46: mengosongkan kolom dari KODE (sesudah sampel ditolak / satu putaran selesai) tidak
+    // menerbitkan event `input`, jadi timer kirim-otomatis yang sudah dijadwalkan tetap hidup
+    // dan menembak ~200 ms kemudian pada kolom yang sudah kosong. Akibatnya pesan yang baru
+    // saja menjelaskan KENAPA ketikan ditolak langsung tertimpa "Teks belum sama dengan
+    // frasa." - pengguna melihat keluhan yang salah dan tidak tahu harus berbuat apa.
+    const clearInput = () => {
+      if (autoT) { clearTimeout(autoT); autoT = null; }
+      inp.value = ''; rec.reset(); paint();
+    };
     function submit() {
       if (done) return;
       if (norm(inp.value) !== norm(phrase)) { say(L.mismatchText, 'err'); inp.focus(); return; }
       const s = rec.sample();
       if (s.error) {
-        say(s.error === 'suggestion' ? L.suggestion : L.incomplete, 'err');
-        inp.value = ''; rec.reset(); paint(); inp.focus(); return;
+        clearInput();
+        say(s.error === 'suggestion' ? L.suggestion : s.error === 'synthetic' ? L.synthetic : L.incomplete, 'err');
+        inp.focus(); return;
       }
-      inp.value = ''; rec.reset(); paint();
+      clearInput();
       if (enrollMode) {
         samples.push(s); paintDots();
         if (samples.length < need) {
@@ -1983,7 +2039,7 @@ function runMfaChallenge(o) {
     setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } }, 30);
   });
 }
-return {runMfaChallenge: runMfaChallenge};
+return {createRecorder: createRecorder, runMfaChallenge: runMfaChallenge};
 })();
 
 /* ---- core/integrity.js ---- */
@@ -2401,7 +2457,7 @@ const { checkCollect } = __M["core/ratelimit.js"];
 const { buildTemplate, verify: verifyChallenge } = __M["core/challenge.js"];
 const { runMfaChallenge } = __M["core/mfa.js"];
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 // C-45: structuredClone baru ada sejak Chrome 98 / Safari 15.4; di browser lebih tua pustaka
 // dulu melempar saat dimuat. DEFAULTS murni data (tanpa fungsi), jadi JSON sudah cukup.
 const clone = o => (typeof structuredClone==='function') ? structuredClone(o) : JSON.parse(JSON.stringify(o));
@@ -2466,6 +2522,18 @@ class BehaviorGuard {
     // -> pendaftaran selalu gagal dan MFA bawaan tak pernah tersedia, tanpa pesan apa pun.
     if(this.cfg.mfa && this.cfg.mfa.enabled && String(this.cfg.mfa.phrase||'').replace(/\s+/g,' ').trim().length < 8){
       try{ console.warn('[BG] mfa.phrase terlalu pendek (minimal 8 karakter) - verifikasi irama ketik tidak akan bisa didaftarkan'); }catch{}
+    }
+    // C-46: KUNCI MATI. `lockAfterFailures` mengunci jalur irama sesudah N dialog gagal
+    // beruntun, dan satu-satunya yang membuka kunci itu adalah verifikasi yang BERHASIL.
+    // Tanpa `onFallback`, tidak ada jalur lain untuk berhasil: pemiliknya - yang mungkin cuma
+    // sedang memakai keyboard lain - terkunci dari verifikasi secara permanen, dan integrator
+    // tidak akan tahu kenapa. Ini fail-closed yang benar secara keamanan tapi salah secara
+    // produk, jadi diperingatkan di awal, bukan ditemukan pengguna saat sudah terkunci.
+    if(this.cfg.mfa && this.cfg.mfa.enabled && (this.cfg.mfa.lockAfterFailures ?? 3) > 0
+       && typeof this.cfg.mfa.onFallback!=='function'){
+      try{ console.warn('[BG] mfa.onFallback kosong sedangkan mfa.lockAfterFailures aktif - sesudah '
+        + (this.cfg.mfa.lockAfterFailures ?? 3) + ' kegagalan beruntun, pemilik tidak punya jalan verifikasi lain. '
+        + 'Isi mfa.onFallback (OTP/WebAuthn yang dicek server), atau set mfa.lockAfterFailures: 0.'); }catch{}
     }
     // C-23: sama pola dengan `mfa` — digabung, bukan ditimpa, supaya konfigurasi
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
@@ -2896,6 +2964,22 @@ class BehaviorGuard {
       this._emit(rlEvt);
       return rlEvt;
     }
+    // C-46: MASUKAN SINTETIS. capture.js sudah MENOLAK event yang dibuat skrip (isTrusted
+    // false) sehingga ia tak pernah jadi perilaku; yang tersisa di sini adalah keputusan atas
+    // FAKTA bahwa seseorang mencoba. Dua hal yang dilakukan, dan dua yang sengaja tidak:
+    //  - jendelanya TIDAK boleh melatih (eligible:false). Inilah pertahanan inti: tanpa ini,
+    //    penyerang cukup menyiarkan event manusiawi sampai profil pemilik tergeser ke arahnya.
+    //  - alasannya diumumkan ke integrator, supaya terlihat di log keamanan.
+    //  - TIDAK memblokir, dan TIDAK menaikkan level. Beberapa pustaka UI (polyfill geser,
+    //    carousel) menerbitkan event tiruan yang sah; memblokir karenanya akan mengunci
+    //    pemilik yang tidak berbuat apa-apa. Kebijakan itu milik integrator.
+    const synthTotal=this.capture ? (this.capture.synthetic||0) : 0;
+    const synthNew=Math.max(0, synthTotal-(this._synthSeen||0));
+    this._synthSeen=synthTotal;
+    // ambang: jendela bukti 150 event; belasan event tiruan masih bisa datang dari pustaka UI,
+    // ratusan tidak. Dijaga relatif terhadap bukti supaya jendela kecil tidak gampang tertuduh.
+    const synthetic = synthNew >= 20 && synthNew >= 0.1*Math.max(1,(events?events.length:0));
+    if(synthetic) eligible=false;
     // integrity (bot/replay) - jika events tersedia
     if(events){
       const integ=checkIntegrity(events, {throttled:true});
@@ -3069,6 +3153,7 @@ class BehaviorGuard {
     // challenge step-up
     let reasons=reasonsFrom(top);
     if(M.keystrokeBypassed) reasons=['bukti keystroke dialihkan (autofill/tempel) - blok ritme ketik tidak dinilai', ...reasons];
+    if(synthetic) reasons=[`${synthNew} masukan dibuat skrip (bukan dari keyboard/mouse) - tidak dihitung sebagai perilaku, jendela ini tidak melatih model`, ...reasons];
     if(M.replay) reasons=[`perilaku identik dengan sesi lama (jarak ${M.replay.distance.toFixed(4)}) - kemungkinan rekam-ulang`, ...reasons];
     if(reverifyAfterAway) reasons=[`kembali setelah absen ${Math.round(awayInfo.awayMs/60000)} menit (${awayInfo.reason}) - verifikasi ulang`, ...reasons];
     if(stepUpGrace) reasons=[`model: MEDIUM, tidak ditanya ulang - terverifikasi ${Math.round(stepUpGrace.verifiedAgoSec/60)} menit lalu`, ...reasons];
@@ -3086,7 +3171,8 @@ class BehaviorGuard {
       resumedAfterAway: awayInfo, reverifyAfterAway, stepUpGrace,
       // topFeatures/features berasal dari jendela TERAKHIR; skornya dari rata-rata M.
       aggregated: aggMembers ? {windows: aggMembers.length} : null,
-      partialEvidence: M.keystrokeBypassed ? 'keystroke' : null};
+      partialEvidence: M.keystrokeBypassed ? 'keystroke' : null,
+      automation: synthetic ? { syntheticInputs: synthNew } : null};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
     // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu —
     // kalau hanya yang terakhir yang disimpan, kolam latih tumbuh M kali lebih lambat.
@@ -3197,9 +3283,27 @@ class BehaviorGuard {
    * server integrator sudah memverifikasi faktornya (batas kepercayaan = reportStepUp).
    */
   async _runFallback(ctx){
-    const f=this.cfg.mfa && this.cfg.mfa.onFallback;
+    const m=this.cfg.mfa||{};
+    const f=m.onFallback;
     if(typeof f!=='function') return null;
-    try{ return (await f(ctx))===true; }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+    // C-46: BATAS WAKTU. `onFallback` adalah kode MILIK INTEGRATOR. Kalau Promise-nya tidak
+    // pernah selesai - dialog OTP yang tombol batalnya lupa me-resolve, panggilan jaringan
+    // tanpa timeout, tab yang ditinggal - maka `_mfaBusy` tersangkut SELAMANYA. Akibatnya
+    // bukan satu verifikasi yang gagal, melainkan seluruh lapisan step-up mati untuk sisa
+    // umur halaman: tiap vonis berikutnya pulang dengan mfa:{busy:true} dan integrator yang
+    // (benar) menunggu hasil dialog tidak pernah bertindak. Habis waktu = TIDAK terverifikasi.
+    const ms=Number.isFinite(m.fallbackTimeoutMs) ? m.fallbackTimeoutMs : 300000;
+    let timer=null;
+    try{
+      const p=Promise.resolve(f(ctx)).then(v=> v===true);
+      if(!(ms>0)) return await p;
+      const race=new Promise(res=>{ timer=setTimeout(()=>{
+        try{ console.warn(`[BG] mfa.onFallback tidak selesai dalam ${ms>=1000? Math.round(ms/1000)+' dtk' : ms+' ms'} - dianggap tidak terverifikasi`); }catch{}
+        res(false);
+      }, ms); });
+      return await Promise.race([p, race]);
+    }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+    finally{ if(timer) clearTimeout(timer); }
   }
   // Popup MFA otomatis saat vonis MEDIUM/HIGH (bila cfg.mfa.enabled & ada DOM).
   // Verifikasi memakai template irama; tanpa template -> jalur cadangan integrator.
@@ -3727,7 +3831,14 @@ class BehaviorGuard {
       lastVerdict: e ? { level:e.level, action:e.action, score:e.score, blocked:!!e.blocked, at:e.at,
                          reasons:(e.reasons||[]).slice(0,3), mfa:e.mfa||null } : null,
       evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess },
+      // C-46: `canEnroll` supaya halaman pengaturan tahu apakah tombol "atur verifikasi irama"
+      // layak ditampilkan SEKARANG. Tanpa ini integrator hanya bisa menebak, lalu menampilkan
+      // tombol yang setiap kali ditekan menjawab "sesi sedang dicurigai" - syarat C-2 yang
+      // benar, tapi disampaikan di saat yang paling membingungkan bagi pengguna.
       mfa: { enabled: !!(this.cfg.mfa && this.cfg.mfa.enabled), enrolled: !!this.challengeTemplate,
+             canEnroll: !!(this.inited && this.userId && typeof document!=='undefined' && !this.challengeTemplate
+               && !this._mfaBusy && this.lastRisk==='LOW'
+               && !(this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000)),
              mode: this.challengeTemplate ? (this.challengeTemplate.mode||'hard') : null,
              fallback: !!(this.cfg.mfa && typeof this.cfg.mfa.onFallback==='function'),
              verifiedAt: this._mfaPassedAt||null, graceLeftSec: Math.round(graceLeft/1000), busy: !!this._mfaBusy,
@@ -3783,6 +3894,11 @@ class BehaviorGuard {
     this._newSinceRebuild=0; this._mfaEnrollSnoozeUntil=0; this._stepUpFailures=0;
     this._pendingEvents=null; this._ctx=[];
     this._lastEvt=null; this._lastKeyAt=0; this._mfaFailStreak=0;
+    // C-46: hitungan masukan sintetis KUMULATIF milik capture, dan init() memasang capture
+    // BARU yang mulai dari nol. Kalau penanda ini tidak ikut direset, sesudah logout->login
+    // `synthNew = max(0, 0 - nilai_lama)` = 0 sampai kunjungan baru melewati angka lama:
+    // deteksi mati diam-diam persis di sesi yang paling mungkin diserang.
+    this._synthSeen=0;
   }
   async clear(){
     // C-7: dulu challengeTemplate/_highRun/_mfaPassedAt tetap hidup di memori

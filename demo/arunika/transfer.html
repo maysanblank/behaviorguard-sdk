@@ -73,7 +73,7 @@
       <section class="card card-b" id="guard"></section>
       <section class="card card-b">
         <h3>Kapan kami minta verifikasi?</h3>
-        <p class="small muted" style="margin-top:6px">Saat cara akunmu dipakai terlihat tidak biasa, atau selama perangkat ini masih dikenali untuk transfer Rp 1 juta ke atas. Verifikasi memakai irama ketikmu atau kode OTP.</p>
+        <p class="small muted" style="margin-top:6px">Saat cara akunmu dipakai terlihat tidak biasa, atau selama perangkat ini masih dikenali untuk transfer Rp 1 juta ke atas. Verifikasi utamanya memakai irama ketikmu; kode sekali pakai tersedia sebagai cara lain.</p>
       </section>
     </aside>
   </div>
@@ -101,7 +101,8 @@
   $('pick').innerHTML = a.penerima.map((p, i) => `<label class="opt"><input type="radio" name="tuj" value="${i}" ${ke === p.rek || (!ke && i === 0) ? 'checked' : ''}>
       <div class="avatar" style="background:#e5e7eb;color:#374151">${A.esc(A.inisial(p.nama))}</div>
       <div class="main"><div class="t">${A.esc(p.nama)}</div><div class="s num">${A.esc(p.bank)} · ${A.esc(p.rek)}</div></div></label>`).join('') +
-    `<label class="opt"><input type="radio" name="tuj" value="baru"><div class="main"><div class="t">Rekening baru</div><div class="s">Masukkan nomor rekening tujuan</div></div></label>`;
+    `<label class="opt"><input type="radio" name="tuj" value="baru"${a.penerima.length ? '' : ' checked'}><div class="main"><div class="t">Rekening baru</div><div class="s">Masukkan nomor rekening tujuan</div></div></label>`;
+  if (!a.penerima.length) { $('baru').hidden = false; }
   const tujuan = () => (document.querySelector('input[name=tuj]:checked') || {}).value;
   document.querySelectorAll('input[name=tuj]').forEach(r => r.addEventListener('change', () => { $('baru').hidden = tujuan() !== 'baru'; if (tujuan() === 'baru') $('rek').focus(); }));
   const NAMA = ['Siti Rahmawati', 'Agus Setiawan', 'Dewi Lestari', 'Hendra Gunawan', 'Putri Ayu Maharani', 'Rizky Ramadhan'];
