@@ -13,7 +13,7 @@ SDK  = os.path.join(ROOT, "sdk")
 ORDER = [
     "core/config.js", "core/standardize.js", "core/features.js",
     "core/ensemble.js", "core/risk.js", "core/isolation_forest.js",
-    "core/ocsvm.js", "core/mahalanobis.js", "core/capture.js", "core/idle.js", "core/challenge.js", "core/mfa.js",
+    "core/ocsvm.js", "core/mahalanobis.js", "core/capture.js", "core/idle.js", "core/challenge.js", "core/mfa.js", "core/enroll_ui.js",
     "core/integrity.js", "core/fingerprint.js", "core/lifecycle.js",
     "core/ratelimit.js", "core/token.js", "storage.js",
     "behaviorguard.js",
@@ -141,16 +141,18 @@ function __bgMountPanel(){
     '.b{padding:11px 12px 12px}.l{font-size:17px;font-weight:700;letter-spacing:-.01em}'+
     '.s{color:#5b6573;font-size:12px;margin-top:2px}.r{color:#8a93a0;font-size:11.5px;margin-top:7px}'+
     '.bar{height:5px;border-radius:9px;background:#eef0f3;margin-top:9px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:#1f5fd6;transition:width .3s}'+
+    '.m{margin-top:8px;border:0;background:none;padding:0;font:inherit;font-size:12px;font-weight:600;color:#1f5fd6;cursor:pointer}.m:focus-visible{outline:2px solid #1f5fd6;outline-offset:2px}'+
     '@media (prefers-color-scheme:dark){.p{background:#171b22;color:#e8ebf0;border-color:#2c323c}.h{border-color:#2c323c}.s{color:#9aa3af}.bar{background:#2c323c}}';
   try{ if(root.adoptedStyleSheets!==undefined && typeof CSSStyleSheet==='function'){ var sh=new CSSStyleSheet(); sh.replaceSync(css); root.adoptedStyleSheets=[sh]; } else throw 0; }
   catch(_){ var st=document.createElement('style'); st.textContent=css; root.appendChild(st); }
   var p=document.createElement('div'); p.className='p';
   p.innerHTML='<div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/></svg><b>BehaviorGuard</b><span class="d"></span></div>'+
-    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div></div>';
+    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div><button class="m" type="button">Lihat detail</button></div>';
   root.appendChild(p);
   (document.body||document.documentElement).appendChild(host);
   var q=function(c){ return p.querySelector(c); };
   var L=q('.l'), S=q('.s'), R=q('.r'), D=q('.d'), BAR=q('.bar'), FILL=q('.bar i');
+  q('.m').onclick=function(){ try{ window.BehaviorGuard.openEnrollment(); }catch(e){ try{ console.error(e); }catch(_){} } };
   L.textContent='Mengenali...'; S.textContent='menunggu aktivitas';
   var C={LOW:['#1a7f4b','Aman'],MEDIUM:['#b35c00','Perlu verifikasi'],HIGH:['#c4312b','Berisiko'],UNKNOWN:['#6b7380','Belum cukup bukti']};
   return function(e){

@@ -27,7 +27,7 @@
       const k = st.enrollment.done, n = st.enrollment.need;
       el.innerHTML = `<div class="guard"><div class="ico">${A.I.shield}</div><div style="flex:1;min-width:0">
         <h3>Mengenali cara kamu memakai Arunika</h3>
-        <p class="small muted" style="margin:3px 0 10px">Pakai seperti biasa. Selama masa pengenalan, transfer Rp 1 juta ke atas diverifikasi dengan kode sekali pakai.</p>
+        <p class="small muted" style="margin:3px 0 10px">Pakai seperti biasa. Selama masa pengenalan, setiap transfer dan pembayaran diminta verifikasi dulu.</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${k}"><i style="width:${Math.round(k / n * 100)}%"></i></div>
         <p class="small muted num" style="margin-top:6px">${k} dari ${n} aktivitas${st.cepat ? ' · mode presentasi' : ''}</p></div></div>`;
       return;

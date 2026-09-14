@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contoh kartu pengenalan bawaan · BehaviorGuard</title>
+<style>
+  body{margin:0;font-family:Georgia,serif;background:#faf7f2;color:#2b2118}
+  header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #e8dfd2;background:#fff}
+  main{max-width:760px;margin:24px auto;padding:0 16px}
+  .note{font:14px/1.6 system-ui,sans-serif;background:#fff;border:1px solid #e8dfd2;border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  button{font:600 14px system-ui,sans-serif;background:#2b2118;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+</style>
+</head>
+<body>
+<header><b>Toko Kopi Senja</b><button id="buka">Status pengenalan</button></header>
+<main>
+  <div class="note">Situs ini <b>tidak menulis satu baris pun</b> HTML/CSS untuk kartu di bawah. Isinya
+  dari <code>BehaviorGuard.mountEnrollment('#pengenalan')</code>. Tombol di pojok kanan atas memanggil
+  <code>BehaviorGuard.openEnrollment()</code>. Gaya situs (font serif ini) tidak merembes ke kartu.</div>
+  <div id="pengenalan"></div>
+</main>
+<script>window.BehaviorGuardConfig = { userId: 'contoh-kartu@demo.id', panel: true, mfa: { brand: 'Kopi Senja', accent: '#8a4b16', theme: 'light', phrase: 'kopi senja jaga akunku' } };</script>
+<script src="behaviorguard.js"></script>
+<script>
+  BehaviorGuard.mountEnrollment('#pengenalan');
+  document.getElementById('buka').onclick = () => BehaviorGuard.openEnrollment({ practice: false });
+</script>
+</body>
+</html>

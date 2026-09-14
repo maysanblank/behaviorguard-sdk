@@ -177,7 +177,9 @@
    *   LOW                         -> lanjut
    *   MEDIUM / HIGH / terkunci    -> verifikasi dulu
    *   UNKNOWN (bukti belum cukup, atau perangkat masih dikenali)
-   *                               -> verifikasi untuk nominal >= Rp 1 juta; nominal kecil lanjut
+   *                               -> verifikasi, BERAPA PUN nominalnya
+   *   LOW tapi detektor utama belum aktif (kolam latih < 20 potong bukti)
+   *                               -> verifikasi untuk uang keluar (transfer, pembayaran)
    *   baru lolos verifikasi (<= 15 menit, assessNow().verifiedRecently)
    *                               -> tidak ditanya lagi, kecuali HIGH atau ganti sandi
    */
@@ -186,7 +188,16 @@
     const r = BG.assessNow();
     const selalu = aksi === 'ganti-sandi';
     let perlu = selalu || terkunci() || r.level === 'MEDIUM' || r.level === 'HIGH';
-    if (r.level === 'UNKNOWN' && nominal >= 1_000_000) perlu = true;
+    // UNKNOWN = belum ada pembanding, atau bukti di halaman ini belum cukup. Dulu hanya
+    // nominal >= Rp 1 juta yang diverifikasi: di uji penyusup 14 Sep 2026, teman yang duduk
+    // di laptop pemilik selama masa pengenalan mengirim Rp 10.000 dua kali tanpa ditanya
+    // apa pun. Batas nominal bukan pengaman - penyusup cukup memecah transfernya.
+    if (r.level === 'UNKNOWN') perlu = true;
+    // LOW dari mesin yang belum utuh bukan izin memindahkan uang: sampai kolam latih 20
+    // potong bukti, Mahalanobis (bobot 0,70) masih dibungkam dan Isolation Forest menilai
+    // sendirian (C-46). Masa berlaku verifikasi (15 menit) mencegah pemilik ditanya berulang.
+    const st = BG.status();
+    if (r.level === 'LOW' && nominal > 0 && !(st && st.model && st.model.mainDetector)) perlu = true;
     if (perlu && !selalu && r.verifiedRecently && r.level !== 'HIGH' && !terkunci()) perlu = false;
     if (!perlu) return { ok: true, penilaian: r };
     const v = await BG.stepUp({ level: r.level === 'HIGH' ? 'HIGH' : 'MEDIUM', reason: label });

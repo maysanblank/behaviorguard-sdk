@@ -2143,6 +2143,42 @@ Salinan ablasinya bukan bagian repo (ditulis ke temp OS); yang direproduksi adal
 salin `sdk/`, ubah rumusnya, lalu `node tools/eval_sdk.mjs --live --sdk <salinan>` dan
 bandingkan **belahan-lapor**, bukan angka 16-subjek.
 
+## C-48 - penyusup mengirim uang tanpa ditanya selama masa pengenalan; kartu pengenalan jadi milik pustaka
+
+**Temuan (uji penyusup rekaman 14 Sep 2026).** Teman yang duduk di laptop pemilik mengirim
+Rp 10.000 dua kali di Arunika tanpa satu pun verifikasi. Pustaka tidak salah menilai: vonisnya
+`UNKNOWN` (pendaftaran baru 4/10 beberapa menit sebelumnya). Yang meloloskan adalah KEBIJAKAN
+situs di `demo/arunika/assets/bg-integrasi.js`: `UNKNOWN` hanya diverifikasi untuk nominal
+>= Rp 1 juta. Batas nominal bukan pengaman - penyusup cukup memecah transfernya. `assessNow()`
+sendiri sudah mendokumentasikan UNKNOWN sebagai "minta verifikasi" (C-33); demonya melanggar itu.
+
+Celah kedua yang sejenis: sesudah 10 potong bukti vonis bisa `LOW`, padahal sampai kolam latih
+20 detektor utama (Mahalanobis, 0,70) masih dibungkam dan Isolation Forest menilai sendirian
+(C-46). `LOW` dari mesin setengah jadi dipakai sebagai izin memindahkan uang.
+
+**Perbaikan (kebijakan integrator, bukan mesin - FRR/FAR resmi tidak berubah).**
+- `UNKNOWN` -> verifikasi, berapa pun nominalnya.
+- `LOW` dengan `status().model.mainDetector === false` -> verifikasi untuk uang keluar.
+- Masa berlaku verifikasi (15 menit) tetap berlaku, jadi pemilik tidak ditanya tiap transfer.
+Biayanya ditanggung pemilik di masa pengenalan saja (maks. sekali per 15 menit); sesudah
+pemeriksa utama menyala perilakunya sama dengan sebelumnya. `dist/PASANG.md` kini
+merekomendasikan pola yang sama ke integrator lain.
+
+**Batas yang tetap ada.** Di demo, kode sekali pakai "dikirim" sebagai notifikasi di layar yang
+sama; penyusup yang menekan "Gunakan cara lain" bisa membacanya. Di produksi kode itu ke ponsel
+pemilik. Untuk uji penyusup, atur irama ketik lebih dulu dan jangan pakai jalur kode.
+
+**Kartu pengenalan bawaan.** Kartu "Mengenali perangkat ini" dulu hanya ada di `mulai.html`
+Arunika, ditulis tangan situsnya. Kini `sdk/core/enroll_ui.js`:
+`BehaviorGuard.mountEnrollment(el, opsi)` dan `BehaviorGuard.openEnrollment(opsi)`, plus tombol
+"Lihat detail" di panel `data-panel`. Kartunya menampilkan DUA tahap (profil dasar 10 ->
+pemeriksa utama 20) supaya tidak berkata "selesai" di titik yang justru meloloskan transfer di
+atas. Shadow DOM seperti `mfa.js`; host sengaja tanpa `[data-bg-mfa]` sehingga ketikan latihan
+terhitung sebagai bukti (diperiksa di browser: 9 tombol di textarea kartu -> +10 event, sama
+dengan input biasa). `status().evidence.windowSec` ditambahkan untuk teks "setiap ±30 detik".
+Contoh: `dist/panel-pengenalan.html`. Tes: min_check 7/7, stepup 61/61, c46 25/25, privacy
+14/14, lifecycle 49/49, integrity 10/10.
+
 Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
 rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
 conformance dijalankan ulang di kedua sisi dan tetap 227/227 (255/255 sejak SPEC 1.3, C-34; 319/319 sejak SPEC 1.4, C-44).

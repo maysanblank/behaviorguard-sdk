@@ -128,7 +128,7 @@ const TEXT = {
   },
 };
 
-function pickLang(lang) {
+export function pickLang(lang) {
   if (lang && TEXT[lang]) return lang;
   try {
     const l = (document.documentElement.getAttribute('lang') || navigator.language || 'id').toLowerCase();

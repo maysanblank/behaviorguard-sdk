@@ -56,8 +56,33 @@ Sesudah pemilik lolos, vonis MEDIUM tidak bertanya lagi selama 15 menit (HIGH te
 ## Sebelum aksi sensitif (ganti email/sandi, transfer, tambah perangkat)
 ```js
 const v = BehaviorGuard.assessNow();
-if (v.level !== 'LOW') mintaVerifikasi();   // UNKNOWN = bukti belum cukup -> tetap verifikasi
+const utuh = BehaviorGuard.status().model.mainDetector;   // pemeriksa utama sudah menyala?
+if (v.level !== 'LOW' || !utuh) mintaVerifikasi();
 ```
+- `UNKNOWN` = belum ada pembanding / bukti di halaman ini belum cukup. **Verifikasi, berapa pun
+  nominalnya.** Batas nominal ("hanya >= Rp 1 juta") bukan pengaman: penyusup cukup memecah
+  transfernya.
+- `LOW` sebelum `mainDetector` menyala (kolam latih < 20 potong bukti) datang dari Isolation
+  Forest sendirian. Jangan jadikan izin memindahkan uang.
+- `v.verifiedRecently` = pemilik baru lolos verifikasi (15 menit): boleh tidak ditanya lagi.
+
+## Kartu "Mengenali perangkat ini" (opsional, bawaan pustaka)
+Tunjukkan ke pengguna sampai mana situs mengenalinya: lingkaran kemajuan, dua tahap
+(profil dasar 10 -> pemeriksa utama 20), penghitung kejadian, latihan mengetik, dan tombol
+atur verifikasi irama ketik. Tanpa satu baris CSS/HTML dari situs.
+```js
+// di dalam halaman (misal halaman "Mulai" atau "Keamanan")
+const kartu = BehaviorGuard.mountEnrollment('#pengenalan', { brand: 'Toko Saya' });
+// ... kartu.destroy() saat pindah rute SPA
+
+// atau sebagai dialog, dari tombol mana pun
+tombol.onclick = () => BehaviorGuard.openEnrollment();
+```
+Opsi: `lang` (`id`/`en`), `theme` (`auto`/`light`/`dark`), `accent`, `brand`, `practice:false`
+(tanpa latihan mengetik), `mfaSetup:false` (tanpa kartu irama ketik), `sentences:[...]`,
+`texts:{...}` (timpa teks), `onComplete(status)` (sekali, saat pemeriksa utama menyala).
+Warna/merek/tema diambil dari `mfa` bila tidak diisi. Panel mengambang `data-panel` kini punya
+tombol **Lihat detail** yang membuka kartu ini.
 
 ## Setel lanjut (opsional)
 ```js
