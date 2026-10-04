@@ -13,6 +13,18 @@ device, with a built-in step-up challenge. One script tag. No backend required.*
 
 > Versi bahasa Indonesia: [README.id.md](README.id.md)
 
+## Demo
+
+<p align="center">
+  <img src="assets/demo-colok.gif" alt="Plugging BehaviorGuard into a plain checkout site" width="100%">
+</p>
+
+A plain shop with login and checkout only, no MFA. One line goes into the backend
+(`shop.py`), one script tag into the page (`index.html`), the server restarts, and checkout
+now asks for verification before it goes through. Run it yourself:
+[demo/toko-checkout](demo/toko-checkout/). To do the same on your own site (Flask, Express,
+PHP, Laravel): [docs/PASANG-DI-WEB-KAMU.md](docs/PASANG-DI-WEB-KAMU.md).
+
 ---
 
 ## The problem
@@ -252,6 +264,10 @@ entire browser build is one ~160 KB classic script.
 ## Try the demo
 
 No Node required.
+
+**Plug it into a plain site (the GIF above):** [demo/toko-checkout](demo/toko-checkout/) - a
+Flask shop with its own backend and no MFA. Two commented lines turn BehaviorGuard on; the
+README there walks through it.
 
 ```bash
 python -m http.server 8080
