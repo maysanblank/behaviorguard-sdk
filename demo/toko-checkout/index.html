@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Toko Satu-Klik - checkout tanpa proteksi</title>
+<style>
+  :root{ --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#0a7a63; }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f8;color:var(--ink)}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+  header b{font-size:18px}
+  .tag{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:3px 10px;border-radius:999px}
+  main{max-width:720px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+  h2{margin:0 0 12px;font-size:16px}
+  input[type=email],input[type=password]{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:9px;margin:6px 0;font-size:15px}
+  input[type=checkbox]{width:18px;height:18px;margin:0 10px 0 0;vertical-align:middle;accent-color:var(--brand)}
+  label{display:flex;align-items:center;cursor:pointer}
+  button{background:var(--brand);color:#fff;border:0;border-radius:999px;padding:11px 18px;cursor:pointer;font-weight:700;font-size:15px}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .muted{color:var(--muted);font-size:13px}
+  .hidden{display:none}
+  #receipt{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:10px;padding:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <b>Toko Satu-Klik</b>
+  <span class="tag">situs polos - tanpa MFA, tanpa proteksi sesi</span>
+</header>
+
+<main>
+  <!-- LOGIN (polos: email + sandi, tidak ada verifikasi kedua) -->
+  <section id="loginCard" class="card">
+    <h2>Masuk</h2>
+    <input id="email" type="email" placeholder="email kamu" autocomplete="username">
+    <input id="password" type="password" placeholder="sandi" autocomplete="current-password">
+    <button id="btnLogin">Masuk</button>
+    <p class="muted">Login apa adanya. Begitu masuk, siapa pun yang memegang sesi ini bisa checkout.</p>
+  </section>
+
+  <!-- TOKO + CHECKOUT (muncul setelah login) -->
+  <section id="shopCard" class="card hidden">
+    <div class="row">
+      <h2 style="margin:0">Belanja <span class="muted" id="who"></span></h2>
+      <button class="ghost" id="btnLogout">Keluar</button>
+    </div>
+    <div id="products"></div>
+    <div class="row"><b>Total</b><b id="total">Rp 0</b></div>
+    <button id="btnCheckout" data-checkout style="width:100%;margin-top:12px">Bayar sekarang</button>
+    <div id="receipt" class="hidden"></div>
+  </section>
+
+  <section id="ordersCard" class="card hidden">
+    <h2>Pesanan</h2>
+    <div id="orders" class="muted">Belum ada.</div>
+  </section>
+</main>
+
+<!--
+  ===========================================================================
+  COLOK BEHAVIORGUARD DI SINI  (demo plug-and-play)
+  Hapus tag komentar ini supaya baris di bawah aktif. SATU baris. Tidak ada
+  perubahan lain di seluruh file ini.
+  ---------------------------------------------------------------------------
+  <script src="plug-behaviorguard.js" defer></script>
+  ===========================================================================
+-->
+
+<script>
+  // --- kode toko: murni bisnis, NOL kaitan ke BehaviorGuard ---
+  let PRODUCTS = [], cart = new Set();
+  const $ = s => document.querySelector(s);
+  const rupiah = n => "Rp " + n.toLocaleString("id-ID");
+
+  async function refreshMe(){
+    const d = await fetch("/api/me").then(r=>r.json());
+    PRODUCTS = d.products;
+    if (d.user){ showShop(d.user); } else { showLogin(); }
+  }
+  function showLogin(){ $("#loginCard").classList.remove("hidden"); $("#shopCard").classList.add("hidden"); $("#ordersCard").classList.add("hidden"); }
+  function showShop(user){
+    $("#loginCard").classList.add("hidden");
+    $("#shopCard").classList.remove("hidden");
+    $("#ordersCard").classList.remove("hidden");
+    $("#who").textContent = "- " + user;
+    renderProducts(); renderOrders();
+  }
+  function renderProducts(){
+    $("#products").innerHTML = "";
+    PRODUCTS.forEach(p=>{
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<label><input type="checkbox" data-id="${p.id}"> ${p.nama}</label><span>${rupiah(p.harga)}</span>`;
+      row.querySelector("input").onchange = e => { e.target.checked ? cart.add(p.id) : cart.delete(p.id); renderTotal(); };
+      $("#products").appendChild(row);
+    });
+    renderTotal();
+  }
+  function renderTotal(){
+    const t = PRODUCTS.filter(p=>cart.has(p.id)).reduce((s,p)=>s+p.harga,0);
+    $("#total").textContent = rupiah(t);
+  }
+  async function renderOrders(){
+    const d = await fetch("/api/orders").then(r=>r.json());
+    $("#orders").innerHTML = d.orders.length
+      ? d.orders.map(o=>`${o.id} - ${rupiah(o.total)} - ${o.at}`).join("<br>")
+      : "Belum ada.";
+  }
+
+  $("#btnLogin").onclick = async () => {
+    const r = await fetch("/api/login", {method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({email:$("#email").value, password:$("#password").value})}).then(r=>r.json());
+    if (r.ok) showShop(r.user); else alert(r.error || "gagal masuk");
+  };
+  $("#btnLogout").onclick = async () => { await fetch("/api/logout",{method:"POST"}); cart.clear(); showLogin(); };
+
+  $("#btnCheckout").onclick = async () => {
+    if (!cart.size) return alert("Pilih barang dulu.");
+    const r = await fetch("/api/checkout", {method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({items:[...cart]})}).then(r=>r.json());
+    if (r.ok){
+      $("#receipt").classList.remove("hidden");
+      $("#receipt").textContent = `Berhasil. ${r.order.id} - ${rupiah(r.order.total)}. Terima kasih.`;
+      cart.clear(); document.querySelectorAll("#products input").forEach(c=>c.checked=false);
+      renderTotal(); renderOrders();
+    } else alert(r.error || "gagal");
+  };
+
+  refreshMe();
+</script>
+</body>
+</html>

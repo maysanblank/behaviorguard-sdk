@@ -5,6 +5,11 @@ Start here. This is the map to every document in the project.
 ## Get started
 - [QUICKSTART.md](QUICKSTART.md) - every integration path (script tag, ES module, config
   object), the full config surface, and framework notes (React/Vue/plain HTML).
+- [PASANG-DI-WEB-KAMU.md](PASANG-DI-WEB-KAMU.md) - step-by-step (Bahasa Indonesia): exactly
+  which file to touch in your backend and pages, with Flask, Express, PHP and Laravel
+  examples, and what to do if your site has no MFA yet.
+- [../demo/toko-checkout/](../demo/toko-checkout/) - a plain shop with its own backend, and
+  the two lines that plug BehaviorGuard into it.
 
 ## Understand the engine
 - [../ARCHITECTURE.md](../ARCHITECTURE.md) - the pipeline end to end: capture -> features ->
