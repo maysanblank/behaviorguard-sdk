@@ -1,34 +1,34 @@
 /**
- * idle.js — segmentasi sesi berbasis jeda idle + akuntansi waktu aktif (C-23)
+ * idle.js - segmentasi sesi berbasis jeda idle + akuntansi waktu aktif (C-23)
  *
  * MASALAH. Fitur F4 dihitung dari SELISIH antar-event dan dari `duration` =
  * (timestamp terakhir − timestamp pertama). Kalau pengguna membuka halaman lalu
- * ditinggal — ambil minum, angkat telepon, pindah ke aplikasi lain — jeda mati itu
+ * ditinggal - ambil minum, angkat telepon, pindah ke aplikasi lain - jeda mati itu
  * ikut masuk ke dalam statistik seolah-olah ia perilaku:
  *
- *   mouse_click_interval_mean     satu jeda 10 menit menarik rata-rata 2 dtk → 300 dtk
+ *   mouse_click_interval_mean     satu jeda 10 menit menarik rata-rata 2 dtk -> 300 dtk
  *   keystroke_flight_time_mean    idem: satu selisih raksasa mendominasi mean
- *   keystroke_typing_speed        keyEv.length / duration → runtuh ke ~0
- *   keystroke_cross_field_cadence gap fokus→ketik melintasi jeda
+ *   keystroke_typing_speed        keyEv.length / duration -> runtuh ke ~0
+ *   keystroke_cross_field_cadence gap fokus->ketik melintasi jeda
  *   form_field_switch_rate        mean jeda antar-fokus melintasi jeda
  *   temporal_session_duration     durasi = jam, padahal interaksinya 20 detik
- *   mouse_velocity/acceleration   gerakan pertama sesudah jeda: dt raksasa → v≈0
+ *   mouse_velocity/acceleration   gerakan pertama sesudah jeda: dt raksasa -> v≈0
  *
  * Model dilatih dari sesi riset berbasis-tugas yang PADAT (pengguna mengerjakan
  * skenario tanpa jeda panjang). Jadi jeda idle bukan cuma menambah derau: ia
- * menciptakan ketidakcocokan latih-vs-pakai yang sistematis — kelas cacat yang
+ * menciptakan ketidakcocokan latih-vs-pakai yang sistematis - kelas cacat yang
  * sama dengan C-16/C-17, hanya sumbernya waktu, bukan field yang kosong.
  *
  * PRINSIP. Idle BUKAN perilaku, jadi ia tidak boleh diukur. Ia dipotong keluar,
  * bukan dirata-rata masuk. Aliran event dipecah pada tiap jeda ≥ `gapMs`;
  * `extractF4` hanya pernah melihat potongan yang KONTIGU. Rumus fitur di
- * core/SPEC.md tidak berubah sedikit pun — yang berubah hanya APA yang disuapkan
+ * core/SPEC.md tidak berubah sedikit pun - yang berubah hanya APA yang disuapkan
  * ke sana. Karena itu golden vector dan keempat port (Python/Rust/Java/WASM)
  * tetap hijau tanpa disentuh.
  *
  * Idle punya DUA konsekuensi berbeda, jadi ambangnya dua:
- *   gapMs  (ukur)  — jeda yang tidak boleh diukur melintasinya.        default 30 dtk
- *   awayMs (aman)  — jeda yang berarti kursinya mungkin kosong, dan orang yang
+ *   gapMs  (ukur)  - jeda yang tidak boleh diukur melintasinya.        default 30 dtk
+ *   awayMs (aman)  - jeda yang berarti kursinya mungkin kosong, dan orang yang
  *                    duduk sesudahnya belum tentu orang yang sama.     default 5 mnt
  * Lihat behaviorguard.js `_onCaptureEvent` / `resumedAfterAway` untuk lapis kedua.
  */
@@ -40,14 +40,14 @@ export const AWAY_MS_DEFAULT = 300_000;   // 5 menit: batas "kursi mungkin koson
  * B1: pisahkan event menurut ALIRAN asalnya (tab) sebelum apa pun diukur.
  *
  * Dua tab aplikasi yang sama menulis ke akumulator pending yang sama, jadi event
- * dari dua halaman berbeda — yang dipakai bergantian, saling menyela dalam waktu —
+ * dari dua halaman berbeda - yang dipakai bergantian, saling menyela dalam waktu -
  * dulu tergabung jadi satu "sesi". Segmentasi idle tidak menolong di sini: kedua
  * aliran itu aktif BERSAMAAN, jadi tak ada jeda untuk dipotong. Yang tercipta
  * adalah orang ketiga yang tidak pernah ada: selisih antar-event melompat-lompat
  * antara dua konteks, dan tak satu pun mencerminkan perilaku siapa pun.
  *
  * Prinsipnya sama dengan C-23: kalau dua pengukuran datang dari alat yang berbeda,
- * jangan dirata-ratakan — pisahkan. Event tanpa `tabId` (data lama, atau event yang
+ * jangan dirata-ratakan - pisahkan. Event tanpa `tabId` (data lama, atau event yang
  * disuntik integrator) diperlakukan sebagai satu aliran bersama, jadi perilaku lama
  * tidak berubah.
  */
@@ -65,7 +65,7 @@ export function groupByStream(events){
 
 /**
  * C-29: buang event yang IDENTIK PERSIS (jenis, milidetik, koordinat, tombol, tahan,
- * gulir, halaman — semuanya sama). Dua gerakan tangan tidak mungkin identik sampai
+ * gulir, halaman - semuanya sama). Dua gerakan tangan tidak mungkin identik sampai
  * milidetik dan piksel; kembaran seperti itu selalu artefak pencatatan: pendengar
  * terpasang dua kali, batch terkirim ulang, ekor `bg:pending` ikut terbaca dua kali.
  *
@@ -74,7 +74,7 @@ export function groupByStream(events){
  * sebagai bot ("timestamp duplikat") -> BLOCK_SESSION; sesudah kembaran dibuang: 0.
  * (b) fitur-cacah berlipat dua dan flight-time berisi nol di sebagian sesi saja, jadi
  * dua sesi dari orang yang sama terlihat seperti dua orang. Kembaran tidak membawa
- * informasi perilaku apa pun, jadi membuangnya tidak menghapus bukti — ia memulihkan
+ * informasi perilaku apa pun, jadi membuangnya tidak menghapus bukti - ia memulihkan
  * pengukurannya. Urutan dipertahankan; tidak memutasi masukan.
  */
 export function dropExactDuplicates(events){
@@ -121,7 +121,7 @@ export function segmentByIdle(events, gapMs=GAP_MS_DEFAULT){
 }
 
 /**
- * C-28: PENDEKKAN tiap jeda ≥ gapMs jadi gapMs — jangan pecah sesinya.
+ * C-28: PENDEKKAN tiap jeda ≥ gapMs jadi gapMs - jangan pecah sesinya.
  *
  * Segmentasi (di atas) memang membuang jeda dari pengukuran, tapi sekaligus
  * memendekkan SESI: sembilan fitur-cacah ikut mengecil (C-24), dan held-out 5
@@ -156,7 +156,7 @@ function mkSeg(list, gapBeforeMs){
 
 /**
  * Akuntansi waktu: berapa yang benar-benar aktif, berapa yang mati.
- * Dipakai untuk telemetri (`evt.idle`) dan untuk memutuskan ABSTAIN — sistem
+ * Dipakai untuk telemetri (`evt.idle`) dan untuk memutuskan ABSTAIN - sistem
  * boleh bilang "bukti tidak cukup" alih-alih menebak dari sesi yang isinya jeda.
  */
 export function idleAccounting(events, gapMs=GAP_MS_DEFAULT){
@@ -192,7 +192,7 @@ export function classifyGap(gapMs, gapThresholdMs=GAP_MS_DEFAULT, awayThresholdM
 
 /**
  * Bagi hasil segmentasi menjadi (a) segmen yang layak dinilai, (b) EKOR yang
- * masih terbuka — segmen terakhir yang belum cukup panjang tapi event barunya
+ * masih terbuka - segmen terakhir yang belum cukup panjang tapi event barunya
  * masih baru, jadi pengguna kemungkinan masih aktif dan ia harus dikembalikan ke
  * buffer supaya terus tumbuh, bukan dibuang, dan (c) segmen basi yang dijatuhkan.
  *
@@ -202,7 +202,7 @@ export function classifyGap(gapMs, gapThresholdMs=GAP_MS_DEFAULT, awayThresholdM
 // C-33: `carryMaxAgeMs` memisahkan dua pertanyaan yang dulu disatukan di `gapMs`:
 // "kapan jeda tidak boleh diukur" (30 dtk) dan "berapa lama bukti yang belum cukup
 // boleh ditunggu". Dengan penundaan vonis sampai bukti cukup, ekor yang belum cukup
-// harus terus DIKUMPULKAN walau pengguna berhenti 30 dtk — kompresi C-28 sudah
+// harus terus DIKUMPULKAN walau pengguna berhenti 30 dtk - kompresi C-28 sudah
 // menangani jedanya. Default = gapMs (perilaku lama persis).
 export function splitForAssessment(segments, minEvents, nowTs, gapMs=GAP_MS_DEFAULT, carryMaxAgeMs=gapMs){
   const assess=[], dropped=[];

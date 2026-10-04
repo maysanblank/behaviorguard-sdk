@@ -1,5 +1,5 @@
 /*
- * app.js — aplikasi Arunika (situs demo). Tidak ada hubungannya dengan BehaviorGuard:
+ * app.js - aplikasi Arunika (situs demo). Tidak ada hubungannya dengan BehaviorGuard:
  * inilah "situs yang sudah ada" sebelum pustaka dipasang. Semua data disimpan di
  * localStorage browser ini; tidak ada server, tidak ada uang sungguhan.
  */
@@ -112,8 +112,8 @@
     if (adaAkun(email)) return { ok: false, alasan: 'terdaftar' };
     const a = akunBaru(email, nama);
     a.tx = [];                       // akun BARU: riwayat masih kosong, saldo setoran awal
-    a.saldo = 250000;
-    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Setoran awal pembukaan rekening', kat: 'Pemasukan', jml: 250000 });
+    a.saldo = SALDO_DEMO;
+    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Setoran awal pembukaan rekening', kat: 'Pemasukan', jml: SALDO_DEMO });
     a.penerima = [];
     a.baruDaftar = true;
     simpanAkun(a);
@@ -147,13 +147,21 @@
     location.href = 'index.html' + (alasan ? '?keluar=' + encodeURIComponent(alasan) : '');
   }
   function catatTx(a, tx) { a.tx.unshift(tx); a.saldo += tx.jml; simpanAkun(a); }
+  // Situs demo: saldo yang habis dipakai latihan transfer diisi ulang sendiri, supaya demo
+  // (dan uji penyusup) tidak berhenti karena "saldo tidak cukup". Profil perilaku tidak disentuh.
+  const SALDO_DEMO = 25000000, SALDO_BATAS = 1000000;
+  function isiUlangDemo(a) {
+    if (!a || a.saldo >= SALDO_BATAS) return a;
+    catatTx(a, { id: 'TOPUP' + Date.now().toString().slice(-8), t: Date.now(), ket: 'Isi ulang saldo demo', kat: 'Pemasukan', jml: SALDO_DEMO - a.saldo });
+    return a;
+  }
 
   // ---------------- kerangka halaman ----------------
   const NAV = [['beranda.html', 'Beranda'], ['transfer.html', 'Transfer'], ['bayar.html', 'Bayar'], ['riwayat.html', 'Riwayat'], ['keamanan.html', 'Keamanan']];
   function shell(aktif) {
     const s = sesi();
     if (!s) { location.replace('index.html'); return null; }
-    const a = akun();
+    const a = isiUlangDemo(akun());
     if (!a) { localStorage.removeItem(KEY_SESI); location.replace('index.html'); return null; }
     const top = document.getElementById('top');
     top.className = 'top';

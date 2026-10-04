@@ -1,7 +1,7 @@
 {
  "spec_version": "1.4.0",
  "tolerance": 1e-09,
- "note": "Kontrak numerik lintas-bahasa. Setiap implementasi (JS/Python/Go/…) wajib menghasilkan angka ini dari input yang sama.",
+ "note": "Kontrak numerik lintas-bahasa. Setiap implementasi (JS/Python/Go/...) wajib menghasilkan angka ini dari input yang sama.",
  "features": [
   "mouse_velocity_mean",
   "mouse_velocity_std",

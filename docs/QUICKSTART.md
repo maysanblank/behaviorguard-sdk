@@ -8,7 +8,7 @@ is one file with zero dependencies.
 
 ---
 
-## 1. The fastest path — one script tag
+## 1. The fastest path - one script tag
 
 Put `dist/behaviorguard.js` anywhere your page can load it, and add one tag before
 `</body>`:
@@ -23,7 +23,7 @@ Put `dist/behaviorguard.js` anywhere your page can load it, and add one tag befo
 </script>
 ```
 
-`data-user` is required — it is the identity the baseline belongs to. Use your own stable
+`data-user` is required - it is the identity the baseline belongs to. Use your own stable
 account identifier; an email is fine, so is an opaque user id.
 
 Add the tag to **every page you want covered**. Each page load continues the same stored
@@ -34,7 +34,7 @@ prompt all start automatically.
 
 ### See it working immediately
 
-Add `data-panel` and the library mounts its own live status panel — useful while
+Add `data-panel` and the library mounts its own live status panel - useful while
 integrating, and the fastest way to confirm events are being captured:
 
 ```html
@@ -47,7 +47,7 @@ integrating, and the fastest way to confirm events are being captured:
 
 Three equivalent ways. Pick one.
 
-**DOM event** (recommended — no globals). Fired for every integration, including a manual
+**DOM event** (recommended - no globals). Fired for every integration, including a manual
 `init()`:
 
 ```js
@@ -63,7 +63,7 @@ const off = BehaviorGuard.on('risk', handle);
 <script>function onRisk(evt) { handle(evt); }</script>
 ```
 
-**Config object** — must appear *before* the library tag:
+**Config object** - must appear *before* the library tag:
 
 ```html
 <script>
@@ -102,8 +102,8 @@ const off = BehaviorGuard.on('risk', handle);
 ```
 
 **One verdict, two events, when a dialog is shown.** A verdict that opens the step-up dialog
-is announced immediately with `stage: 'awaiting-mfa'` and `mfa: { awaiting: true }` — the
-action is not final yet — and announced again with the same `id`, `stage: 'final'` and the
+is announced immediately with `stage: 'awaiting-mfa'` and `mfa: { awaiting: true }` - the
+action is not final yet - and announced again with the same `id`, `stage: 'final'` and the
 outcome (`MFA_PASSED` / `MFA_FAILED`). A verdict that arrives while another dialog is still
 open carries `mfa: { busy: true }`: the open dialog decides, so do not act on it. In short:
 
@@ -117,15 +117,15 @@ BehaviorGuard.on('risk', e => {
 | `action` | Meaning | Suggested response |
 | --- | --- | --- |
 | `ALLOW_SESSION` | Looks like the owner | Nothing |
-| `ABSTAIN` | `UNKNOWN` — not enough evidence yet | **Not** "safe": verify before sensitive actions |
-| `REQUIRE_MFA` | `MEDIUM` — mildly unusual | Re-auth before sensitive actions |
-| `REQUIRE_STEPUP` | `HIGH` — clearly unusual | Re-auth now; hold risky operations |
+| `ABSTAIN` | `UNKNOWN` - not enough evidence yet | **Not** "safe": verify before sensitive actions |
+| `REQUIRE_MFA` | `MEDIUM` - mildly unusual | Re-auth before sensitive actions |
+| `REQUIRE_STEPUP` | `HIGH` - clearly unusual | Re-auth now; hold risky operations |
 | `BLOCK_SESSION` | Sustained `HIGH`, or integrity/rate-limit trip | End the session server-side |
 | `MFA_PASSED` | Step-up succeeded; identity proven | Restore normal access |
 | `MFA_FAILED` | Step-up failed or was cancelled | Treat as still-risky |
 
 **Enforce consequences on your server.** A client-side check can be bypassed by anyone who
-opens devtools — see [THREAT-MODEL.md](../THREAT-MODEL.md).
+opens devtools - see [THREAT-MODEL.md](../THREAT-MODEL.md).
 
 ---
 
@@ -140,11 +140,11 @@ window 11         first real verdict
 The window ticks every 30 seconds and when the tab is hidden, but a verdict (or an
 enrollment step) needs **150 events** of evidence; fewer are carried forward for up to 15
 minutes instead of being thrown away. So enrollment takes roughly ten short bursts of real
-interaction — not ten minutes of an idle tab. Windows whose typing was pasted or autofilled
+interaction - not ten minutes of an idle tab. Windows whose typing was pasted or autofilled
 do not count toward enrollment.
 
 If verdicts stay `LOW` forever, the user has not finished enrollment yet. Check
-`evt.reasons` — it tells you the count.
+`evt.reasons` - it tells you the count.
 
 ---
 
@@ -160,7 +160,7 @@ works under a strict `style-src` CSP), is keyboard- and screen-reader-accessible
 itself when the phrase is complete, and works with touch-screen keyboards (where only the
 gaps between characters are measured). Its timeout counts from the last keystroke.
 
-The template is enrolled during a trusted `LOW` session — never at the moment of
+The template is enrolled during a trusted `LOW` session - never at the moment of
 suspicion. By default the library offers it once, at a quiet moment (never while the user
 is typing); set `autoEnroll: false` to put it on your settings page instead:
 
@@ -194,7 +194,7 @@ type the phrase (another keyboard, a phone, an injured hand) has no way out exce
 blocked.
 
 **Change the phrase.** The default (`'kunci rahasia saya'`) is in the public source. The
-phrase is not a secret in the cryptographic sense — the rhythm is what proves identity —
+phrase is not a secret in the cryptographic sense - the rhythm is what proves identity -
 but a per-deployment phrase is still better.
 
 Pasting is blocked, modified keypresses are ignored, and a sample whose keystroke count does
@@ -220,7 +220,7 @@ addEventListener('behaviorguard:risk', async e => {
 
 Without this call the library never learns the owner proved themselves: the sticky floor is
 never cleared, the owner's drifted behavior never trains the model, and consecutive `HIGH`s
-end in `BLOCK_SESSION` for the owner — 25.7% of owner windows in our measurement, versus 0%
+end in `BLOCK_SESSION` for the owner - 25.7% of owner windows in our measurement, versus 0%
 with it.
 
 After a passed step-up, `MEDIUM` verdicts are not re-asked for `mfa.graceSec` (900 s). `HIGH`
@@ -268,7 +268,7 @@ Useful methods:
 | `bg.setUserToken(t)` | Refresh the short-lived user token for the optional server. |
 | `bg.endSession()` | Score whatever evidence is buffered now (at least 150 events). Returns the verdict or `null`. |
 | `bg.getVector()` | Current 34-float vector without closing the session. |
-| `bg.getState()` | Sessions, config, thresholds — for dashboards and debugging. |
+| `bg.getState()` | Sessions, config, thresholds - for dashboards and debugging. |
 | `bg.scoreVector(vec)` | Score a vector with no side effects. For evaluation. |
 | `bg.clear()` | Erase this user's baseline, template and history (`forget()` also removes the token secret). |
 
@@ -314,7 +314,7 @@ window.BehaviorGuardConfig = {
 
 **The defaults are the measured configuration.** Move `calibration.k_low` to trade owner
 friction against impostor passes (the README has the table). Change the rest only if you
-run your own evaluation with `tools/eval_sdk.mjs` — the published numbers describe the
+run your own evaluation with `tools/eval_sdk.mjs` - the published numbers describe the
 defaults.
 
 Thresholds are recalibrated per user from their own baseline score distribution; do not set
@@ -325,8 +325,8 @@ them globally.
 ## 7. Sensitive actions
 
 Routine verdicts wait for 150 events, so an attacker who logs in and changes the recovery
-email in 20 seconds can finish before the first one. Gate every sensitive action — change
-email, password or phone, add a device or payee, payout — on an immediate verdict:
+email in 20 seconds can finish before the first one. Gate every sensitive action - change
+email, password or phone, add a device or payee, payout - on an immediate verdict:
 
 ```js
 const v = BehaviorGuard.assessNow();       // or bg.assessNow() in the ES-module form
@@ -337,10 +337,10 @@ if (s.verified) proceed();                 // MEDIUM, HIGH, and UNKNOWN (too lit
 
 `v.verifiedRecently` is `true` for `graceSec` after a passed step-up, if your policy allows two
 transfers in a row without asking twice. **If the library failed to load, treat every
-sensitive action as `UNKNOWN`** — never let the absence of the security script mean "safe".
+sensitive action as `UNKNOWN`** - never let the absence of the security script mean "safe".
 
 `assessNow()` does not drain the buffer, train, move the sticky floor or count toward the
-block rule. During enrollment it returns `UNKNOWN` — there is nothing to compare against yet.
+block rule. During enrollment it returns `UNKNOWN` - there is nothing to compare against yet.
 
 ---
 
@@ -375,7 +375,7 @@ Residual risks: [THREAT-MODEL.md](../THREAT-MODEL.md) §4.7.
 BehaviorGuard captures at the document level and hooks `pushState`/`replaceState`/`popstate`,
 so client-side routing is handled without configuration.
 
-**React / Vue / Svelte** — initialize once, outside the component tree:
+**React / Vue / Svelte** - initialize once, outside the component tree:
 
 ```js
 // main.js
@@ -385,13 +385,13 @@ bg.init({ userId: currentUser.id, onRisk: store.handleRisk });
 
 Do not call `init()` inside a component that remounts; call it once at app startup.
 
-**Next.js / SSR** — the library requires a DOM. Load it client-side only:
+**Next.js / SSR** - the library requires a DOM. Load it client-side only:
 
 ```js
 useEffect(() => { import('/sdk/behaviorguard.js').then(m => m.default.init({ userId })); }, []);
 ```
 
-**Content Security Policy** — the library needs no `unsafe-eval` and makes no network
+**Content Security Policy** - the library needs no `unsafe-eval` and makes no network
 requests unless you enable hybrid mode. If you use the built-in step-up prompt or
 `data-panel`, they set inline styles, so allow `style-src 'unsafe-inline'` or disable both.
 
@@ -422,4 +422,4 @@ python -m http.server 8080       # then open /demo/pemantau/
 ```
 
 If `conformance.py` does not print `319 / 319`, something in `sdk/core/` has been modified
-away from the specification — see [../core/SPEC.md](../core/SPEC.md).
+away from the specification - see [../core/SPEC.md](../core/SPEC.md).

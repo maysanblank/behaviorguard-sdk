@@ -1,12 +1,12 @@
 /**
  * background.js - MV3 service worker: penilaian on-device dengan orkestrator ASLI.
  *
- * C-41: versi lama adalah mesin salinan-tangan yang basi — centroid-OCSVM, bobot IF 0,70
+ * C-41: versi lama adalah mesin salinan-tangan yang basi - centroid-OCSVM, bobot IF 0,70
  * (terbalik dari DEFAULTS), ambang kuantil, satu baseline campuran SEMUA situs, dan buffer
  * event mentah (berisi karakter ketikan) disimpan ke chrome.storage.local. Orkestrator
  * yang disinkron oleh tools/sync_core.ps1 (C-9) tidak pernah dipakainya.
  *
- * Kini: satu BehaviorGuard per origin (perilaku di bank dan di forum berbeda — mencampurnya
+ * Kini: satu BehaviorGuard per origin (perilaku di bank dan di forum berbeda - mencampurnya
  * melebarkan baseline untuk keduanya). Event datang dari content.js sudah ditokenisasi;
  * buffer tiruan + endSession() memakai jalur penilaian SDK yang sama persis (kompresi,
  * dedup, integritas, bukti >= minEventsAssess, carry-back ekor). State per origin

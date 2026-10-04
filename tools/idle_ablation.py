@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-idle_ablation.py — mengukur berapa besar kerusakan yang ditimbulkan waktu idle,
+idle_ablation.py - mengukur berapa besar kerusakan yang ditimbulkan waktu idle,
 dan berapa yang dipulihkan oleh segmentasi C-23. Memakai basis data riset yang
 sama dengan reproduce_db.py, tetapi meng-ekstrak ulang fitur dari `raw_events`
 supaya jeda idle bisa DISUNTIKKAN secara terkendali.
 
 Kenapa perlu disuntikkan: sesi di basis data dikumpulkan lewat skenario bertugas,
-jadi hampir tidak ada jeda panjang di dalamnya. Justru itu inti masalahnya —
+jadi hampir tidak ada jeda panjang di dalamnya. Justru itu inti masalahnya -
 model dilatih pada dunia yang padat, lalu dipakai di dunia yang penuh jeda.
 Suntikan ini mensimulasikan dunia pemakaian, bukan mengarang data latih.
 
 Tiga lengan, model dan ambang IDENTIK di ketiganya (hanya sesi UJI yang berbeda):
-  BERSIH            sesi apa adanya                       — batas atas
-  BERGAP (lama)     satu jeda AFK, dinilai sebagai 1 sesi — perilaku hari ini
-  BERGAP + SEGMEN   jeda yang sama, dipecah per C-23      — perilaku sesudah tambalan
+  BERSIH            sesi apa adanya                       - batas atas
+  BERGAP (lama)     satu jeda AFK, dinilai sebagai 1 sesi - perilaku hari ini
+  BERGAP + SEGMEN   jeda yang sama, dipecah per C-23      - perilaku sesudah tambalan
 
 Jalankan:
   python tools/idle_ablation.py
@@ -84,7 +84,7 @@ def inject_gap(events, gap_ms, cut):
     """Sisipkan SATU jeda AFK di indeks `cut`: pengguna berhenti di tengah, pergi,
     lalu kembali dan melanjutkan persis seperti sebelumnya. Semua event sesudahnya
     digeser maju; tidak ada event yang ditambah atau dibuang, jadi satu-satunya
-    yang berubah adalah WAKTU — persis variabel yang dipersoalkan."""
+    yang berubah adalah WAKTU - persis variabel yang dipersoalkan."""
     out = []
     for i, e in enumerate(events):
         e2 = dict(e)
@@ -143,7 +143,7 @@ def vec_of(events):
 
 
 def canonical_windows(events, k):
-    """USULAN TAHAP 2 — jendela KANONIK: tiap segmen kontigu dipotong jadi jendela
+    """USULAN TAHAP 2 - jendela KANONIK: tiap segmen kontigu dipotong jadi jendela
     berukuran TETAP k event. Sisa di ekor dibuang (di SDK: dikembalikan ke buffer).
 
     Kenapa ini menyelesaikan masalah fitur-CACAH tanpa menyentuh SPEC. Sembilan
@@ -154,7 +154,7 @@ def canonical_windows(events, k):
       (b) buat panjangnya KONSTAN, sehingga cacahan otomatis sebanding.
     (b) tidak menyentuh satu baris pun rumus fitur. Cacahan berubah makna jadi
     KOMPOSISI ("dari k event, berapa yang klik") dan `temporal_session_duration`
-    berubah makna jadi KECEPATAN ("berapa lama menghasilkan k event") — yang justru
+    berubah makna jadi KECEPATAN ("berapa lama menghasilkan k event") - yang justru
     lebih biometrik daripada "sesinya kebetulan sepanjang apa".
 
     Syarat mutlak: kanonikalisasi harus dipakai di PENDAFTARAN dan PENILAIAN.
@@ -205,14 +205,14 @@ def build_owner_model(train_vecs, holdout=0.0):
     """holdout>0: ambang dikalibrasi pada bagian kolam yang TIDAK dipakai memfit.
 
     Kenapa ini penting. `build_model` mengkalibrasi ambang dari skor vektor yang
-    persis dipakai memfit detektornya. Skor in-sample selalu optimistik — model
-    memang dipas-paskan ke titik-titik itu — sehingga ambangnya terlalu rapat, dan
+    persis dipakai memfit detektornya. Skor in-sample selalu optimistik - model
+    memang dipas-paskan ke titik-titik itu - sehingga ambangnya terlalu rapat, dan
     sesi PEMILIK berikutnya (yang di luar sampel) jatuh di luar ambang. Itu bukan
     teori: pola yang sama sudah pernah menghantam proyek ini di C-22, di mana
     kovarians Mahalanobis yang overfit membuat pemilik divonis MEDIUM selamanya.
 
     Menyisihkan sebagian kolam khusus untuk kalibrasi membuat ambang mencerminkan
-    sebaran skor PEMILIK DI LUAR SAMPEL — yaitu persis populasi yang akan dinilai."""
+    sebaran skor PEMILIK DI LUAR SAMPEL - yaitu persis populasi yang akan dinilai."""
     cfg = dict(bg.DEFAULTS)
     n = len(train_vecs)
     # shrink adaptif, sama dengan behaviorguard._rebuildModel (C-22)
@@ -237,13 +237,13 @@ def build_owner_model(train_vecs, holdout=0.0):
 
 
 def agg_thresholds(model, M):
-    """Ambang untuk vonis atas RATA-RATA M jendela — dikalibrasi EMPIRIS.
+    """Ambang untuk vonis atas RATA-RATA M jendela - dikalibrasi EMPIRIS.
 
     Godaannya adalah memakai jalan pintas analitik: rata-rata M skor bebas punya
     simpangan baku std/sqrt(M), jadi rapatkan ambang dengan faktor itu. Jalan
     pintas itu SALAH di sini, dan salahnya searah: jendela berurutan dari sesi yang
     sama berkorelasi, jadi simpangan baku sesungguhnya lebih besar dari std/sqrt(M).
-    Ambang jadi terlalu rapat dan pemilik ditolak — persis pola C-22, yaitu ambang
+    Ambang jadi terlalu rapat dan pemilik ditolak - persis pola C-22, yaitu ambang
     yang dikalibrasi optimistik lalu meledak di luar sampel.
 
     Yang benar: agregasikan skor LATIH dengan cara yang persis sama seperti skor
@@ -258,7 +258,7 @@ def agg_thresholds(model, M):
 
 
 def verdicts(model, vecs, M):
-    """[(skor, level)] — satu vonis per M jendela berturut (M=1: per jendela)."""
+    """[(skor, level)] - satu vonis per M jendela berturut (M=1: per jendela)."""
     scores = [model['ensemble'].score_one(bg.standardize(v, model['stats'])) for v in vecs]
     if M <= 1:
         return [(sc, bg.to_risk(sc, model['thresholds'])) for sc in scores]

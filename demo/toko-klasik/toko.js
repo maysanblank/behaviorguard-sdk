@@ -1,4 +1,4 @@
-/* Toko Kopi Nusantara — logika toko. Vanilla JS, tanpa dependensi.
+/* Toko Kopi Nusantara - logika toko. Vanilla JS, tanpa dependensi.
    Keranjang disimpan di localStorage supaya bertahan antar-halaman. */
 (function () {
   'use strict';
@@ -159,7 +159,7 @@
   function renderDetail(el) {
     var id = new URLSearchParams(location.search).get('id');
     var p = cari(id) || PRODUK[0];
-    document.title = p.nama + ' — Toko Kopi Nusantara';
+    document.title = p.nama + ' - Toko Kopi Nusantara';
     el.innerHTML =
       '<div class="foto" style="background:#F3EADC">' + p.emoji + '</div>' +
       '<div>' +
@@ -221,7 +221,7 @@
     var ringkas = ids.length
       ? ids.map(function (id) { var p = cari(id); return p ? p.nama + ' × ' + k[id] : ''; }).join(', ')
       : 'keranjang kosong';
-    el.querySelector('#ringkasan').textContent = ringkas + ' — ' + rupiah(total);
+    el.querySelector('#ringkasan').textContent = ringkas + ' - ' + rupiah(total);
     el.querySelector('form').addEventListener('submit', function (e) {
       e.preventDefault();
       var nama = document.getElementById('nama').value || 'Pelanggan';

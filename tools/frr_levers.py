@@ -107,7 +107,7 @@ def _fit(pool_vecs, feature_cols, weights, use_real, robust=False, scorer='ens',
         # bg_core.Mahalanobis adalah padanan bit-per-bit dari mahalanobis.js, jadi di
         # sini dipakai kelas itu langsung, bukan tiruan.
         # Shrinkage ADAPTIF direplikasi dari behaviorguard._rebuildModel (C-22):
-        #   min(0.9, max(0.3, d/n)) — makin sedikit sampel, makin berat regularisasi.
+        #   min(0.9, max(0.3, d/n)) - makin sedikit sampel, makin berat regularisasi.
         from bg_core import Mahalanobis
         stats = _robust_stats(pool_vecs) if robust else rdb.compute_stats(pool_vecs)
         Xs = [rdb.standardize(v, stats) for v in pool_vecs]
@@ -252,11 +252,11 @@ def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True
     """eval_from: indeks sesi paling awal yang BOLEH masuk hitungan FRR.
 
     Wajib dipakai saat membandingkan panjang pendaftaran. Menaikkan BASELINE dari 10
-    ke 16 memindahkan sesi 10..15 dari 'diuji' ke 'mendaftar' — jadi himpunan ujinya
+    ke 16 memindahkan sesi 10..15 dari 'diuji' ke 'mendaftar' - jadi himpunan ujinya
     ikut berubah, dan sesi-sesi awal itu justru yang paling sulit (model masih naif,
     pengguna belum mapan). Tanpa eval_from, sebagian 'perbaikan' hanyalah efek
     membuang soal tersulit dari ujian. Sesi sebelum eval_from tetap dinilai dan tetap
-    boleh menumbuhkan kolam — hanya tidak dihitung."""
+    boleh menumbuhkan kolam - hanya tidak dihitung."""
     if feature_cols is None:
         feature_cols = rdb.F4
     idx = [rdb.F4.index(f) for f in feature_cols]
@@ -326,7 +326,7 @@ def run_fold(conn, subject_ids, weights, q_low, feature_cols=None, use_real=True
                 base = [ens(v) for v in pv]
             # agg>1: vonis diambil dari RERATA k skor, jadi ambangnya HARUS dikalibrasi
             # pada sebaran rerata-k juga. Versi pertama saya mengkalibrasi pada skor
-            # tunggal lalu memutuskan pada rerata — sebaran rerata jauh lebih sempit,
+            # tunggal lalu memutuskan pada rerata - sebaran rerata jauh lebih sempit,
             # jadi ambangnya jatuh di tempat yang salah dan FAR meledak ke 35%. Itu
             # persis kelas cacat train-vs-serve yang sudah dua kali menggigit repo ini
             # (C-16, C-17): yang dilatih dan yang dipakai bukan besaran yang sama.

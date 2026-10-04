@@ -69,7 +69,7 @@ function axis(samples, key) {
 /**
  * Bangun template dari beberapa sampel pendaftaran.
  * Menolak (mengembalikan null) bila sampel tidak konsisten bentuknya atau
- * frasanya terlalu pendek — lebih baik tanpa template daripada template lemah.
+ * frasanya terlalu pendek - lebih baik tanpa template daripada template lemah.
  */
 // C-45: keyboard layar sentuh (Android/iOS) menembakkan keydown `Unidentified` / 229 tanpa
 // waktu tahan yang bermakna, jadi dwell tidak bisa diukur di sana. Sampel dari keyboard
@@ -84,7 +84,7 @@ export function buildTemplate(samples) {
   const nF = samples[0] && Array.isArray(samples[0].flight) ? samples[0].flight.length : 0;
   if (nD < MIN_DWELL_POINTS) return null;
   const mode = modeOf(samples[0]);
-  // setiap sampel harus berbentuk sama & finit — kalau tidak, pendaftarannya cacat
+  // setiap sampel harus berbentuk sama & finit - kalau tidak, pendaftarannya cacat
   for (const s of samples) {
     if (!s || !isFiniteArray(s.dwell, nD) || !isFiniteArray(s.flight, nF)) return null;
     if (modeOf(s) !== mode) return null;
@@ -111,7 +111,7 @@ export function verify(sample, tmpl) {
   }
   const nD = tmpl.dwell.length, nF = tmpl.flight.length;
 
-  // GERBANG BENTUK — inilah tambalan intinya. Sample harus lengkap dan finit.
+  // GERBANG BENTUK - inilah tambalan intinya. Sample harus lengkap dan finit.
   // Tempel / autofill / isi sebagian menghasilkan array pendek dan berhenti DI SINI,
   // bukan lolos diam-diam lewat perbandingan NaN.
   if (!sample || !isFiniteArray(sample.dwell, nD) || !isFiniteArray(sample.flight, nF)) {

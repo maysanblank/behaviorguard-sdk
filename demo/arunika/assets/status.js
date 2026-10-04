@@ -1,5 +1,5 @@
 /*
- * status.js — kartu "Perlindungan perilaku" milik situs, dibangun dari BehaviorGuard.status().
+ * status.js - kartu "Perlindungan perilaku" milik situs, dibangun dari BehaviorGuard.status().
  * Contoh bagaimana integrator menampilkan keadaan pustaka dengan bahasa situsnya sendiri.
  */
 (function () {
@@ -12,7 +12,7 @@
       return;
     }
     if (!st || !st.ready) {
-      el.innerHTML = `<div class="guard"><div class="ico">${A.I.shield}</div><div><h3>Menyalakan perlindungan…</h3></div></div>`;
+      el.innerHTML = `<div class="guard"><div class="ico">${A.I.shield}</div><div><h3>Menyalakan perlindungan...</h3></div></div>`;
       return;
     }
     const e = st.lastVerdict;

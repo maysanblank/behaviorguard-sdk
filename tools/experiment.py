@@ -6,7 +6,7 @@ riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >
 lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
 `node tools/eval_sdk.mjs --live` (README "Results").
 
-experiment.py — cari rumus PENGGANTI centroid yang LEBIH AKURAT tapi tetap
+experiment.py - cari rumus PENGGANTI centroid yang LEBIH AKURAT tapi tetap
 browser-trainable & nol-dependensi (portabel ke 5 runtime). Protokol held-out
 8/8 IDENTIK dengan reproduce_db.py (tune q di FOLD-TUNE, lapor di FOLD-REPORT).
 
@@ -57,7 +57,7 @@ SUBJECT_IDS=rdb.SUBJECT_IDS
 
 # ---------------- MODEL PENGGANTI (semua browser-trainable) ----------------
 class Centroid:
-    """RBF ke rata-rata pool — SAMA dgn ocsvm.js yang dikirim."""
+    """RBF ke rata-rata pool - SAMA dgn ocsvm.js yang dikirim."""
     def __init__(self, nfeat): self.gamma=1.0/nfeat; self.mean=None
     def fit(self, X):
         d=len(X[0]); self.mean=[sum(v[i] for v in X)/len(X) for i in range(d)]

@@ -181,7 +181,7 @@ def build():
     out = {
         'spec_version': SPEC_VERSION,
         'tolerance': 1e-9,
-        'note': ('Kontrak numerik lintas-bahasa. Setiap implementasi (JS/Python/Go/…) '
+        'note': ('Kontrak numerik lintas-bahasa. Setiap implementasi (JS/Python/Go/...) '
                  'wajib menghasilkan angka ini dari input yang sama.'),
         'features': bg.F4,
         'config': {

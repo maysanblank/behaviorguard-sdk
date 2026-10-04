@@ -1,5 +1,5 @@
 /*
- * panel-demo.js — PANEL PRESENTASI. Bukan bagian dari situs Arunika dan bukan bagian dari
+ * panel-demo.js - PANEL PRESENTASI. Bukan bagian dari situs Arunika dan bukan bagian dari
  * pustaka: alat bantu untuk memperlihatkan apa yang terjadi di dalam BehaviorGuard saat demo.
  * Situs sungguhan tidak memuat berkas ini. Klik & ketikan di panel tidak direkam (data-bg-mfa).
  */
@@ -66,7 +66,7 @@
       <div class="pd-s"><div class="pd-l"><span>Bukti untuk penilaian berikut</span><span id="pd-next"></span></div>
         <div class="pd-m" id="pd-ev"></div><div class="pd-bar"><i id="pd-evbar" style="background:#a78bfa"></i></div></div>
       <div class="pd-s"><div class="pd-l"><span>Vonis terakhir</span><span id="pd-at"></span></div>
-        <div class="pd-big" id="pd-lv">—</div><div class="pd-m" id="pd-act"></div>
+        <div class="pd-big" id="pd-lv">-</div><div class="pd-m" id="pd-act"></div>
         <div class="pd-g" id="pd-g" hidden></div><ul class="pd-r" id="pd-why"></ul></div>
       <div class="pd-s"><div class="pd-l"><span>Riwayat vonis (terbaru di kanan)</span></div><div class="pd-tl" id="pd-tl"></div></div>
       <div class="pd-s"><div class="pd-l"><span>Aksi demo</span></div><div class="pd-a">
@@ -126,7 +126,7 @@
     $('pd-mode').textContent = cepat ? 'mode presentasi' : 'mode standar';
     $('pd-cepat').innerHTML = cepat ? 'Mode presentasi: NYALA<small>60 event/vonis, jam 15 dtk · klik untuk kembali ke standar</small>' : 'Mode presentasi: MATI<small>standar 150 event/vonis, jam 30 dtk · klik untuk mempercepat</small>';
     const learning = s.phase === 'learning';
-    $('pd-phase').innerHTML = !s.ready ? 'menyala…' : learning ? '<span class="lv-LEARN">Mengenali pemilik</span>' : '<span class="lv-LOW">Melindungi</span>';
+    $('pd-phase').innerHTML = !s.ready ? 'menyala...' : learning ? '<span class="lv-LEARN">Mengenali pemilik</span>' : '<span class="lv-LOW">Melindungi</span>';
     $('pd-enr').textContent = `pendaftaran ${s.enrollment.done}/${s.enrollment.need} jendela layak · irama ketik ${s.mfa.enrolled ? 'terdaftar (' + s.mfa.mode + ')' : 'belum'} · cadangan ${s.mfa.fallback ? 'ada' : 'tidak'}`;
     $('pd-enrbar').style.width = Math.round(s.enrollment.done / s.enrollment.need * 100) + '%';
     // Kolam latih & gerbang detektor-2. Batang pendaftaran berhenti di 10, tapi mesinnya baru
@@ -135,7 +135,7 @@
     if (s.model) {
       $('pd-pool').textContent = !s.model.trained
         ? 'model belum terbentuk'
-        : `kolam latih ${s.model.pool} vektor · detektor utama (Mahalanobis, 70%) ${s.model.mainDetector ? 'AKTIF' : 'belum aktif — butuh ' + s.model.mainDetectorNeeds}`;
+        : `kolam latih ${s.model.pool} vektor · detektor utama (Mahalanobis, 70%) ${s.model.mainDetector ? 'AKTIF' : 'belum aktif - butuh ' + s.model.mainDetectorNeeds}`;
       $('pd-pool').className = s.model.trained && !s.model.mainDetector ? 'pd-warn' : '';
     }
     const need = s.evidence.need, have = s.evidence.buffered;
@@ -151,7 +151,7 @@
       if (Number.isFinite(e.score)) bits.push('skor ' + e.score.toFixed(2));
       if (e.thresholds && Number.isFinite(e.thresholds.low) && !e.enrollment) bits.push(`batas LOW ${e.thresholds.low.toFixed(2)} · HIGH ${e.thresholds.medium.toFixed(2)}`);
       if (e.modelLevel && e.modelLevel !== e.level) bits.push(`model ${e.modelLevel}${e.stepUpGrace ? ', diredam (baru terverifikasi)' : e.stickyFloor ? ', lantai lengket' : ''}`);
-      if (e.mfa && e.mfa.awaiting) bits.push('menunggu verifikasi…');
+      if (e.mfa && e.mfa.awaiting) bits.push('menunggu verifikasi...');
       else if (e.mfa && e.mfa.busy) bits.push('dialog lain sedang terbuka');
       else if (e.mfa && e.mfa.shown) bits.push('dialog: ' + (e.mfa.verified ? 'lolos' : e.mfa.fallback ? 'kode ' + (e.mfa.verified ? 'lolos' : 'gagal') : e.mfa.cancelled ? 'dibatalkan' : 'gagal'));
       else if (e.mfa && e.mfa.fallback) bits.push('kode ' + (e.mfa.verified ? 'lolos' : 'gagal'));

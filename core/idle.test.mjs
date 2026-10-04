@@ -1,5 +1,5 @@
 /**
- * idle.test.mjs — regresi segmentasi idle (C-23).
+ * idle.test.mjs - regresi segmentasi idle (C-23).
  *
  * Yang dikunci di sini:
  *  1. Jeda idle memang MERUSAK fitur kalau tidak dipotong (bukti angka, bukan klaim).

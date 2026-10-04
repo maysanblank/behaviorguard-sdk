@@ -69,7 +69,7 @@ Server mengambil `userId` dari token, tidak pernah dari isi permintaan.
 
 ## Yang dijaga (dan kenapa)
 
-- **`pk` bocor itu normal** — ia ada di setiap halaman. Dulu `pk` saja cukup untuk membaca
+- **`pk` bocor itu normal** - ia ada di setiap halaman. Dulu `pk` saja cukup untuk membaca
   dan **menimpa** template perilaku akun mana pun (penyerang dijadikan "pemilik"). Kini
   tidak ada operasi akun tanpa token (C-39).
 - **Isi log adalah kiriman klien.** Dashboard meng-escape semua nilai dan dikirim dengan

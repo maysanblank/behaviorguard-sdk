@@ -111,7 +111,7 @@
     $('rek').value = $('rek').value.replace(/\D/g, '').slice(0, 10);
     namaBaru = null; $('cek').textContent = '';
     if ($('rek').value.length === 10) {
-      $('cek').innerHTML = '<span class="muted">Memeriksa rekening…</span>';
+      $('cek').innerHTML = '<span class="muted">Memeriksa rekening...</span>';
       setTimeout(() => { if ($('rek').value.length !== 10) return; namaBaru = NAMA[+$('rek').value.slice(-1) % NAMA.length]; $('cek').innerHTML = `Nama pemilik: <b>${A.esc(namaBaru)}</b>`; }, 700);
     }
   });
@@ -143,7 +143,7 @@
   });
   $('kembali').onclick = () => step(1);
   $('kirim').onclick = async () => {
-    const b = $('kirim'); b.disabled = true; b.textContent = 'Memeriksa…'; $('e2').textContent = '';
+    const b = $('kirim'); b.disabled = true; b.textContent = 'Memeriksa...'; $('e2').textContent = '';
     const g = await Guard.gerbang('transfer', { nominal: draf.nom, label: 'transfer' });
     b.disabled = false; b.textContent = 'Kirim sekarang';
     if (!g.ok) { $('e2').textContent = 'Transfer dibatalkan karena verifikasi tidak diselesaikan. Tidak ada dana yang terkirim.'; return; }

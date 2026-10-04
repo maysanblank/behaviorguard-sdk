@@ -83,7 +83,7 @@ class BehaviorGuard {
     if(features) this.cfg.features=features;
     if(thresholds) this.cfg.thresholds=thresholds;
     // C-11: `mfa` dulu tidak ada di daftar opsi init() MAUPUN di daftar kunci yang
-    // diteruskan auto-boot, sehingga `{ mfa:{enabled:false} }` diam-diam diabaikan —
+    // diteruskan auto-boot, sehingga `{ mfa:{enabled:false} }` diam-diam diabaikan -
     // knob yang didokumentasikan tapi tidak pernah ada. Digabung, bukan ditimpa,
     // supaya konfigurasi parsial ({enabled:false}) tetap mewarisi default lainnya.
     if(mfa && typeof mfa==='object') this.cfg.mfa={...this.cfg.mfa, ...mfa};
@@ -104,14 +104,14 @@ class BehaviorGuard {
         + (this.cfg.mfa.lockAfterFailures ?? 3) + ' kegagalan beruntun, pemilik tidak punya jalan verifikasi lain. '
         + 'Isi mfa.onFallback (OTP/WebAuthn yang dicek server), atau set mfa.lockAfterFailures: 0.'); }catch{}
     }
-    // C-23: sama pola dengan `mfa` — digabung, bukan ditimpa, supaya konfigurasi
+    // C-23: sama pola dengan `mfa` - digabung, bukan ditimpa, supaya konfigurasi
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
     if(session && typeof session==='object') this.cfg.session={...this.cfg.session, ...session};
     if(idle && typeof idle==='object') this.cfg.idle={...this.cfg.idle, ...idle};
     // C-24: ketiga knob invariansi panjang sesi. Default 0/1 = perilaku lama persis.
     if(Number.isFinite(aggregateWindows)) this.cfg.aggregateWindows=aggregateWindows;
     if(Number.isFinite(calibrationHoldout)) this.cfg.calibrationHoldout=calibrationHoldout;
-    // C-33: titik operasi (ketat vs longgar) dulu TIDAK bisa diatur integrator — k_low
+    // C-33: titik operasi (ketat vs longgar) dulu TIDAK bisa diatur integrator - k_low
     // tidak ada di daftar opsi init(), jadi satu-satunya cara adalah menyunting config.js.
     // Lebih kecil = lebih ketat (penyusup lebih jarang lolos, pemilik lebih sering
     // diminta verifikasi). Tabel pertukarannya di README "Choosing an operating point".
@@ -143,7 +143,7 @@ class BehaviorGuard {
       const awayMs=((this.cfg.idle && this.cfg.idle.awaySec) || 300)*1000;
       this._mfaPassedAt=(saved.mfaPassedAt && saved.lastActiveAt && Date.now()-saved.lastActiveAt < awayMs) ? saved.mfaPassedAt : null;
       // cek ganti device. C-36: sidik versi lama (dengan nomor versi UA) tidak dibandingkan
-      // — kalau dibandingkan, SEMUA pengguna lama dicurigai sekali sesudah pembaruan ini.
+      // - kalau dibandingkan, SEMUA pengguna lama dicurigai sekali sesudah pembaruan ini.
       if(saved.fingerprint && saved.fpv===FP_VERSION && saved.fingerprint!==this.fingerprint){
         console.warn('[BG] device fingerprint berubah - sesi dianggap berisiko');
         this.lastRisk='MEDIUM'; this._mfaPassedAt=null;
@@ -151,7 +151,7 @@ class BehaviorGuard {
     }
     // R4: jika ada ekor yang kesimpen pas beforeunload sebelumnya, pulihkan ke buffer
     try{
-      // A4: buang sisa kunci global lama — pemiliknya tak bisa dipastikan, jadi
+      // A4: buang sisa kunci global lama - pemiliknya tak bisa dipastikan, jadi
       // satu-satunya perlakuan yang aman adalah membuangnya, bukan menebak.
       try{ localStorage.removeItem(LEGACY_PENDING); }catch{}
       let pending=JSON.parse(localStorage.getItem(nsPending(userId))||'null');
@@ -172,7 +172,7 @@ class BehaviorGuard {
         this._pendingEvents=pending;
       }
     }catch{}
-    // capture auto — C-23: callback dipakai melacak kehadiran (kapan input terakhir
+    // capture auto - C-23: callback dipakai melacak kehadiran (kapan input terakhir
     // masuk), bukan lagi no-op. Dari situ absen terdeteksi tanpa timer tambahan.
     this._lastEventAt=Date.now();
     // B1: penanda aliran per instance/tab, dicap ke tiap event supaya pengukuran
@@ -227,7 +227,7 @@ class BehaviorGuard {
   }
   // C-23: satu-satunya sumber kebenaran "kapan pengguna terakhir memberi input".
   // Jeda antar-input yang melewati `idle.awaySec` dicatat sebagai ABSEN; input
-  // berikutnya sesudah itu adalah KEMBALI dari absen — dan orang yang kembali
+  // berikutnya sesudah itu adalah KEMBALI dari absen - dan orang yang kembali
   // belum tentu orang yang pergi.
   _onCaptureEvent(e){
     const ts=e&&e.timestamp || Date.now();
@@ -246,7 +246,7 @@ class BehaviorGuard {
     this._awayReturn={ awayMs, reason, at: atTs||Date.now() };
   }
   // B1: hanya SATU tab yang boleh menilai dan menulis penyimpanan. Tanpa ini, dua
-  // tab memegang array `sessions` sendiri di memori lalu `storage.set` bergantian —
+  // tab memegang array `sessions` sendiri di memori lalu `storage.set` bergantian -
   // penulis terakhir menang dan sesi yang dikumpulkan tab lain hilang diam-diam.
   // Denyut sederhana lewat localStorage: pemimpin memperbarui capnya; tab lain
   // mengambil alih hanya kalau capnya sudah basi (pemimpin ditutup/crash).
@@ -276,7 +276,7 @@ class BehaviorGuard {
     this._autoTimer=setInterval(()=>{
       if(!this.inited) return;
       // Tab pengikut tetap MENANGKAP (ekornya dibank dan diambil nanti), hanya tidak
-      // menilai — jadi datanya tidak hilang, cuma tidak ada dua penulis bersamaan.
+      // menilai - jadi datanya tidak hilang, cuma tidak ada dua penulis bersamaan.
       if(!this._isLeader()){ this._bankTail(); return; }
       this.endSession().catch(()=>{});
     }, this.cfg.session.windowSec*1000);
@@ -343,7 +343,7 @@ class BehaviorGuard {
   // Dulu blok ini diandaikan = sessions.slice(0, baseline). Salah begitu ada satu sesi
   // tak-layak di masa pendaftaran: sesi pendaftaran ke-10 jatuh ke bagian "LOW
   // progresif", dan begitu kolam itu bergulir (maks 90) sesi pendaftaran asli ikut
-  // terbuang. Blok pendaftaran adalah jangkar model — ia tidak boleh bergulir.
+  // terbuang. Blok pendaftaran adalah jangkar model - ia tidak boleh bergulir.
   _enrollPrefix(){
     let c=0;
     for(let i=0;i<this.sessions.length;i++){
@@ -351,8 +351,8 @@ class BehaviorGuard {
     }
     return this.sessions.length;
   }
-  // C-31: riwayat sesi dulu tumbuh TANPA BATAS — satu entri tiap jendela 30 dtk, jadi
-  // ribuan per minggu — dan SELURUHNYA diserialisasi + di-HMAC ulang pada tiap vonis.
+  // C-31: riwayat sesi dulu tumbuh TANPA BATAS - satu entri tiap jendela 30 dtk, jadi
+  // ribuan per minggu - dan SELURUHNYA diserialisasi + di-HMAC ulang pada tiap vonis.
   // Yang dibutuhkan model hanya blok pendaftaran + 90 LOW terakhir + 6 vonis terakhir
   // (konvergensi). Disimpan: blok pendaftaran UTUH + `historyMax` entri terakhir;
   // `feat` (murni penjelasan) dibuang dari entri yang lebih tua dari 20 terakhir.
@@ -426,7 +426,7 @@ class BehaviorGuard {
     this._newSinceRebuild=0;
     // C-24 (opt-in): sisihkan EKOR kolam khusus untuk mengkalibrasi ambang.
     // Versi lama mengkalibrasi dari skor vektor yang PERSIS dipakai memfit detektor.
-    // Skor in-sample selalu optimistik — model memang dipas-paskan ke titik-titik itu —
+    // Skor in-sample selalu optimistik - model memang dipas-paskan ke titik-titik itu -
     // sehingga ambangnya terlalu rapat dan sesi PEMILIK berikutnya, yang di luar
     // sampel, jatuh di luar ambang. Bukan teori: itu persis mekanisme C-22.
     // calibrationHoldout=0 (default) -> cut=vecs.length -> jalur lama, tak tersentuh.
@@ -441,13 +441,13 @@ class BehaviorGuard {
     iff.fit(Xstd);
     // detektor-2: Mahalanobis (default) atau centroid lama (cfg.model2)
     // C-22: shrinkage ADAPTIF terhadap rasio sampel/dimensi. Kovarians d×d butuh
-    // n >> d untuk stabil; live gerbang buka di n=20 padahal d=28 (n<d!) → kovarians
+    // n >> d untuk stabil; live gerbang buka di n=20 padahal d=28 (n<d!) -> kovarians
     // OVERFIT: jarak in-sample kecil palsu, ambang dikalibrasi optimistik, lalu sesi
-    // PEMILIK baru (out-of-sample) meledak jadi anomali → "sesi ke-20 dst selalu
+    // PEMILIK baru (out-of-sample) meledak jadi anomali -> "sesi ke-20 dst selalu
     // MEDIUM" (FRR 98%). Regularisasi lebih berat saat sampel sedikit menariknya ke
-    // Euclidean-terstandardisasi (aman): FRR 98%→~7% di n=20, FAR ~0 utk penyusup
-    // jelas-beda. Meluruh ke shrink dasar (0.3) saat n≥~3d → korelasi penuh kelas
-    // riset kembali. Hanya jalur LIVE — conformance/golden pakai shrink tetap
+    // Euclidean-terstandardisasi (aman): FRR 98%->~7% di n=20, FAR ~0 utk penyusup
+    // jelas-beda. Meluruh ke shrink dasar (0.3) saat n≥~3d -> korelasi penuh kelas
+    // riset kembali. Hanya jalur LIVE - conformance/golden pakai shrink tetap
     // `cfg.mahalanobis.shrink` langsung, jadi tak tersentuh. Lihat core/DRIFT.md C-22.
     const baseShrink=this.cfg.mahalanobis.shrink;
     const nfe=this.cfg.features.length;
@@ -469,8 +469,8 @@ class BehaviorGuard {
         : calibrateThresholds(arr, this.cfg.q_low, this.cfg.q_med);
       this.cfg.thresholds=calib(baseScores);
       // C-24 (opt-in): ambang untuk vonis AGREGAT dikalibrasi dari skor baseline yang
-      // diagregasi dengan cara yang PERSIS sama. Jalan pintas analitik — rapatkan
-      // ambang sebesar std/sqrt(M) — salah, dan salahnya searah: jendela berurutan
+      // diagregasi dengan cara yang PERSIS sama. Jalan pintas analitik - rapatkan
+      // ambang sebesar std/sqrt(M) - salah, dan salahnya searah: jendela berurutan
       // berkorelasi, jadi sebaran nyatanya lebih lebar dari yang diandaikan, ambang
       // jadi terlalu rapat, dan pemilik yang ditolak. Mengagregasi data latihnya
       // sendiri membawa korelasi itu ikut serta tanpa perlu diasumsikan.
@@ -497,7 +497,7 @@ class BehaviorGuard {
     const res=await this._http('GET','/baseline');
     if(res && Array.isArray(res.vectors) && res.vectors.length){
       const localEligible=this.sessions.filter(s=>s.eligible!==false).length;
-      // C-39: DULU diadopsi bila jumlah server >= lokal — siapa pun yang bisa menulis ke
+      // C-39: DULU diadopsi bila jumlah server >= lokal - siapa pun yang bisa menulis ke
       // server (dulu: cukup pk) menimpa baseline yang SUDAH ada di perangkat pemilik.
       // Kini hanya perangkat BARU (belum punya pendaftaran sendiri) yang mengadopsi;
       // baseline lokal yang sudah ada tidak pernah diganti dari jarak jauh.
@@ -579,7 +579,7 @@ class BehaviorGuard {
       this._cloudLog(enrollEvt);
       if(doneEnroll) this._cloudPush(); // enrollment selesai -> unggah baseline akun ke VPS
       // C-19: jalur pendaftaran DULU tidak pernah memanggil onRisk, jadi selama 10
-      // sesi pertama pustaka ini DIAM TOTAL ke integrator — tak ada callback, tak ada
+      // sesi pertama pustaka ini DIAM TOTAL ke integrator - tak ada callback, tak ada
       // event `behaviorguard:risk`, dan panel bawaan mandek di "MENGENALI..." tanpa
       // pernah bergerak. Justru fase inilah yang paling perlu diperlihatkan: pengguna
       // baru mendaftar dan ingin tahu sistemnya sedang belajar, bukan menggantung.
@@ -596,7 +596,7 @@ class BehaviorGuard {
     let score=this.model.scoreOne(xstd);
     // C-35: REKAM-ULANG. Perilaku korban yang terekam (XSS, ekstensi jahat, malware
     // perekam) lalu diputar dengan waktu digeser menghasilkan vektor yang IDENTIK dengan
-    // sesi lama — model menilainya LOW, karena memang itu perilaku pemiliknya. Manusia
+    // sesi lama - model menilainya LOW, karena memang itu perilaku pemiliknya. Manusia
     // tidak pernah mengulang dirinya sampai sedekat itu: di 637 pasangan sesi riset,
     // jarak RMS terstandar ke sesi pemilik terdekat minimum 0,289 (p1 0,365). Ambang
     // `replayEps` 0,05 memberi margin ~6x. Fitur temporal dikecualikan (putar ulang di
@@ -620,11 +620,11 @@ class BehaviorGuard {
     }
     // C-24 (opt-in): AGREGASI BUKTI. Jendela kanonik lebih pendek dari sesi utuh,
     // jadi tiap vonis berdiri di atas bukti yang lebih sedikit dan lebih berisik.
-    // Jawabannya bukan melonggarkan ambang — itu cuma memindahkan kesalahan ke sisi
-    // FAR — melainkan menunda vonis sampai M jendela terkumpul, lalu memvonis
+    // Jawabannya bukan melonggarkan ambang - itu cuma memindahkan kesalahan ke sisi
+    // FAR - melainkan menunda vonis sampai M jendela terkumpul, lalu memvonis
     // rata-ratanya. Yang ditukar LATENSI dengan KEYAKINAN, bukan FRR dengan FAR:
     // terukur AUC 0,770 (M=1) -> 0,829 (M=5) pada harness ablasi.
-    // Selama bukti belum cukup, sistem menerbitkan 'PENDING' — bukan diam, karena
+    // Selama bukti belum cukup, sistem menerbitkan 'PENDING' - bukan diam, karena
     // diam selalu dibaca aman (alasan yang sama dengan ABSTAIN di C-23).
     const AGG=this.cfg.aggregateWindows|0;
     let aggMembers=null;
@@ -650,7 +650,7 @@ class BehaviorGuard {
     // yang ini menangani akibat yang berbeda: selama kursi kosong, orang lain bisa
     // duduk di sesi yang SUDAH terautentikasi ("serangan jam makan siang"). Karena
     // penyusupnya mewarisi sesi yang sah, satu-satunya sinyal yang tersedia adalah
-    // adanya absen panjang di tengah — jadi absen itu harus dicatat, bukan dilewati.
+    // adanya absen panjang di tengah - jadi absen itu harus dicatat, bukan dilewati.
     // Jalur pending/eksternal tidak lewat `_onCaptureEvent`, jadi jeda antar-segmen
     // dibaca langsung dari datanya di sini.
     const segGapMs=(M.idle && M.idle.gapBeforeMs) || 0;
@@ -682,7 +682,7 @@ class BehaviorGuard {
     // step-up jalan sekali, walau perilaku sesudahnya terlihat normal. Sengaja
     // dipisah dari `awaySec`: absen 5 menit cukup untuk berhenti mengukur melintas,
     // 15 menit (sejajar batas idle-timeout PCI DSS 8.2.8) baru cukup untuk
-    // mengganggu pengguna. Hanya menaikkan LOW — MEDIUM/HIGH sudah step-up sendiri.
+    // mengganggu pengguna. Hanya menaikkan LOW - MEDIUM/HIGH sudah step-up sendiri.
     let reverifyAfterAway=false;
     if(awayInfo && awayInfo.awayMs >= this.cfg.idle.reverifyAfterSec*1000 && level==='LOW'){
       level='MEDIUM'; reverifyAfterAway=true;
@@ -711,7 +711,7 @@ class BehaviorGuard {
       eligible=false;
     }
     // A3: bukti sebagian tidak boleh jadi DASAR KEPERCAYAAN. Vonisnya tidak dinaikkan
-    // — memaksa step-up tiap kali orang memakai password manager itu hukuman untuk
+    // - memaksa step-up tiap kali orang memakai password manager itu hukuman untuk
     // kebiasaan yang justru aman. Yang dicabut adalah kemampuannya MEMBANGUN
     // kepercayaan: ia tidak menghitung sebagai LOW berturut, jadi ia tak bisa
     // meluruhkan lantai lengket, dan integrator diberi tahu lewat `partialEvidence`
@@ -743,7 +743,7 @@ class BehaviorGuard {
       partialEvidence: M.keystrokeBypassed ? 'keystroke' : null,
       automation: synthetic ? { syntheticInputs: synthNew } : null};
     // R3: push dengan flag eligible - sesi gagal gate tetap log tapi tidak latih
-    // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu —
+    // C-24: kalau vonisnya agregat, SEMUA jendela penyusunnya masuk dengan vonis itu -
     // kalau hanya yang terakhir yang disimpan, kolam latih tumbuh M kali lebih lambat.
     for(const m of (aggMembers || [{vec, feat}]))
       this.sessions.push({vector: m.vec, feat: m.feat, ts: Date.now(), risk: level, score, eligible});
@@ -755,7 +755,7 @@ class BehaviorGuard {
     // dibekukan pada `model.n` saat rebuild terakhir. Pengguna yang 6 sesi pertamanya
     // konsisten akan konvergen di n=10 -> `_rebuildModel()` tidak pernah dipanggil lagi
     // -> detektor-2 (Mahalanobis, bobot 0.70) TETAP TERGERBANG MATI SELAMANYA, dan
-    // sistem berjalan dengan Isolation Forest sendirian — persis konfigurasi yang
+    // sistem berjalan dengan Isolation Forest sendirian - persis konfigurasi yang
     // terukur jauh lebih lemah. Terlihat empiris: kolam 24 vektor, model.n masih 10,
     // sesi penyusup dengan skor Mahalanobis -1811 tetap divonis LOW.
     // Menyeberangi ambang gerbang adalah perubahan STRUKTUR model, bukan adaptasi
@@ -768,7 +768,7 @@ class BehaviorGuard {
     // C-31: jadwal latih ulang dulu `ukuran kolam % 6 === 0`. Kolam dibatasi 90 LOW, jadi
     // begitu penuh (~90 jendela x 30 dtk = 45 menit pemakaian) ukurannya BERHENTI
     // bergerak: di 90 (kelipatan 6) model dilatih ulang TIAP jendela, di 88/89 (sisa
-    // dedup) TIDAK PERNAH LAGI — adaptasi drift pemilik mati diam-diam. Yang benar
+    // dedup) TIDAK PERNAH LAGI - adaptasi drift pemilik mati diam-diam. Yang benar
     // menghitung sesi layak-latih BARU sejak latih ulang terakhir.
     const joinsPool = eligible && (level==='LOW');
     if(joinsPool) this._newSinceRebuild=(this._newSinceRebuild||0)+1;
@@ -809,7 +809,7 @@ class BehaviorGuard {
     await this._maybeMfa(evt);          // verifikasi: vonis bergantung hasilnya, jadi ditunggu
     // C-18: pendaftaran template TIDAK ditunggu. Ini prompt penyiapan di sesi
     // LOW yang tenang, bukan bagian dari vonis; menunggunya berarti `endSession()`
-    // baru selesai setelah pengguna mengetik frasa 3x — dan tidak pernah selesai
+    // baru selesai setelah pengguna mengetik frasa 3x - dan tidak pernah selesai
     // kalau popupnya diabaikan.
     this._maybeEnrollMfa(evt).catch(()=>{});
     evt.stage='final';
@@ -970,7 +970,7 @@ class BehaviorGuard {
   }
 
   // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya tools/eval_sdk.mjs
-  // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini — bukan
+  // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini - bukan
   // tiruan tangan yang lama-lama menyimpang (C-29).
   _applyMfaVerified(evt={}, now=Date.now()){
     // `now` = saat vonis dinilai (kesegaran jendela di bawah); masa berlaku dihitung dari saat
@@ -1001,7 +1001,7 @@ class BehaviorGuard {
    *   passed:false -> tidak mengubah apa pun selain tercatat; hukuman tetap milik
    *                   aturan vonis (HIGH beruntun), bukan milik laporan ini.
    * HANYA panggil dari hasil verifikasi SISI SERVER yang sudah dicek. Skrip di halaman
-   * yang sama bisa memanggilnya juga — itu batas kepercayaan sisi-klien yang sama
+   * yang sama bisa memanggilnya juga - itu batas kepercayaan sisi-klien yang sama
    * dengan seluruh pustaka ini (THREAT-MODEL.md).
    */
   // C-39: token pengguna berumur pendek; server integrator memperbaruinya.
@@ -1022,7 +1022,7 @@ class BehaviorGuard {
    *
    * TANPA efek samping: tidak menguras buffer, tidak masuk kolam latih, tidak menggeser
    * lantai lengket, tidak menaikkan hitungan HIGH. Bukti parsial (< minEventsAssess)
-   * lebih berisik, jadi ia lebih mudah salah-curiga — biaya yang wajar di momen yang
+   * lebih berisik, jadi ia lebih mudah salah-curiga - biaya yang wajar di momen yang
    * memang pantas diverifikasi. Lantai lengket & absen yang belum terselesaikan ikut
    * menaikkan vonisnya.
    */
@@ -1061,7 +1061,7 @@ class BehaviorGuard {
       reasons:[...(away?['kembali setelah absen - verifikasi ulang']:[]), ...reasonsFrom(top)], topFeatures: top};
   }
   // Pendaftaran template ritme HANYA di sesi tepercaya: vonis LOW, model sudah
-  // terbentuk, dan belum pernah punya template. Ini pasangan dari C-2 — kalau
+  // terbentuk, dan belum pernah punya template. Ini pasangan dari C-2 - kalau
   // pendaftaran tidak pernah terjadi di sini, MFA tidak akan pernah tersedia.
   async _maybeEnrollMfa(evt){
     const m=this.cfg.mfa;
@@ -1072,7 +1072,7 @@ class BehaviorGuard {
     if(this.challengeTemplate || this._mfaBusy) return;
     if(evt.level!=='LOW' || evt.eligible===false || !this.model) return;
     // C-37: popup pendaftaran DULU muncul di SETIAP vonis LOW selama template belum ada.
-    // Pengguna yang menutupnya sekali ditanya lagi di vonis berikutnya, lagi, dan lagi —
+    // Pengguna yang menutupnya sekali ditanya lagi di vonis berikutnya, lagi, dan lagi -
     // cara tercepat membuat orang mencopot pustaka keamanan. Kini ditunda
     // `mfa.enrollSnoozeMs` (default 24 jam) sesudah ditutup/diabaikan, dan tersimpan
     // lintas muat-halaman.
@@ -1150,7 +1150,7 @@ class BehaviorGuard {
    * rumus fiturnya (core/SPEC.md) tidak disentuh, jadi golden tetap hijau.
    *
    * Versi lama: `drain()` dulu MEMBUANG buffer < minEventsAssess tanpa jejak. Dua
-   * akibatnya sekaligus diperbaiki di sini — ekor yang masih hidup dikembalikan ke
+   * akibatnya sekaligus diperbaiki di sini - ekor yang masih hidup dikembalikan ke
    * buffer supaya bisa tumbuh (bukan dibuang tiap 30 detik), dan jendela yang tak
    * menghasilkan vonis tidak lagi diam-diam berlalu (lihat `_maybeAbstain`).
    */
@@ -1202,7 +1202,7 @@ class BehaviorGuard {
   }
   /**
    * C-42: JENDELA GESER. Vonis pertama sebuah kunjungan tetap jatuh begitu 150 event
-   * BARU terkumpul — penyusup diperiksa secepat sebelumnya. Vonis berikutnya menilai
+   * BARU terkumpul - penyusup diperiksa secepat sebelumnya. Vonis berikutnya menilai
    * event baru DITAMBAH event yang baru saja dinilai, sampai `contextEvents` total, jadi
    * pemilik yang terus bekerja dinilai dengan bukti ~2x lebih banyak (EER per pemilik
    * turun tajam dengan ukuran bukti, tabel C-29) tanpa menunda vonis pertama.
@@ -1229,7 +1229,7 @@ class BehaviorGuard {
   /**
    * C-28: seluruh aliran jadi SATU unit penilaian, jeda ≥ idleCompressSec
    * dipendekkan (bukan dipotong). Held-out 5 belahan, AFK 2-20 mnt disuntik:
-   * FRR 18,4% -> 9,7% pada FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968 — sedangkan
+   * FRR 18,4% -> 9,7% pada FAR 9,2% -> 9,3%, AUC 0,952 -> 0,968 - sedangkan
    * segmentasi C-23 memberi 18,8% / AUC 0,927. Memecah di jeda "away" ikut diuji dan
    * membatalkan manfaatnya (FRR 18,5%): yang merusak adalah MEMENDEKKAN SESI, bukan
    * jedanya. Lihat core/DRIFT.md C-28.
@@ -1237,7 +1237,7 @@ class BehaviorGuard {
    * Sisi KEAMANAN tidak hilang. Jeda terpanjang diukur dari timestamp ASLI sebelum
    * dikompresi dan dibawa sebagai `gapBeforeMs`, jadi `_ingestVector` tetap menandai
    * `resumedAfterAway`, mereset streak LOW, dan menaikkan LOW->MEDIUM bila absennya
-   * ≥ reverifyAfterSec — persis seperti jalur segmen. Yang berubah: satu batch yang
+   * ≥ reverifyAfterSec - persis seperti jalur segmen. Yang berubah: satu batch yang
    * melintasi absen menghasilkan SATU vonis, bukan dua.
    *
    * Bentuk keluarannya sama dengan segmentByIdle (array segmen) supaya
@@ -1251,13 +1251,13 @@ class BehaviorGuard {
     // waktu ASLI, bukan waktu hasil kompresi yang sudah digeser mundur.
     const realEnd=events.reduce((m,e)=> Math.max(m, e.timestamp||0), 0);
     // rawEvents: kalau unit ini ternyata ekor yang dikembalikan ke buffer, yang
-    // dikembalikan harus event ASLI — timestamp hasil kompresi akan merusak jendela
+    // dikembalikan harus event ASLI - timestamp hasil kompresi akan merusak jendela
     // berikutnya (jeda antara ekor dan event baru jadi terukur salah).
     return [{ events:ev, rawEvents:events, startTs, endTs:realEnd, durationMs:endTs-startTs,
               gapBeforeMs: acct.longestGapMs||0 }];
   }
   // C-24: [segmen] -> [jendela K event]. K=0 (default) mengembalikan segmen apa
-  // adanya, jadi jalur lama tidak tersentuh. Sisa < K di ekor DIBUANG di sini —
+  // adanya, jadi jalur lama tidak tersentuh. Sisa < K di ekor DIBUANG di sini -
   // ia tetap aman karena `splitForAssessment` sudah lebih dulu mengembalikan ekor
   // yang masih hidup ke buffer, jadi yang dibuang hanya sisa yang memang mati.
   _canonicalize(seg){
@@ -1283,7 +1283,7 @@ class BehaviorGuard {
     // A3: bukti keystroke DIALIHKAN, bukan sekadar tidak ada. Dibedakan dengan hati-hati
     // dari sesi menelusuri biasa: sesi baca-baca juga nol keystroke, tapi ia nol pada
     // baseline-nya juga, jadi tidak menyesatkan. Yang menyesatkan adalah form yang
-    // TERSENTUH tapi tidak diketik — autofill, password manager, atau tempel.
+    // TERSENTUH tapi tidak diketik - autofill, password manager, atau tempel.
     // C-42: hanya event BARU yang diperiksa. Dengan jendela geser, satu tempel di konteks
     // dulu mencemari 2-3 vonis berikutnya (pengguna password manager tak pernah selesai
     // mendaftar); konteks sudah dinilai di vonis sebelumnya.
@@ -1295,7 +1295,7 @@ class BehaviorGuard {
     const nFocus=fresh.reduce((n,e)=> n+(e.event_type==='FORM_FOCUS' && e.txt!==false ?1:0), 0);
     const keystrokeBypassed = nPaste>0 || (nFocus>0 && nKey===0);
     // Sesi yang blok keystroke-nya dialihkan TIDAK PERNAH melatih: kedelapan fiturnya
-    // nol secara STRUKTURAL — karena memang tidak ada yang diketik — bukan karena
+    // nol secara STRUKTURAL - karena memang tidak ada yang diketik - bukan karena
     // begitulah cara orang ini mengetik. Melatihkannya menarik baseline ke arah
     // "tidak pernah mengetik", dan itu justru MELEBARKAN jalan bagi penyusup yang
     // memakai autofill untuk menghapus jejak ritmenya.
@@ -1313,7 +1313,7 @@ class BehaviorGuard {
    * C-23: jendela tanpa vonis TIDAK sama dengan jendela aman. Versi lama
    * mengembalikan `null` diam-diam, sehingga integrator yang menunggu callback
    * tidak bisa membedakan "sudah diperiksa, aman" dari "tak ada bukti sama sekali"
-   * — dan default diam itu selalu jatuh ke sisi mempercayai. Sekarang diterbitkan
+   * - dan default diam itu selalu jatuh ke sisi mempercayai. Sekarang diterbitkan
    * vonis 'UNKNOWN' / action 'ABSTAIN' SEKALI per rentetan idle (bukan tiap
    * jendela, supaya tab yang ditinggal semalaman tidak membanjiri log).
    */
@@ -1327,7 +1327,7 @@ class BehaviorGuard {
     const evt={
       level:'UNKNOWN', score:null, action:'ABSTAIN', blocked:false, abstain:true,
       reasons:[ n===0
-        ? 'tidak ada input — halaman kemungkinan ditinggal'
+        ? 'tidak ada input - halaman kemungkinan ditinggal'
         : `bukti tidak cukup untuk menilai (${n} event, ambang ${this.cfg.session.minEventsAssess})` ],
       topFeatures:[], features:null, thresholds:{...this.cfg.thresholds}, eligible:false,
       idle:{ activeMs:acct.activeMs, idleMs:acct.idleMs, activeRatio:acct.activeRatio,
@@ -1338,12 +1338,12 @@ class BehaviorGuard {
     return evt;   // sengaja TIDAK di-_cloudLog: ini keadaan lokal, bukan vonis akun
   }
   // A5: `features.js` menghitung navEv = NAVIGATION | PAGE_STEP, dan basis data riset
-  // berisi 2.672 PAGE_STEP — SEMUANYA dari alur checkout bertahap. Tapi `capture.js`
+  // berisi 2.672 PAGE_STEP - SEMUANYA dari alur checkout bertahap. Tapi `capture.js`
   // tidak pernah menerbitkannya, jadi `nav_step_transition_count` dan
   // `nav_page_transition_pattern` dihitung dari populasi event yang BERBEDA saat
   // dilatih dan saat dipakai (kerabat C-17).
-  // Semantiknya tidak bisa ditebak otomatis — "langkah" itu urusan aplikasi, bukan
-  // DOM — jadi jalan yang jujur adalah menyediakan API eksplisit, bukan menebak dari
+  // Semantiknya tidak bisa ditebak otomatis - "langkah" itu urusan aplikasi, bukan
+  // DOM - jadi jalan yang jujur adalah menyediakan API eksplisit, bukan menebak dari
   // submit/pushState dan diam-diam salah.
   markStep(name){
     if(!this.capture) return;

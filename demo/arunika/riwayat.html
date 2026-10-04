@@ -63,7 +63,7 @@
       <td><span class="cat"><span class="ico">${A.I[k.ic]}</span>${A.esc(t.kat)}</span></td>
       <td class="r"><span class="amt ${t.jml > 0 ? 'in' : ''}">${t.jml > 0 ? '+' : '−'}${A.rupiah(Math.abs(t.jml))}</span></td></tr>`; }).join('');
     $('kosong').hidden = rows.length > 0;
-    $('info').textContent = rows.length ? `${hal * PER + 1}–${hal * PER + sl.length} dari ${rows.length}` : '';
+    $('info').textContent = rows.length ? `${hal * PER + 1}-${hal * PER + sl.length} dari ${rows.length}` : '';
     $('prev').disabled = hal === 0; $('next').disabled = hal >= maks;
   }
   $('filter').addEventListener('click', e => {

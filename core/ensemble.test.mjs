@@ -1,9 +1,9 @@
 /**
- * ensemble.test.mjs — regression tests for the detector gate (C-15).
+ * ensemble.test.mjs - regression tests for the detector gate (C-15).
  *
  * `ensembleMinSamples.svm = 20` while `baseline = 10`. The gate is frozen into the
  * model at rebuild time (`Ensemble.n`), so a model built at n=10 has the second
- * detector — which carries 70% of the weight — switched OFF. If convergence then
+ * detector - which carries 70% of the weight - switched OFF. If convergence then
  * stops retraining, that model never rebuilds and the strongest detector stays off
  * for the lifetime of that user.
  *

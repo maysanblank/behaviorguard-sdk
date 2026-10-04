@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nusantara Mart — Toko Polos (tanpa 1 baris BG)</title>
+<title>Nusantara Mart - Toko Polos (tanpa 1 baris BG)</title>
 <style>body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f8;color:#111}
 header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;padding:18px}
@@ -9,13 +9,13 @@ button{background:#0a7a63;color:#fff;border:0;border-radius:999px;padding:10px 1
 #cart{position:fixed;right:12px;bottom:12px;background:#111;color:#fff;padding:10px 14px;border-radius:999px}
 input,textarea{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;margin:6px 0}
 </style></head><body>
-<header><b>Nusantara Mart — Toko Polos</b><span>Polos: NOL import SDK di file ini</span></header>
-<div style="padding:12px 18px;background:#fffbe6;border-bottom:1px solid #f0d48a">Coba: ketik, klik produk, isi alamat — perilaku direkam dari LUAR oleh pemantau.</div>
+<header><b>Nusantara Mart - Toko Polos</b><span>Polos: NOL import SDK di file ini</span></header>
+<div style="padding:12px 18px;background:#fffbe6;border-bottom:1px solid #f0d48a">Coba: ketik, klik produk, isi alamat - perilaku direkam dari LUAR oleh pemantau.</div>
 <div class="grid" id="grid"></div>
 <div style="max-width:520px;margin:18px;padding:14px;background:#fff;border:1px solid #e5e7eb;border-radius:12px">
   <h3>Checkout</h3>
-  <input id="alamat" placeholder="Alamat pengiriman — ketik sungguhan">
-  <textarea id="catatan" placeholder="Catatan — ketik sungguhan"></textarea>
+  <input id="alamat" placeholder="Alamat pengiriman - ketik sungguhan">
+  <textarea id="catatan" placeholder="Catatan - ketik sungguhan"></textarea>
   <button id="bayar">Bayar sekarang</button>
   <div id="status" style="margin-top:8px;color:#555"></div>
 </div>
@@ -35,9 +35,9 @@ products.forEach(p=>{
   grid.appendChild(c);
 });
 document.getElementById('bayar').onclick=()=>{
-  document.getElementById('status').textContent='Pesanan diproses… (jika pemantau aktif, risiko dinilai dari LUAR tanpa ubah file ini)';
+  document.getElementById('status').textContent='Pesanan diproses... (jika pemantau aktif, risiko dinilai dari LUAR tanpa ubah file ini)';
 };
 // bukti fungsional polos: file ini tidak import sdk/behaviorguard.js sama sekali (cek Network tab)
-// klaim "0 kemunculan kata" dihapus — yang benar: 0 import, 0 eksekusi SDK
+// klaim "0 kemunculan kata" dihapus - yang benar: 0 import, 0 eksekusi SDK
 </script>
 </body></html>

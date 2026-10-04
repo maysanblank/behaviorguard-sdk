@@ -16,7 +16,7 @@ function gateWeights(weights, n){
 export class Ensemble {
   constructor(iforest, ocsvm, weights, n){
     this.iforest=iforest; this.ocsvm=ocsvm;
-    // C-8: fallback ini dulu {0.7, 0.3} — bobot W7 LAMA, kebalikan dari DEFAULTS
+    // C-8: fallback ini dulu {0.7, 0.3} - bobot W7 LAMA, kebalikan dari DEFAULTS
     // (IF 0.30 / detektor-2 0.70). Konstruksi tanpa `weights` diam-diam memakai
     // konfigurasi lama yang lebih buruk. Sekarang satu sumber kebenaran.
     this.weights=normalizeWeights(weights||DEFAULTS.weights);

@@ -1,5 +1,5 @@
 /**
- * privacy.test.mjs — C-30: apa yang BOLEH dan TIDAK BOLEH tertangkap capture.js.
+ * privacy.test.mjs - C-30: apa yang BOLEH dan TIDAK BOLEH tertangkap capture.js.
  *
  *  1. Karakter yang diketik tidak pernah tersimpan (termasuk kolom sandi); yang
  *     tersimpan hanya token urut-kemunculan.
@@ -10,7 +10,7 @@
  *  5. C-44: kelas tangan (`kc`) dicatat dari posisi fisik tombol di kolom biasa, dan
  *     TIDAK PERNAH di kolom sandi (urutan kiri/kanan sandi mempersempit tebakan).
  *
- * DOM tiruan minimal — capture.js hanya butuh addEventListener dan target.closest.
+ * DOM tiruan minimal - capture.js hanya butuh addEventListener dan target.closest.
  * Jalankan: node core/privacy.test.mjs
  */
 import { createCapture } from '../sdk/core/capture.js';

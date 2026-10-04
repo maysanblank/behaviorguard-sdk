@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="BehaviorGuard - continuous behavioral-biometrics account-takeover detection" width="100%">
+</p>
+
 # BehaviorGuard
 
-**Detect account takeover from how someone moves, types and navigates — entirely on the
+**Detect account takeover from how someone moves, types and navigates - entirely on the
 device, with a built-in step-up challenge. One script tag. No backend required.**
 
 [![conformance](https://img.shields.io/badge/conformance-319%2F319%20across%205%20runtimes-brightgreen)](core/golden.json)
@@ -18,7 +22,7 @@ login: password, OTP, device fingerprint. Everything after that is trusted.
 
 That is exactly the window attackers use. Credential stuffing, session-cookie theft,
 malicious browser extensions, remote-access scams and physical device handoff all produce
-the same thing — a session that **passed the door check** and is now driven by someone
+the same thing - a session that **passed the door check** and is now driven by someone
 else. The login was legitimate. The session is not.
 
 The usual answer is a server-side risk engine: it sees IP, user agent and coarse behavior,
@@ -27,12 +31,12 @@ team, a research project, or a privacy-sensitive product, that is a heavy and of
 unacceptable price.
 
 **BehaviorGuard makes the session itself continuously accountable.** It builds a model of
-how *this account's owner* behaves — mouse dynamics, keystroke rhythm, navigation shape —
+how *this account's owner* behaves - mouse dynamics, keystroke rhythm, navigation shape -
 and re-scores the live session every 30 seconds. When the behavior stops looking like the
 owner, it asks for a step-up: its own typing-rhythm challenge, or your OTP / WebAuthn.
 
 Raw interaction data never leaves the browser. The characters a user types are never
-stored — not even on the device.
+stored - not even on the device.
 
 ---
 
@@ -104,7 +108,7 @@ collects evidence until it has enough. After the owner passes a step-up, `MEDIUM
 do not ask again for 15 minutes (`HIGH` always does, and walking away for 5 minutes
 cancels it).
 
-Every verdict carries its reasoning — the top deviating features with their z-scores — so
+Every verdict carries its reasoning - the top deviating features with their z-scores - so
 `HIGH` is never a black box:
 
 ```js
@@ -128,7 +132,7 @@ arriving through a fresh visit on the owner's account.
 | Owner | |
 | --- | --- |
 | Verdicts that asked the owner to verify | **11.4%** |
-| … in the last fifth of each owner's history | 7.2% |
+| ... in the last fifth of each owner's history | 7.2% |
 | Owner blocked | **0%** |
 
 | Impostor (stolen password, own device) | at their own hour | at the owner's usual hour |
@@ -184,7 +188,7 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
   Treat `HIGH` as "make them prove it", never as proof of fraud, and gate sensitive actions
   with `assessNow()`.
 - **The impostors are 15 other ordinary users, not attackers imitating a specific
-  victim.** Targeted mimicry is **untested** and is the most important open threat — see
+  victim.** Targeted mimicry is **untested** and is the most important open threat - see
   [THREAT-MODEL.md](THREAT-MODEL.md).
 - **Owner friction is not random noise.** It is flat across windows within a visit: an
   owner is flagged on the *days* their behavior differs, in every window of that day. It
@@ -195,15 +199,15 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
   population and a different site.
 - **Two promising ideas were measured and rejected.** Honest negative results, both in
   [core/DRIFT.md](core/DRIFT.md):
-  - *Behavioral step-up with no enrolled phrase* — scoring free typing from a single field
-    (~20 keys) against the owner's statistics. EER 29–38%; at an operating point that rejects
+  - *Behavioral step-up with no enrolled phrase* - scoring free typing from a single field
+    (~20 keys) against the owner's statistics. EER 29-38%; at an operating point that rejects
     7% of owners, two of three impostors still pass. Typing rhythm only separates people when
     the *same text at the same positions* is compared, or when the evidence is a full window.
     So the phrase template stays, and the fix was to enroll it *earlier* (at onboarding).
   - *Outlier-robust mouse features* (median/IQR/rates replacing mean/counts, the C-44 idea
     moved to the pointer). Won on the tuning fold (AUC 0.963 vs 0.955) and **lost on the
     report fold** (0.949 vs 0.952). The only effect consistent across both folds was a
-    stricter operating point — which `calibration: { k_low }` already gives for free, without
+    stricter operating point - which `calibration: { k_low }` already gives for free, without
     changing a formula, breaking stored profiles, or touching four ports. An improvement that
     does not replicate on the split it was not chosen on is not an improvement.
 - **Earlier numbers in this repository described other engines.** FRR 16.1% / FAR 5.4% came
@@ -218,7 +222,7 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
 
 Behavioral scoring is only useful if it runs where your stack already is. So the algorithm
 is specified **independently of any runtime**, and every implementation is checked against
-the *same* numeric contract — not asserted to match, **proven** to match.
+the *same* numeric contract - not asserted to match, **proven** to match.
 
 | Runtime | Reach | Conformance |
 | --- | --- | --- |
@@ -228,9 +232,9 @@ the *same* numeric contract — not asserted to match, **proven** to match.
 | Java | JVM, **Android**, Kotlin | 319/319 |
 | WASM | any WASM host | 319/319 |
 
-- [`core/SPEC.md`](core/SPEC.md) — the normative specification (v1.4.0). *If the code and
+- [`core/SPEC.md`](core/SPEC.md) - the normative specification (v1.4.0). *If the code and
   the spec disagree, the spec is right and the code is the bug.*
-- [`core/golden.json`](core/golden.json) — 319 explicit input/output checks, tolerance 1e-9,
+- [`core/golden.json`](core/golden.json) - 319 explicit input/output checks, tolerance 1e-9,
   including real mouse-move pairs that sit exactly on a `pi/4` turn, where `atan2` differs by
   one ulp between math libraries (C-34).
 
@@ -240,7 +244,7 @@ detector gate and the integrity heuristics.
 ### No dependencies, anywhere
 
 No `npm install`, no `pip install`, no model download, no network call. Every port uses
-only its standard library — including a hand-written JSON reader in the compiled ones. The
+only its standard library - including a hand-written JSON reader in the compiled ones. The
 entire browser build is one ~160 KB classic script.
 
 ---
@@ -253,14 +257,14 @@ No Node required.
 python -m http.server 8080
 ```
 
-**A realistic site with the library installed:** <http://localhost:8080/demo/arunika/> — a
+**A realistic site with the library installed:** <http://localhost:8080/demo/arunika/> - a
 fictional digital bank with account opening, transfer, bill payment, history and security
 settings.
 
 It **starts at account opening**, on purpose: you watch a profile being built from zero for an
 account the library knows nothing about. Signing up leads to an onboarding page with a live
 `0/10` progress ring, an evidence counter, a plain statement of what is measured and what is
-never stored, and the step that matters — enrolling the typing rhythm. Enroll it there and the
+never stored, and the step that matters - enrolling the typing rhythm. Enroll it there and the
 behavioral check is what users actually meet; skip it and every verification falls through to
 the one-time code, which is the recovery path, not the product.
 
@@ -268,11 +272,11 @@ Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integr
 verdict handling, a risk-based gate for transfers, and the code fallback). A presenter panel in
 the bottom-left corner shows the live phase, evidence, verdict gauge and plain-language
 reasons, and can simulate a lunch-break return, a replay of your own recorded behavior, and a
-bot. Security → *Ulangi demo dari awal* wipes everything and returns you to the sign-up screen.
+bot. Security -> *Ulangi demo dari awal* wipes everything and returns you to the sign-up screen.
 
 **The zero-code view:** <http://localhost:8080/demo/pemantau/>.
 
-The left pane is an ordinary shop page with **zero BehaviorGuard code inside it** — check
+The left pane is an ordinary shop page with **zero BehaviorGuard code inside it** - check
 the Network tab, it loads no SDK. The right pane attaches from the outside and shows live
 scores, the session log and the top deviating features. Move the mouse, type, click through
 products for 10-12 sessions to enroll, then let someone else drive and watch the verdict
@@ -288,8 +292,8 @@ node   core/challenge.test.mjs     # step-up regression
 python server/test_app.py          # optional server: auth, XSS   -> 35/35
 ```
 
-`demo/attack_sim.html` runs four attack vectors — paste replay, speed bot, minimal mouse
-path, and rhythm mimicry — against a seeded owner model.
+`demo/attack_sim.html` runs four attack vectors - paste replay, speed bot, minimal mouse
+path, and rhythm mimicry - against a seeded owner model.
 
 ---
 
@@ -303,15 +307,15 @@ DOM events -> drop duplicates -> compress idle gaps -> 150 events of evidence
           -> step-up (typing rhythm, or your OTP via reportStepUp)
 ```
 
-- **Enrollment** — the first 10 eligible sessions build the owner baseline. They are an
+- **Enrollment** - the first 10 eligible sessions build the owner baseline. They are an
   anchor: they never roll out of the training pool.
-- **Trust loop** — only windows that scored `LOW`, or that passed a genuine step-up, are
+- **Trust loop** - only windows that scored `LOW`, or that passed a genuine step-up, are
   ever allowed to teach the model. That is what stops a slow takeover from gradually
   becoming the new normal.
-- **Idle** — gaps of 15 s or more are shortened, not cut, so a coffee break is not read as
+- **Idle** - gaps of 15 s or more are shortened, not cut, so a coffee break is not read as
   a different person. A 5-minute absence resets trust; 15 minutes asks for re-verification
   (the lunch-break attack).
-- **Replay** — a session that is a near-exact copy of a stored one (recorded and replayed)
+- **Replay** - a session that is a near-exact copy of a stored one (recorded and replayed)
   is `HIGH` and never trains.
 
 Full detail: [ARCHITECTURE.md](ARCHITECTURE.md) and [core/SPEC.md](core/SPEC.md).
@@ -361,12 +365,12 @@ its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/D
 
 - **Script-generated events counted as behavior.** The capture layer never checked
   `isTrusted`, so anything running JavaScript in the page could `dispatchEvent` a humanlike
-  stream until the verdict came back `LOW` — and since eligible `LOW` windows train the
+  stream until the verdict came back `LOW` - and since eligible `LOW` windows train the
   model, the forged vectors joined the owner's baseline. Not a bypassed check: the owner's
   profile dragged toward the attacker, permanently. Untrusted events are now never recorded,
   are counted, and mark the window ineligible for training (C-46).
 - **A complete step-up bypass.** Pasting the phrase produced zero keystroke events, and
-  `NaN > x` silently returns false in JavaScript — so an empty rhythm passed every check.
+  `NaN > x` silently returns false in JavaScript - so an empty rhythm passed every check.
 - **The main detector was never active.** The convergence rule froze the model before the
   Mahalanobis detector (70% of the weight) was switched on; an impostor scoring -1811 on it
   was still returned as `LOW`.
@@ -411,6 +415,8 @@ ports/        Rust, Java and WASM implementations
 demo/         offline demos (clean site + external monitor, shops, accuracy lab)
 tools/        eval_sdk.mjs (measures the shipped library), research scripts, bundler
 server/       optional backend (baseline sync, verdict log) and operator dashboard
+docs/         documentation set - start at docs/README.md
+assets/       banner and screenshots used in this README
 ```
 
 ---
@@ -419,6 +425,7 @@ server/       optional backend (baseline sync, verdict log) and operator dashboa
 
 | Document | What is in it |
 | --- | --- |
+| [docs/README.md](docs/README.md) | Documentation index - the map to everything below |
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | Every integration path, the config surface, framework notes |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
@@ -426,12 +433,13 @@ server/       optional backend (baseline sync, verdict log) and operator dashboa
 | [core/DRIFT.md](core/DRIFT.md) | The C-1..C-45 audit: every defect, its evidence and its test |
 | [server/README.md](server/README.md) | Optional server: keys, user tokens, dashboard |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
+| [BACKLOG.md](BACKLOG.md) | Roadmap - what is planned and explicitly out of scope |
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
 
 Built as thesis research and released because the problem is common and the honest version
 of the answer is worth sharing. Issues and ports are welcome.

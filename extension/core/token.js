@@ -29,7 +29,7 @@ export async function verifyToken(token, secret){
   let diff=0; for(let i=0;i<expected.length;i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
   return diff===0;
 }
-// C-41: `storage` DIOPER pemanggil. Dulu `await import('../storage.js')` — di bundle satu
+// C-41: `storage` DIOPER pemanggil. Dulu `await import('../storage.js')` - di bundle satu
 // berkas (dist/) jalur relatif itu menunjuk ke /storage.js milik SITUS: 404 di tiap muat
 // halaman (terlihat di tab Network integrator), lalu jatuh ke catch dan rahasia dibuat acak
 // ulang tiap kunjungan.

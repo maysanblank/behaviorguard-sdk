@@ -7,7 +7,7 @@ export function checkIntegrity(events, opts={}){
   // T5: hitung hanya dari event non-throttled (KEYSTROKE/CLICK) agar throttle 50ms tidak flag bot
   const filtered = opts.throttled ? events.filter(e=> e.event_type==='KEYSTROKE' || e.event_type==='MOUSE_CLICK') : events;
   // A1: fallback `: events` DULU MEMBATALKAN seluruh maksud T5. Saat keystroke+klik
-  // < 10 — yaitu sesi yang isinya menelusuri/membaca — ia jatuh ke SELURUH event,
+  // < 10 - yaitu sesi yang isinya menelusuri/membaca - ia jatuh ke SELURUH event,
   // yang isinya hampir semua MOUSE_MOVE hasil throttle 50 ms kita sendiri. Interval
   // hasil throttle itu bukan cuma mirip-mirip, tapi PERSIS konstan:
   //   mousemove  60Hz -> 50,0 ms std 0,00    100Hz -> 50,0 ms std 0,00
@@ -19,7 +19,7 @@ export function checkIntegrity(events, opts={}){
   // Kerabat langsung C-16, dihidupkan lagi oleh fallback-nya sendiri.
   //
   // Aturan yang benar: JANGAN PERNAH menilai keteraturan interval pada aliran yang
-  // kita throttle sendiri. Kalau buktinya kurang, lewati cek itu — bukan ganti sumber.
+  // kita throttle sendiri. Kalau buktinya kurang, lewati cek itu - bukan ganti sumber.
   const throttledStream = opts.throttled && filtered.length < 10;
   const evs = filtered.length>=10 ? filtered : events;
   if(evs.length < 20) return {suspected:false, reasons:[]};

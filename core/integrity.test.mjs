@@ -1,10 +1,10 @@
 /**
- * integrity.test.mjs — regression tests for the bot/replay heuristics (C-16).
+ * integrity.test.mjs - regression tests for the bot/replay heuristics (C-16).
  *
  * The velocity check read `e.velocity || 0` on events whose capture layer never
  * populated `velocity`. Every value collapsed to 0, the standard deviation was 0,
  * and ordinary human sessions were reported as "velocity konstan" and blocked as
- * bots. It fired on exactly the sessions that are mostly mouse movement — a
+ * bots. It fired on exactly the sessions that are mostly mouse movement - a
  * visitor browsing a page without typing much.
  *
  * Run: node core/integrity.test.mjs   (or open core/integrity.test.html)

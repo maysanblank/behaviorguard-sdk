@@ -11,7 +11,7 @@ export async function getFingerprint(){
   // -> sidik berubah -> behaviorguard.js memaksa lastRisk='MEDIUM', dan lantai lengket
   // menahannya sampai tiga sesi LOW berturut. Colok monitor bukan ganti perangkat.
   // Resolusi adalah KONTEKS (ia menggeser skala kecepatan, lihat A2), bukan identitas
-  // mesin — jadi ia keluar dari sini dan ditangani sebagai konteks.
+  // mesin - jadi ia keluar dari sini dan ditangani sebagai konteks.
   // C-36: `userAgent` DULU ikut utuh, lengkap dengan nomor versi. Chrome/Edge/Firefox
   // naik versi mayor ~tiap 4 minggu lewat pembaruan otomatis -> sidik berubah -> pemilik
   // dipaksa MEDIUM + lantai lengket sebulan sekali, padahal perangkatnya sama persis.

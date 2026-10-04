@@ -1,5 +1,5 @@
 """
-reproduce.py — ILUSTRASI SINTETIS BLOB (bukan reproduksi DB)
+reproduce.py - ILUSTRASI SINTETIS BLOB (bukan reproduksi DB)
 DEPRECATED: pakai reproduce_simple.py untuk ilustrasi rumus,
 atau reproduce_db.py untuk bukti atas DB asli.
 Blob acak ini tidak mereplikasi sebaran 653 sesi nyata.
@@ -173,8 +173,8 @@ def run(weights,label):
     to, on, ti, il, conv = prequential(subs, weights)
     frr=on/to*100 if to else 0; far=il/ti*100 if ti else 0
     print(f"\n[{label}] {weights}")
-    print(f"  Owner: {on}/{to} bukan-LOW → FRR {frr:.1f}%")
-    print(f"  Impostor: {il}/{ti} lolos LOW → FAR {far:.1f}%")
+    print(f"  Owner: {on}/{to} bukan-LOW -> FRR {frr:.1f}%")
+    print(f"  Impostor: {il}/{ti} lolos LOW -> FAR {far:.1f}%")
     print(f"  Error {(frr+far)/2:.1f}% | Konvergen {conv}/16")
     return frr,far
 
@@ -188,8 +188,8 @@ r2=run(w_if,"ABLATION tanpa SVM (IF 100%)")
 print("\n--- Determinisme cek ---")
 r3=run(w7,"RE-RUN W7")
 print(f"Deterministik: {'YA ✓' if r1==r3 else 'TIDAK ✗'}")
-print(f"Ablation: FAR tanpa SVM {r2[1]:.1f}% vs dengan SVM {r1[1]:.1f}% → {r2[1]/r1[1]:.1f}x (harus ~2x) {'✓' if r2[1] > r1[1]*1.6 else '✗'}")
+print(f"Ablation: FAR tanpa SVM {r2[1]:.1f}% vs dengan SVM {r1[1]:.1f}% -> {r2[1]/r1[1]:.1f}x (harus ~2x) {'✓' if r2[1] > r1[1]*1.6 else '✗'}")
 is_close = abs(r1[0]-15.2)<3 and abs(r1[1]-12.1)<3
-print(f"Kriteria FINAL FRR~15.2 FAR~12.1 → got {r1[0]:.1f}/{r1[1]:.1f} {'✓ dalam toleransi' if is_close else '✗ MELenceng — jangan klaim lulus, ini sintetis'}")
+print(f"Kriteria FINAL FRR~15.2 FAR~12.1 -> got {r1[0]:.1f}/{r1[1]:.1f} {'✓ dalam toleransi' if is_close else '✗ MELenceng - jangan klaim lulus, ini sintetis'}")
 if not is_close:
     print("CATATAN: ini sintetis blob, bukan bukti validasi. Jalankan tools/reproduce_db.py untuk angka DB asli.")

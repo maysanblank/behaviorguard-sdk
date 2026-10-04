@@ -92,7 +92,7 @@
 
 <header>
   <h1>Lab Akurasi <span>BehaviorGuard</span></h1>
-  <span class="akun mono" id="akun">memuat…</span>
+  <span class="akun mono" id="akun">memuat...</span>
   <div class="spacer"></div>
   <span class="akun mono" id="ringkas">0 sesi</span>
 </header>
@@ -104,8 +104,8 @@
     <div class="kartu">
       <h2>Tugas sesi ini</h2>
       <p class="ket">Kerjakan hal yang <b>sama</b> tiap sesi supaya perbandingannya adil:
-        klik 3–4 produk, isi formulir sampai penuh, lalu tekan <b>Akhiri sesi &amp; nilai</b>.
-        Perlu <b>±100 kejadian</b> dan <b>minimal 5 detik</b> — jadi jangan diam.</p>
+        klik 3-4 produk, isi formulir sampai penuh, lalu tekan <b>Akhiri sesi &amp; nilai</b>.
+        Perlu <b>±100 kejadian</b> dan <b>minimal 5 detik</b> - jadi jangan diam.</p>
 
       <div class="produk" id="produk"></div>
 
@@ -134,7 +134,7 @@
 
     <div class="kartu" style="margin-top:16px">
       <h2>Riwayat sesi</h2>
-      <p class="ket">Sesi 1–10 dipakai mendaftar dan tidak dinilai. Penilaian mulai sesi ke-11.</p>
+      <p class="ket">Sesi 1-10 dipakai mendaftar dan tidak dinilai. Penilaian mulai sesi ke-11.</p>
       <div class="gulir">
         <table>
           <thead><tr><th>#</th><th>Peran</th><th>Vonis</th><th>Skor</th><th>Aksi</th><th>Layak</th></tr></thead>
@@ -173,9 +173,9 @@
       <h2>Hasil pengukuran</h2>
       <p class="ket">Hanya menghitung sesi setelah pendaftaran selesai.</p>
       <div class="angka">
-        <div class="a"><div class="k">FRR</div><div class="v" id="v-frr">—</div>
+        <div class="a"><div class="k">FRR</div><div class="v" id="v-frr">-</div>
           <div class="d" id="d-frr">pemilik ditolak</div></div>
-        <div class="a"><div class="k">FAR</div><div class="v" id="v-far">—</div>
+        <div class="a"><div class="k">FAR</div><div class="v" id="v-far">-</div>
           <div class="d" id="d-far">penyusup lolos</div></div>
       </div>
       <div class="catatan" id="harapan"></div>
@@ -220,7 +220,7 @@
     el('hitung').textContent = 'kejadian tertangkap: ' + n +
       (n < perlu ? '  (perlu ±' + perlu + ' sebelum sesi dihitung layak)' : '  ✓ cukup');
     // Tombol dikunci sampai sesi benar-benar LAYAK. Sebelumnya kebuka di 30
-    // (minEventsAssess) → 2 sesi pertama yang pendek diakhiri, dinilai "tidak layak",
+    // (minEventsAssess) -> 2 sesi pertama yang pendek diakhiri, dinilai "tidak layak",
     // dan panel diam di 0/10, bukan naik ke 1/10.
     el('akhiri').disabled = n < perlu;
   }, 400);
@@ -260,10 +260,10 @@
       el('lvl').textContent = 'MENGENALI ' + p.selesai + '/' + p.perlu;
       el('lvl').style.color = 'var(--ungu)';
       el('kartu-status').style.borderLeftColor = 'var(--ungu)';
-      el('skor').textContent = 'membangun profil pemilik…';
+      el('skor').textContent = 'membangun profil pemilik...';
       el('bar').style.width = Math.round(p.selesai / p.perlu * 100) + '%';
       el('bar').style.background = 'var(--ungu)';
-      el('alasan').textContent = p.siap ? 'profil siap — sesi berikutnya sudah dinilai'
+      el('alasan').textContent = p.siap ? 'profil siap - sesi berikutnya sudah dinilai'
                                         : 'butuh ' + (p.perlu - p.selesai) + ' sesi lagi';
     } else if (e) {
       var warna = { LOW: 'var(--low)', MEDIUM: 'var(--med)', HIGH: 'var(--high)' }[e.level] || 'var(--ink-2)';
@@ -285,9 +285,9 @@
       return '<tr><td class="mono">' + r.no + '</td>' +
         '<td><span class="tag ' + r.peran + '">' + (r.peran === 'pemilik' ? 'pemilik' : 'orang lain') + '</span></td>' +
         '<td>' + vonis + '</td>' +
-        '<td class="mono">' + (r.skor == null ? '—' : r.skor.toFixed(2)) + '</td>' +
+        '<td class="mono">' + (r.skor == null ? '-' : r.skor.toFixed(2)) + '</td>' +
         '<td class="mono" style="font-size:11px">' + r.aksi + '</td>' +
-        '<td>' + (r.layak ? '✓' : '—') + '</td></tr>';
+        '<td>' + (r.layak ? '✓' : '-') + '</td></tr>';
     }).join('');
 
     // angka
@@ -297,9 +297,9 @@
     var frrN = ownr.filter(function (r) { return r.level !== 'LOW'; }).length;
     var farN = imps.filter(function (r) { return r.level === 'LOW'; }).length;
 
-    el('v-frr').textContent = ownr.length ? (frrN / ownr.length * 100).toFixed(1) + '%' : '—';
+    el('v-frr').textContent = ownr.length ? (frrN / ownr.length * 100).toFixed(1) + '%' : '-';
     el('d-frr').textContent = ownr.length ? frrN + ' dari ' + ownr.length + ' sesi pemilik' : 'pemilik ditolak';
-    el('v-far').textContent = imps.length ? (farN / imps.length * 100).toFixed(1) + '%' : '—';
+    el('v-far').textContent = imps.length ? (farN / imps.length * 100).toFixed(1) + '%' : '-';
     el('d-far').textContent = imps.length ? farN + ' dari ' + imps.length + ' sesi orang lain' : 'penyusup lolos';
     el('ringkas').textContent = riwayat.length + ' sesi · ' + dinilai.length + ' dinilai';
 
@@ -318,7 +318,7 @@
     } else {
       h = '<b>Pembanding (pustaka ini sendiri, 653 sesi, 16 subjek, jendela 30 dtk):</b> ' +
           'pemilik diminta verifikasi 11,4% · penyusup lolos vonis pertama 10,5%. ' +
-          'Angkamu sendiri akan berbeda — satu orang, satu penyusup, jumlah sesi kecil. ' +
+          'Angkamu sendiri akan berbeda - satu orang, satu penyusup, jumlah sesi kecil. ' +
           'Yang penting <b>arahnya</b>: FRR rendah dan FAR jauh lebih rendah daripada 50%.';
     }
     el('harapan').innerHTML = h;

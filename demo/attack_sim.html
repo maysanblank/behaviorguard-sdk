@@ -1,5 +1,5 @@
 <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Attack Sim — Uji Mimicry (BlackHat)</title>
+<title>Attack Sim - Uji Mimicry (BlackHat)</title>
 <style>
 :root{--bg:#0b0b11;--card:#1a1a28;--line:#2a2a3a;--accent:#fff;--good:#4ade80;--warn:#fbbf24;--bad:#f87171;--radius:12px}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 Inter,system-ui;background:var(--bg);color:#e2e8f0}
@@ -18,7 +18,7 @@ button{background:var(--accent);color:#000;border:0;border-radius:8px;padding:10
 button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
 pre{background:#0f0f1a;border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font-size:12px}
 </style></head><body>
-<header><h1>⚔️ Attack Simulator — Uji Ketahanan BlackHat</h1><div class="sub">4 vektor serangan: copy-paste, speed bot, minimal path, impostor + mimicry. SDK harus HIGH untuk semua.</div></header>
+<header><h1>⚔️ Attack Simulator - Uji Ketahanan BlackHat</h1><div class="sub">4 vektor serangan: copy-paste, speed bot, minimal path, impostor + mimicry. SDK harus HIGH untuk semua.</div></header>
 <div class="wrap">
 <div class="grid">
 <div class="card"><h3>1. Copy-Paste</h3><p class="sub">Paste beruntun tanpa ketik.</p><button onclick="run('copy_paste')">Jalankan</button> <span id="r1" class="badge"></span></div>
@@ -26,7 +26,7 @@ pre{background:#0f0f1a;border:1px solid var(--line);border-radius:8px;padding:12
 <div class="card"><h3>3. Minimal Path</h3><p class="sub">Mouse lurus tanpa curvature.</p><button onclick="run('minimal_path')">Jalankan</button> <span id="r3" class="badge"></span></div>
 <div class="card"><h3>4. Mimicry</h3><p class="sub">Coba tiru dwell/flight korban (±5ms).</p><button onclick="run('mimicry')">Jalankan</button> <span id="r4" class="badge"></span></div>
 </div>
-<div class="card" style="margin-top:16px"><h3>Log</h3><pre id="log">Init… seeding 10 sesi pemilik (enrollment)…</pre></div>
+<div class="card" style="margin-top:16px"><h3>Log</h3><pre id="log">Init... seeding 10 sesi pemilik (enrollment)...</pre></div>
 <div class="card" style="margin-top:12px"><button class="ghost" onclick="reset()">Reset (clear + seed ulang)</button> <span class="small">Seed 24 sesi pemilik dulu (>=20 agar Mahalanobis aktif), baru serangan bermakna</span></div>
 </div>
 <script type="module">
@@ -56,17 +56,17 @@ async function seedOwner(){
   // mouse move berjalan sampai base+3570. Integrity menghitung durasi dari
   // ts[terakhir]-ts[0] = 1.5s, jadi 130 event terbaca 87/s (> ambang 80/s manusia)
   // DAN urutannya non-monoton. Akibatnya SETIAP sesi pemilik ditandai integrity,
-  // eligible=false, kolam latih tidak pernah terisi, model tidak pernah terbentuk —
+  // eligible=false, kolam latih tidak pernah terisi, model tidak pernah terbentuk -
   // sehingga ketiga "HIGH" di bawah sebetulnya datang dari heuristik bot, BUKAN dari
   // model perilaku, dan mimicry jatuh ke jalur enrollment lalu dilaporkan LOW.
   // Demo unggulan yang tidak pernah menjalankan mesinnya sendiri.
   // Perbaikan: rentang waktu manusiawi (~24s/sesi), jitter per-event, dan
   // WAJIB diurutkan menaik sebelum dikirim.
-  // C-14: dulu menyeed PERSIS 10 sesi — tepat di bawah `ensembleMinSamples.svm = 20`,
+  // C-14: dulu menyeed PERSIS 10 sesi - tepat di bawah `ensembleMinSamples.svm = 20`,
   // sehingga detektor-2 (Mahalanobis, bobot 0.70) DIGERBANG MATI dan mimicry hanya
   // dihadapkan pada Isolation Forest sendirian. Demo yang seharusnya memamerkan mesin
   // justru menonaktifkan komponen terkuatnya. 24 sesi = seluruh ensemble aktif.
-  log('Seeding 24 sesi pemilik (>=20 agar detektor Mahalanobis aktif)…');
+  log('Seeding 24 sesi pemilik (>=20 agar detektor Mahalanobis aktif)...');
   for(let s=0;s<24;s++){
     const base=Date.now()+s*60000; const evs=[];
     let t=base;
@@ -90,12 +90,12 @@ async function seedOwner(){
   const st=bgI.getState();
   const layak=st.sessions.filter(x=>x.eligible!==false).length;
   const ensembleAktif = layak >= 20;
-  log(`Seed selesai — ${layak}/24 sesi layak, model ${st.hasModel?'TERBENTUK':'GAGAL terbentuk'}, `
+  log(`Seed selesai - ${layak}/24 sesi layak, model ${st.hasModel?'TERBENTUK':'GAGAL terbentuk'}, `
     + `detektor-2 ${ensembleAktif?'AKTIF':'tergerbang mati (<20 sesi)'}`);
   if(!st.hasModel) log('PERINGATAN: model tidak terbentuk; vonis di bawah bukan dari mesin perilaku.');
 }
 await seedOwner();
-window.reset=async()=>{ await bgI.clear(); seed=42; document.getElementById('log').textContent='Reset — seeding ulang…'; await seedOwner(); document.querySelectorAll('.badge').forEach(b=> b.textContent=''); };
+window.reset=async()=>{ await bgI.clear(); seed=42; document.getElementById('log').textContent='Reset - seeding ulang...'; await seedOwner(); document.querySelectorAll('.badge').forEach(b=> b.textContent=''); };
 window.run=async (t)=>{
   const evs=fakeEvents(t);
   const r=await bgI.scoreExternalEvents(evs);

@@ -1,4 +1,4 @@
-# Arunika — a realistic site with BehaviorGuard installed
+# Arunika - a realistic site with BehaviorGuard installed
 
 A fictional digital bank (account opening, dashboard, transfer, bill payment, history,
 security settings) used to show the library in a product-like setting. Not a real financial
@@ -16,8 +16,8 @@ being built from zero while you watch.
 
 | Step | Page | What happens |
 | --- | --- | --- |
-| 1 | `daftar.html` | Open an account. Type the form — that typing is already your first evidence. |
-| 2 | `mulai.html` | Onboarding. A progress ring `0/10`, a live evidence counter, what is measured and what is never stored, and a copy-this-sentence box because typing produces evidence fastest. At the end: **set up typing-rhythm verification** (`enrollMfa()`), which is the point — do it here and the one-time code stays what it should be, a recovery path. |
+| 1 | `daftar.html` | Open an account. Type the form - that typing is already your first evidence. |
+| 2 | `mulai.html` | Onboarding. A progress ring `0/10`, a live evidence counter, what is measured and what is never stored, and a copy-this-sentence box because typing produces evidence fastest. At the end: **set up typing-rhythm verification** (`enrollMfa()`), which is the point - do it here and the one-time code stays what it should be, a recovery path. |
 | 3 | the rest | Normal banking. `beranda.html` nags until enrollment finishes; `keamanan.html` can wipe everything and start the demo over. |
 
 ## What to look at

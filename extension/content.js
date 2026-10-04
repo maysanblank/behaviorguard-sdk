@@ -2,7 +2,7 @@
  * content.js - penangkap on-device untuk ekstensi, memakai capture.js YANG SAMA dengan SDK.
  *
  * C-41: versi lama memakai penangkap SALINAN-TANGAN di berkas ini: menyimpan KARAKTER ASLI
- * yang diketik (sandi di situs mana pun — ekstensi ini berjalan di <all_urls>), tanpa
+ * yang diketik (sandi di situs mana pun - ekstensi ini berjalan di <all_urls>), tanpa
  * velocity (C-16), tanpa mengabaikan popup MFA, lalu background menyimpan buffer mentahnya
  * ke chrome.storage.local. Kini capture.js dimuat apa adanya (token per-halaman, C-30),
  * jadi karakter tidak pernah meninggalkan halaman ini.
@@ -34,7 +34,7 @@
   window.addEventListener('pagehide', flush);
 
   // C-41: dulu layar kunci HIGH punya tombol "Saya pemilik" yang cukup DIKLIK untuk
-  // menutupnya — verifikasi yang bisa dilewati siapa pun. Ekstensi tidak punya jalur
+  // menutupnya - verifikasi yang bisa dilewati siapa pun. Ekstensi tidak punya jalur
   // step-up sungguhan, jadi yang jujur adalah PEMBERITAHUAN, bukan kunci palsu.
   function notice(evt) {
     if (evt.level !== 'HIGH' || document.getElementById('__bg_notice')) return;

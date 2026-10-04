@@ -1,5 +1,5 @@
 /**
- * audit.test.mjs — regresi untuk temuan audit A1..A5 / B1..B7
+ * audit.test.mjs - regresi untuk temuan audit A1..A5 / B1..B7
  * (docs/AUDIT-VALIDITAS-PENGUKURAN.md). Semua temuan di kelas yang sama:
  * ada sesuatu selain IDENTITAS yang menggeser sinyalnya.
  *
@@ -115,7 +115,7 @@ function session(startTs, { typed = true, paste = false, n = 200 } = {}) {
   check('A3: tempel juga ditandai walau ada ketikan',
     pasted.partialEvidence === 'keystroke');
 
-  // sesi menelusuri murni (tanpa form) BUKAN kasus A3 — nol keystroke-nya jujur
+  // sesi menelusuri murni (tanpa form) BUKAN kasus A3 - nol keystroke-nya jujur
   const browse = [];
   let bt = t + 40 * 60_000;
   for (let i = 0; i < 200; i++) { bt += 70; browse.push({ event_type: i % 9 === 0 ? 'MOUSE_CLICK' : 'MOUSE_MOVE', x: 100 + rnd() * 200, y: 90 + rnd() * 150, velocity: 0.3 + rnd() * 2, timestamp: bt }); }

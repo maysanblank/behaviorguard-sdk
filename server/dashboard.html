@@ -137,7 +137,7 @@ tbody tr.sel{background:#132132;box-shadow:inset 2px 0 0 var(--acc)}
 <aside>
   <div class="brand"><div class="m">BG</div><div><b>BehaviorGuard</b><span>Console · ATO monitoring</span></div></div>
   <div class="side-sec">Tenant</div>
-  <div class="tname" id="tenantName">—</div>
+  <div class="tname" id="tenantName">-</div>
   <div class="tmeta" id="tmeta"></div>
   <button class="logout" id="logout" type="button">Keluar</button>
   <div class="side-sec">Tampilan</div>
@@ -147,15 +147,15 @@ tbody tr.sel{background:#132132;box-shadow:inset 2px 0 0 var(--acc)}
   </nav>
   <div class="side-foot">
     On-device · hanya vektor fitur + verdict yang keluar perangkat.<br>
-    tenant <code id="pkTag">—</code>
+    tenant <code id="pkTag">-</code>
   </div>
 </aside>
 
 <main>
   <div class="top">
-    <div class="crumb"><b id="crumbTenant">—</b> <span class="mut">/</span> <span id="crumbView">Akun</span></div>
+    <div class="crumb"><b id="crumbTenant">-</b> <span class="mut">/</span> <span id="crumbView">Akun</span></div>
     <div class="sp"></div>
-    <div class="search"><span class="k">⌕</span><input id="q" placeholder="cari userId…"></div>
+    <div class="search"><span class="k">⌕</span><input id="q" placeholder="cari userId..."></div>
     <div class="seg" id="lvlSeg">
       <button data-lvl="" class="on">Semua</button>
       <button data-lvl="HIGH">HIGH</button>
@@ -189,7 +189,7 @@ tbody tr.sel{background:#132132;box-shadow:inset 2px 0 0 var(--acc)}
 </div>
 
 <script>
-/* C-41: semua nilai dari server adalah DATA KIRIMAN KLIEN (userId, reasons, fp, ...) —
+/* C-41: semua nilai dari server adalah DATA KIRIMAN KLIEN (userId, reasons, fp, ...) -
    di-escape sebelum masuk innerHTML. Dulu tidak, dan satu /log berisi <img onerror>
    menjalankan skrip di browser operator (stored XSS). Level dibatasi daftar putih,
    angka dipaksa Number. CSP ber-nonce dari server adalah lapisan kedua. */
@@ -207,9 +207,9 @@ function load(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v?Obje
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 const COLS=[["trend","Tren skor"],["sessions","Sesi"],["dist","Distribusi"],["features","Fitur menyimpang"],["source","Sumber"],["seen","Terakhir"]];
 
-function fmt(ts){ts=num(ts);if(!ts)return"—";return new Date(ts*1000).toLocaleTimeString("id-ID",{hour12:false});}
-function fdate(ts){ts=num(ts);if(!ts)return"—";const d=new Date(ts*1000);return d.toLocaleDateString("id-ID",{day:"2-digit",month:"short"})+" "+fmt(ts);}
-function ago(ts){ts=num(ts);if(!ts)return"—";const s=Math.floor(Date.now()/1000-ts);if(s<60)return s+"d";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"j";return Math.floor(s/86400)+"h";}
+function fmt(ts){ts=num(ts);if(!ts)return"-";return new Date(ts*1000).toLocaleTimeString("id-ID",{hour12:false});}
+function fdate(ts){ts=num(ts);if(!ts)return"-";const d=new Date(ts*1000);return d.toLocaleDateString("id-ID",{day:"2-digit",month:"short"})+" "+fmt(ts);}
+function ago(ts){ts=num(ts);if(!ts)return"-";const s=Math.floor(Date.now()/1000-ts);if(s<60)return s+"d";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"j";return Math.floor(s/86400)+"h";}
 function zt(z){z=num(z);const a=Math.abs(z);return a>99?((z<0?"−":"")+">99σ"):(z.toFixed(1)+"σ");}
 function spark(series,lv,w,h){w=w||120;h=h||30;series=(Array.isArray(series)?series:[]).map(num);if(!series.length)return"";const p=3;
  const mn=Math.min(...series,0),mx=Math.max(...series,0.1),rg=(mx-mn)||1;
@@ -219,7 +219,7 @@ function spark(series,lv,w,h){w=w||120;h=h||30;series=(Array.isArray(series)?ser
 function dist(h,m,l){h=num(h);m=num(m);l=num(l);const t=(h+m+l)||1;const s=(n,c)=>n?`<i style="width:${100*n/t}%;background:${c}"></i>`:"";
  return `<div style="display:flex;align-items:center;gap:8px"><span class="dist">${s(h,LV.HIGH)}${s(m,LV.MEDIUM)}${s(l,LV.LOW)}</span><span class="sub mono">${h}/${m}/${l}</span></div>`;}
 function fname(f){return esc(String((f&&f.name)||"").replace(/_/g," "));}
-function chips(tf){if(!Array.isArray(tf)||!tf.length)return'<span class="sub">—</span>';return'<div class="chips">'+tf.slice(0,3).map(f=>{const a=Math.abs(num(f&&f.z));const cl=a>2.2?"chip hot":a>1.2?"chip warm":"chip";return `<span class="${cl}">${fname(f)} <b>${zt(f&&f.z)}</b></span>`;}).join("")+'</div>';}
+function chips(tf){if(!Array.isArray(tf)||!tf.length)return'<span class="sub">-</span>';return'<div class="chips">'+tf.slice(0,3).map(f=>{const a=Math.abs(num(f&&f.z));const cl=a>2.2?"chip hot":a>1.2?"chip warm":"chip";return `<span class="${cl}">${fname(f)} <b>${zt(f&&f.z)}</b></span>`;}).join("")+'</div>';}
 function pill(l,extra){l=lvl(l);return `<span class="pill p-${l}"${extra?` style="${extra}"`:""}>${l}</span>`;}
 
 /* ---------- login ---------- */
@@ -239,8 +239,8 @@ async function api(path){
 
 /* ---------- KPI + crumb ---------- */
 function renderTop(d){
-  $("crumbTenant").textContent=d.name||"—";$("tenantName").textContent=d.name||"—";
-  $("pkTag").textContent=String(d.pk||"").slice(0,14)+"…";
+  $("crumbTenant").textContent=d.name||"-";$("tenantName").textContent=d.name||"-";
+  $("pkTag").textContent=String(d.pk||"").slice(0,14)+"...";
   $("crumbView").textContent=state.view==="accounts"?"Akun":"Kejadian";
   $("nAcc").textContent=d.accounts.length;$("nEv").textContent=num(d.kpi.events);
   const risk=num(d.kpi.atRisk);
@@ -267,7 +267,7 @@ function renderAccounts(d){
       c.sessions?`<td class="num">${num(a.sessions??a.total)}<div class="sub mono">${esc(a.convergence)}</div></td>`:"",
       c.dist?`<td>${dist(a.high,a.medium,a.low)}</td>`:"",
       c.features?`<td>${chips(a.topFeatures)}</td>`:"",
-      c.source?`<td class="sub mono">${esc(a.ip)||"—"}<br>${a.fp?"fp:"+esc(String(a.fp).slice(0,8)):""}</td>`:"",
+      c.source?`<td class="sub mono">${esc(a.ip)||"-"}<br>${a.fp?"fp:"+esc(String(a.fp).slice(0,8)):""}</td>`:"",
       c.seen?`<td class="sub mono">${ago(a.lastTs)} lalu<br>${fmt(a.lastTs)}</td>`:""].join("");
     return `<tr data-u="${esc(encodeURIComponent(a.userId))}" class="${state.sel===a.userId?'sel':''}">${td}</tr>`;}).join("")
     :`<tr><td colspan="9" class="empty">Tidak ada akun cocok filter.</td></tr>`;
@@ -277,7 +277,7 @@ function renderEvents(d){
   const evs=d.events.filter(e=>(!state.lvl||lvl(e.level)===state.lvl)&&(!state.q||String(e.userId).toLowerCase().includes(state.q)));
   const body=evs.length?evs.map(e=>{
     const L=lvl(e.level);
-    const rs=(Array.isArray(e.reasons)&&e.reasons.length)?e.reasons.map(esc).join(" · "):(esc(e.convergence)||"—");
+    const rs=(Array.isArray(e.reasons)&&e.reasons.length)?e.reasons.map(esc).join(" · "):(esc(e.convergence)||"-");
     return `<tr class="evrow" data-u="${esc(encodeURIComponent(e.userId))}">
       <td class="sub mono" style="white-space:nowrap">${fmt(e.ts)}</td>
       <td><span class="dot" style="background:${LV[L]}"></span><b>${esc(e.userId)}</b></td>
@@ -292,7 +292,7 @@ function renderEvents(d){
 async function openAccount(u){
   state.sel=u;render();
   $("wrap").classList.add("drawer-open");$("drawer").hidden=false;
-  $("drawer").innerHTML='<div class="hint">memuat detail…</div>';
+  $("drawer").innerHTML='<div class="hint">memuat detail...</div>';
   const a=await api("/api/account?u="+encodeURIComponent(u));
   if(!a){$("drawer").innerHTML='<div class="hint">gagal memuat</div>';return;}
   const P=state.panels,L=lvl(a.level);
@@ -305,7 +305,7 @@ async function openAccount(u){
     <div class="dtoggle">${seg}</div><div class="dbody">`;
   if(P.ringkasan) html+=`<div class="sect"><h4>Ringkasan</h4><div class="kv">
     <div class="c"><div class="l">Total sesi</div><div class="n">${num(a.total)}</div></div>
-    <div class="c"><div class="l">Konvergensi</div><div class="n" style="font-size:12px">${esc(a.convergence)||"—"}</div></div>
+    <div class="c"><div class="l">Konvergensi</div><div class="n" style="font-size:12px">${esc(a.convergence)||"-"}</div></div>
     <div class="c"><div class="l">HIGH</div><div class="n" style="color:${LV.HIGH}">${num(a.high)}</div></div>
     <div class="c"><div class="l">MEDIUM</div><div class="n" style="color:${LV.MEDIUM}">${num(a.medium)}</div></div>
     <div class="c"><div class="l">LOW</div><div class="n" style="color:${LV.LOW}">${num(a.low)}</div></div>
@@ -316,7 +316,7 @@ async function openAccount(u){
   if(P.fitur){const mx=Math.max(...tf.map(f=>Math.abs(num(f&&f.z))),1);
     html+=`<div class="sect"><h4>Fitur paling menyimpang (sesi terakhir)</h4>`+
     (tf.length?tf.map(f=>{const a2=Math.abs(num(f&&f.z));const col=a2>2.2?LV.HIGH:a2>1.2?LV.MEDIUM:"#6e7681";
-      return `<div class="feat"><span class="nm">${fname(f)}</span><span class="b"><i style="width:${Math.min(100,100*a2/mx)}%;background:${col}"></i></span><span class="z">${zt(f&&f.z)}</span></div>`;}).join(""):'<span class="sub">—</span>')+`</div>`;}
+      return `<div class="feat"><span class="nm">${fname(f)}</span><span class="b"><i style="width:${Math.min(100,100*a2/mx)}%;background:${col}"></i></span><span class="z">${zt(f&&f.z)}</span></div>`;}).join(""):'<span class="sub">-</span>')+`</div>`;}
   if(P.sesi) html+=`<div class="sect"><h4>Sesi terakhir</h4><table class="stbl">
     <thead><tr><th>Waktu</th><th>Status</th><th>Skor</th><th>Sinyal</th></tr></thead><tbody>`+
     ses.slice(0,14).map(s=>{const SL=lvl(s.level);return `<tr><td class="tag">${fmt(s.ts)}</td>
@@ -324,8 +324,8 @@ async function openAccount(u){
       <td class="num" style="color:${LV[SL]}">${num(s.score).toFixed(2)}</td>
       <td class="mut" style="font-size:11px">${esc((Array.isArray(s.reasons)&&s.reasons[0])||s.convergence||"")}</td></tr>`;}).join("")+`</tbody></table></div>`;
   if(P.perangkat) html+=`<div class="sect"><h4>Perangkat & sumber</h4>
-    <div class="sub" style="margin-bottom:4px">IP address</div><div class="chipline">${(a.ips||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")||'<span class="sub">—</span>'}</div>
-    <div class="sub" style="margin:8px 0 4px">Device fingerprint</div><div class="chipline">${(a.fps||[]).map(x=>`<span class="chip">${esc(String(x).slice(0,16))}</span>`).join("")||'<span class="sub">—</span>'}</div>
+    <div class="sub" style="margin-bottom:4px">IP address</div><div class="chipline">${(a.ips||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")||'<span class="sub">-</span>'}</div>
+    <div class="sub" style="margin:8px 0 4px">Device fingerprint</div><div class="chipline">${(a.fps||[]).map(x=>`<span class="chip">${esc(String(x).slice(0,16))}</span>`).join("")||'<span class="sub">-</span>'}</div>
     <div class="sub" style="margin-top:8px">Fingerprint berbeda dari baseline = indikasi ganti perangkat.</div></div>`;
   html+=`</div>`;
   $("drawer").innerHTML=html;

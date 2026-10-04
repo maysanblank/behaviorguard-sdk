@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BehaviorGuard — Panduan Pasang untuk Vendor</title>
+<title>BehaviorGuard - Panduan Pasang untuk Vendor</title>
 <style>
   :root{--ink:#0f1729;--muted:#5b6676;--line:#e6e9ee;--brand:#059669;--brand-d:#047857;
         --bg:#f6f8fa;--card:#fff;--code:#0b1020;--code-ink:#e6edf3;--accent:#f59e0b;--radius:14px}
@@ -42,7 +42,7 @@
   <div class="in">
     <span class="pov">POV: kamu vendor yang baru mengunduh library ini</span>
     <h1>Pasang BehaviorGuard di situsmu</h1>
-    <p>Deteksi pengambilalihan akun (ATO) berbasis perilaku — on-device, satu berkas, tanpa mengubah alur aplikasimu. 3 langkah inti.</p>
+    <p>Deteksi pengambilalihan akun (ATO) berbasis perilaku - on-device, satu berkas, tanpa mengubah alur aplikasimu. 3 langkah inti.</p>
   </div>
 </div>
 
@@ -57,7 +57,7 @@
   <div class="step">
     <h2><span class="num">1</span> Taruh berkasnya di situsmu</h2>
     <p class="muted">Salin <code class="inl">behaviorguard.js</code> ke folder aset situsmu.
-      Boleh di mana saja — server sendiri, CDN, GitHub Pages, jsDelivr.</p>
+      Boleh di mana saja - server sendiri, CDN, GitHub Pages, jsDelivr.</p>
 <pre><button class="copy">salin</button>/situsmu/
   index.html
   js/
@@ -92,7 +92,7 @@
 &lt;script src="js/behaviorguard.js" defer&gt;&lt;/script&gt;</pre>
       <div class="note"><b>Penting:</b> objek config harus diisi <b>sebelum</b> tag
         <code class="inl">&lt;script src&gt;</code> dijalankan. Kalau <code class="inl">userId</code>
-        kosong (belum login), library diam — memang seharusnya begitu.</div>
+        kosong (belum login), library diam - memang seharusnya begitu.</div>
     </div>
 
     <div id="tab-cepat" class="hidden">
@@ -126,17 +126,17 @@
   <!-- VERIFIKASI -->
   <div class="step">
     <h2>✅ Memastikan sudah hidup</h2>
-    <p class="muted">Buka situsmu (sudah login) → buka <b>DevTools → Console</b>. Setiap ± 30 detik
-      akan muncul <code class="inl">[risk] LOW …</code>. Untuk melihat penyimpanan per-akun:
-      <b>DevTools → Application → IndexedDB → <code class="inl">bg_store</code> → <code class="inl">kv</code></b>
-      → ada entri <code class="inl">bg:&lt;email&gt;</code> untuk tiap akun.</p>
+    <p class="muted">Buka situsmu (sudah login) -> buka <b>DevTools -> Console</b>. Setiap ± 30 detik
+      akan muncul <code class="inl">[risk] LOW ...</code>. Untuk melihat penyimpanan per-akun:
+      <b>DevTools -> Application -> IndexedDB -> <code class="inl">bg_store</code> -> <code class="inl">kv</code></b>
+      -> ada entri <code class="inl">bg:&lt;email&gt;</code> untuk tiap akun.</p>
   </div>
 
   <!-- OPSIONAL -->
   <div class="step">
     <h2>Opsi lanjutan (opsional)</h2>
     <h3>Deteksi ATO lintas-perangkat (mode HYBRID)</h3>
-    <p class="muted">Mode default menyimpan model <b>di perangkat itu saja</b> — hanya menangkap
+    <p class="muted">Mode default menyimpan model <b>di perangkat itu saja</b> - hanya menangkap
       "perangkat sama, perilaku beda". Agar baseline akun ikut ke perangkat mana pun user login
       (menangkap penyerang di laptopnya sendiri), sambungkan ke server-mu:</p>
 <pre><button class="copy">salin</button>&lt;script&gt;
@@ -149,7 +149,7 @@
 &lt;/script&gt;
 &lt;script src="js/behaviorguard.js" defer&gt;&lt;/script&gt;</pre>
     <h3>Setelan lain</h3>
-    <p class="muted">Satu-satunya knob yang perlu dikenal: <code class="inl">calibration: { k_low: 1.75 }</code> —
+    <p class="muted">Satu-satunya knob yang perlu dikenal: <code class="inl">calibration: { k_low: 1.75 }</code> -
       makin kecil makin ketat (penyusup lebih jarang lolos, pemilik lebih sering diminta verifikasi).
       Tabel pertukarannya ada di README. Punya OTP sendiri? <code class="inl">mfa: { enabled: false }</code>
       lalu laporkan hasilnya dengan <code class="inl">BehaviorGuard.reportStepUp({passed:true})</code>.</p>
@@ -163,10 +163,10 @@
         (tiap langkah butuh ± 150 kejadian nyata; ketikan yang ditempel/autofill tidak dihitung). Selama itu vonis selalu <span class="lv low">LOW</span>.</td></tr>
       <tr><td><b>Privasi</b></td><td>Event mentah (koordinat mouse &amp; timing ketik) <b>tidak pernah keluar
         perangkat</b>. Mode HYBRID hanya mengirim 34 angka fitur teragregasi + vonis.</td></tr>
-      <tr><td><b>Ponsel</b></td><td>Belum diukur — data riset seluruhnya dari laptop/PC. Sentuhan dipetakan ke gerak,
+      <tr><td><b>Ponsel</b></td><td>Belum diukur - data riset seluruhnya dari laptop/PC. Sentuhan dipetakan ke gerak,
         jadi profil ponsel dipelajari dari nol di ponsel itu sendiri.</td></tr>
       <tr><td><b>Aksi sensitif</b></td><td>Sebelum ganti email/sandi atau transfer, panggil
-        <code class="inl">BehaviorGuard.assessNow()</code>; hasil <b>UNKNOWN</b> berarti bukti belum cukup — tetap minta verifikasi.</td></tr>
+        <code class="inl">BehaviorGuard.assessNow()</code>; hasil <b>UNKNOWN</b> berarti bukti belum cukup - tetap minta verifikasi.</td></tr>
       <tr><td><b>OTP sendiri</b></td><td>Kalau memakai OTP/WebAuthn sendiri, laporkan hasilnya dengan
         <code class="inl">BehaviorGuard.reportStepUp({passed:true})</code>. Tanpa itu pemilik yang sudah lolos bisa tetap terblokir.</td></tr>
     </table>
@@ -175,7 +175,7 @@
   </div>
 </main>
 
-<div class="foot">BehaviorGuard — panduan pasang untuk vendor. Referensi teknik &amp; kontrak lintas-bahasa:
+<div class="foot">BehaviorGuard - panduan pasang untuk vendor. Referensi teknik &amp; kontrak lintas-bahasa:
   lihat <code class="inl">core/SPEC.md</code> dan <code class="inl">ports/README.md</code>.</div>
 
 <script>

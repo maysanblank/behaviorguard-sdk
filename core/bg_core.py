@@ -700,7 +700,7 @@ def extract_features(events, session_start_ts=None):
         velocities.append(v)
         if dist > 0:
             dr = math.atan2(dy, dx)
-            # SPEC 1.3 (C-34): toleransi 1e-9 — atan2 lintas-libm beda 1-2 ulp tepat di pi/4
+            # SPEC 1.3 (C-34): toleransi 1e-9 - atan2 lintas-libm beda 1-2 ulp tepat di pi/4
             if last_dir is not None and abs(dr - last_dir) > math.pi / 4 + 1e-9:
                 direction_changes += 1
             last_dir = dr
@@ -921,7 +921,7 @@ class BehaviorGuard:
 
         Serap `vector` ke baseline HANYA bila sesi terbukti pemilik lewat MFA
         (`mfa_passed=True`). Pola: assess() -> (bila non-LOW) MFA -> absorb_verified().
-        Sesi menyimpang yang GAGAL/belum MFA tidak pernah melatih model → cegah
+        Sesi menyimpang yang GAGAL/belum MFA tidak pernah melatih model -> cegah
         peracunan baseline sekaligus izinkan adaptasi drift pemilik yang aman.
         Reset juga hitungan HIGH-berturut karena identitas sudah terbukti."""
         if not mfa_passed:

@@ -55,7 +55,7 @@
   const JENIS = {
     pulsa: { lbl: 'Nomor ponsel', ph: '08xx xxxx xxxx', hint: 'Masukkan nomor tujuan isi ulang.', ic: 'phone',
       opsi: [['Pulsa 25.000', 26500], ['Pulsa 50.000', 51500], ['Pulsa 100.000', 101000], ['Data 10 GB', 65000], ['Data 25 GB', 110000], ['Data 50 GB', 175000]] },
-    listrik: { lbl: 'Nomor meter / ID pelanggan', ph: '11–12 digit', hint: 'Tertera di meteran atau struk sebelumnya.', ic: 'bolt',
+    listrik: { lbl: 'Nomor meter / ID pelanggan', ph: '11-12 digit', hint: 'Tertera di meteran atau struk sebelumnya.', ic: 'bolt',
       opsi: [['Token 50.000', 52500], ['Token 100.000', 102500], ['Token 200.000', 202500], ['Token 500.000', 502500], ['Token 1.000.000', 1002500], ['Token 2.500.000', 2502500]] },
     air: { lbl: 'Nomor pelanggan', ph: '8 digit', hint: 'Tagihan bulan ini akan ditampilkan.', ic: 'drop', tagihan: 96000 },
     internet: { lbl: 'Nomor pelanggan', ph: '10 digit', hint: 'Tagihan bulan ini akan ditampilkan.', ic: 'wifi', tagihan: 335000 },
@@ -97,7 +97,7 @@
     if (!pilihan) return ($('err').textContent = 'Pilih nominal terlebih dahulu.');
     if (pilihan[1] > A.akun().saldo) return ($('err').textContent = 'Saldo tidak cukup.');
     $('err').textContent = '';
-    const b = $('btn'); b.disabled = true; b.textContent = 'Memeriksa…';
+    const b = $('btn'); b.disabled = true; b.textContent = 'Memeriksa...';
     const g = await Guard.gerbang('pembayaran', { nominal: pilihan[1], label: 'pembayaran' });
     b.disabled = false; b.textContent = 'Bayar';
     if (!g.ok) return ($('err').textContent = 'Pembayaran dibatalkan karena verifikasi tidak diselesaikan.');

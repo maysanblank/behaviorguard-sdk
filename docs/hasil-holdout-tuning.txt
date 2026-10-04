@@ -16,7 +16,7 @@ Kondisi                                      q     FRR     FAR     AUC     EER  
 
 CARA MEMBACA
   Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,
-  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.
+  yang salah ekstraksi ulangnya, bukan representasinya - periksa itu dulu.
   Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.
   Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.
                Ini pertanyaan terpenting di tabel ini.
@@ -46,7 +46,7 @@ Kondisi                                      q     FRR     FAR     AUC     EER  
 
 CARA MEMBACA
   Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,
-  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.
+  yang salah ekstraksi ulangnya, bukan representasinya - periksa itu dulu.
   Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.
   Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.
                Ini pertanyaan terpenting di tabel ini.

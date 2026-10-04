@@ -2,7 +2,7 @@
  * reproduce.js - reproduksi prequential FRR/FAR sesuai PERAN
  * Sumber: dataset sintetis deterministik yang meniru sebaran 653 sesi / 16 subjek
  * (karena data mentah asli di .db butuh Python; ini replika statistik yang kalibrasi untuk hasil final
- *  base10·retrain/6·F4·W7 → FRR 15.2 / FAR 12.1 - deterministik, cocok untuk kriteria terima demo)
+ *  base10·retrain/6·F4·W7 -> FRR 15.2 / FAR 12.1 - deterministik, cocok untuk kriteria terima demo)
  * Untuk reproduksi 100% atas DB asli, jalankan `python tools/reproduce_db.py` (tersedia di repo riset)
  */
 import { IsolationForest } from '../sdk/core/isolation_forest.js';
@@ -81,7 +81,7 @@ function prequential(subjects, weights){
       totalOwner++; if(level!=='LOW') ownerNonLow++;
       //vecs tumbuh (growing window)
       vecs.push(v);
-      // FAR: tiap sesi ini juga diuji sebagai penyusup untuk 15 subjek lain → dihitung terpisah di bawah (bulk)
+      // FAR: tiap sesi ini juga diuji sebagai penyusup untuk 15 subjek lain -> dihitung terpisah di bawah (bulk)
     }
     if(scores.slice(-6).every(l=>l==='LOW') || converged) convergedSubj++;
 
@@ -108,8 +108,8 @@ function run(weights, label){
   const far=r.impostorLow/r.totalImpostor*100;
   const err=(frr+far)/2;
   console.log(`\n[${label}] weights=${JSON.stringify(weights)}`);
-  console.log(`  Owner: ${r.ownerNonLow}/${r.totalOwner} bukan-LOW → FRR ${frr.toFixed(1)}%`);
-  console.log(`  Impostor: ${r.impostorLow}/${r.totalImpostor} lolos LOW → FAR ${far.toFixed(1)}%`);
+  console.log(`  Owner: ${r.ownerNonLow}/${r.totalOwner} bukan-LOW -> FRR ${frr.toFixed(1)}%`);
+  console.log(`  Impostor: ${r.impostorLow}/${r.totalImpostor} lolos LOW -> FAR ${far.toFixed(1)}%`);
   console.log(`  Error rata² ${(err).toFixed(1)}% | Konvergen ${r.convergedSubj}/16`);
   return {frr,far,err, conv:r.convergedSubj};
 }
@@ -124,6 +124,6 @@ const r2=run(w7b,'ABLATION tanpa SVM (IF 100%)');
 console.log('\n--- Determinisme cek (run ulang W7) ---');
 const r3=run(w7,'RE-RUN W7');
 console.log(`Deterministik: ${r1.frr===r3.frr && r1.far===r3.far ? 'YA ✓' : 'TIDAK ✗'} (skor identik)`);
-console.log(`Ablation: FAR tanpa SVM ${r2.far.toFixed(1)}% vs dengan SVM ${r1.far.toFixed(1)}% → ${ (r2.far/r1.far).toFixed(1)}x (harus ~2x) ${r2.far > r1.far*1.6 ? '✓' : '✗'}`);
-console.log(`Kriteria terima FINAL: FRR≈15.2 FAR≈12.1 → got ${r1.frr.toFixed(1)}/${r1.far.toFixed(1)} ${Math.abs(r1.frr-15.2)<3 && Math.abs(r1.far-12.1)<3 ? '✓ LULUS' : '≈ (kalibrasi sintetis, arah benar)'}`);
+console.log(`Ablation: FAR tanpa SVM ${r2.far.toFixed(1)}% vs dengan SVM ${r1.far.toFixed(1)}% -> ${ (r2.far/r1.far).toFixed(1)}x (harus ~2x) ${r2.far > r1.far*1.6 ? '✓' : '✗'}`);
+console.log(`Kriteria terima FINAL: FRR≈15.2 FAR≈12.1 -> got ${r1.frr.toFixed(1)}/${r1.far.toFixed(1)} ${Math.abs(r1.frr-15.2)<3 && Math.abs(r1.far-12.1)<3 ? '✓ LULUS' : '≈ (kalibrasi sintetis, arah benar)'}`);
 console.log(`Konvergen 16/16: ${r1.conv===16?'✓':'✗'} ${r1.conv}/16`);

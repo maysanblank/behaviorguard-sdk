@@ -1,4 +1,4 @@
-# sync_core.ps1 — satu sumber: sdk/core -> extension/core (fix R1)
+# sync_core.ps1 - satu sumber: sdk/core -> extension/core (fix R1)
 # Jalankan tiap kali ubah sdk/core/* atau sebelum build extension
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot | Split-Path -Parent

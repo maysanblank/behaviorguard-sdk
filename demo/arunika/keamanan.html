@@ -80,7 +80,7 @@
     const en = st && st.mfa.enrolled;
     $('b-irama').innerHTML = en ? '<span class="badge b-ok">Aktif</span>' : '<span class="badge">Belum diatur</span>';
     $('d-irama').textContent = en
-      ? 'Saat diminta, ketik frasa pendek dengan irama biasamu. Yang dicocokkan ritmenya, bukan hurufnya — jadi frasanya boleh dilihat orang lain.' + (st.mfa.mode === 'soft' ? ' Diatur dengan keyboard layar sentuh.' : '')
+      ? 'Saat diminta, ketik frasa pendek dengan irama biasamu. Yang dicocokkan ritmenya, bukan hurufnya - jadi frasanya boleh dilihat orang lain.' + (st.mfa.mode === 'soft' ? ' Diatur dengan keyboard layar sentuh.' : '')
       : 'Ketik frasa pendek 3 kali untuk mengajari Arunika irama ketikmu. Setelah itu, verifikasi cukup mengetik frasa sekali.';
     $('a-irama').innerHTML = en ? '<button class="btn btn-sm" id="x-irama">Hapus</button>' : '<button class="btn btn-sm btn-pri" id="x-irama">Atur</button>';
     $('x-irama').onclick = async () => {
@@ -102,8 +102,8 @@
     const alasan = e && e.level !== 'LOW' ? Guard.jelaskan(BehaviorGuard._instance._lastEvt) : [];
     $('detail').innerHTML = `<dl class="kv">
       <dt>Profil perangkat ini</dt><dd>${st.phase === 'learning' ? `dikenali ${st.enrollment.done}/${st.enrollment.need}` : 'siap'}</dd>
-      <dt>Penilaian terakhir</dt><dd>${e && e.at ? Guard.keteranganLevel(e.level) + ' · ' + A.jam(e.at) : '—'}</dd>
-      <dt>Masa verifikasi</dt><dd>${st.mfa.graceLeftSec > 0 ? 'sisa ' + Math.ceil(st.mfa.graceLeftSec / 60) + ' menit' : '—'}</dd>
+      <dt>Penilaian terakhir</dt><dd>${e && e.at ? Guard.keteranganLevel(e.level) + ' · ' + A.jam(e.at) : '-'}</dd>
+      <dt>Masa verifikasi</dt><dd>${st.mfa.graceLeftSec > 0 ? 'sisa ' + Math.ceil(st.mfa.graceLeftSec / 60) + ' menit' : '-'}</dd>
     </dl>${alasan.length ? `<p class="small muted" style="margin-top:10px">Pemicu: ${A.esc(alasan.join('; '))}.</p>` : ''}`;
   }
   function log() {

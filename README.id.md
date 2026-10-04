@@ -1,7 +1,7 @@
 # BehaviorGuard
 
 **Mendeteksi pengambilalihan akun dari cara seseorang menggerakkan mouse, mengetik, dan
-berpindah halaman — seluruhnya di perangkat pengguna, lengkap dengan verifikasi tambahan
+berpindah halaman - seluruhnya di perangkat pengguna, lengkap dengan verifikasi tambahan
 (step-up). Satu tag script. Tanpa backend.**
 
 > English version: [README.md](README.md)
@@ -11,14 +11,14 @@ berpindah halaman — seluruhnya di perangkat pengguna, lengkap dengan verifikas
 ## Masalahnya
 
 Login itu **pemeriksaan di pintu**, bukan **penjaga di dalam**. Password, OTP, sidik
-perangkat — semuanya diperiksa sekali saat masuk. Sesudah itu semua dipercaya.
+perangkat - semuanya diperiksa sekali saat masuk. Sesudah itu semua dipercaya.
 
 Justru di situ celahnya. Password bocor, cookie sesi dicuri, ekstensi browser jahat,
-penipuan remote-access, laptop yang ditinggal terbuka: hasilnya sama — sesi yang **sudah
+penipuan remote-access, laptop yang ditinggal terbuka: hasilnya sama - sesi yang **sudah
 lolos pintu** tapi kini dipakai orang lain.
 
 **BehaviorGuard membuat sesi itu terus diperiksa.** Ia mempelajari cara *pemilik akun ini*
-memakai komputer — dinamika mouse, ritme ketikan, pola navigasi — lalu menilai ulang sesi
+memakai komputer - dinamika mouse, ritme ketikan, pola navigasi - lalu menilai ulang sesi
 setiap 30 detik. Kalau perilakunya berhenti mirip pemilik, ia meminta verifikasi: tantangan
 ritme-ketik bawaan, atau OTP/WebAuthn milik situs Anda.
 
@@ -106,7 +106,7 @@ datang lewat kunjungan baru ke akun pemilik.
 | Pemilik | |
 | --- | --- |
 | Vonis yang meminta pemilik verifikasi | **11,4%** |
-| … di seperlima akhir riwayat tiap pemilik | 7,2% |
+| ... di seperlima akhir riwayat tiap pemilik | 7,2% |
 | Pemilik diblokir | **0%** |
 
 | Penyusup (password curian, perangkat sendiri) | di jamnya sendiri | di jam biasa pemilik |
@@ -142,7 +142,7 @@ Satu knob: `init({ calibration: { k_low } })`. Makin kecil makin ketat.
 Default dipilih di 8 subjek dan diperiksa di 8 subjek lain (C-33). Di 8 subjek uji itu saja,
 default memberi gesekan pemilik 12,7% dan penyusup lolos vonis pertama 9,2%.
 
-**Mode ketat (opt-in):** `session: { contextEvents: 450 }` — vonis berikutnya dalam satu
+**Mode ketat (opt-in):** `session: { contextEvents: 450 }` - vonis berikutnya dalam satu
 kunjungan ikut memakai bukti yang baru dinilai.
 
 | mode ketat | pemilik diminta verifikasi | penyusup lolos vonis-1 | seluruh sesi | ambil-alih tak ketahuan |
@@ -161,10 +161,10 @@ tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
   bukan gembok. HIGH artinya "suruh buktikan", bukan bukti penipuan. Aksi sensitif wajib
   `assessNow()`.
 - **Penyusupnya 15 pengguna biasa, bukan penyerang yang sengaja meniru korban.** Peniruan
-  terarah **belum diuji** — lihat [THREAT-MODEL.md](THREAT-MODEL.md).
+  terarah **belum diuji** - lihat [THREAT-MODEL.md](THREAT-MODEL.md).
 - **Gesekan pemilik bukan derau acak.** Ia rata di semua jendela dalam satu kunjungan:
   pemilik ditandai pada *hari* ketika perilakunya memang beda, di semua jendela hari itu.
-  Itu tidak bisa dirata-rata; itulah tugas verifikasi tambahan — dan karena itu lolos
+  Itu tidak bisa dirata-rata; itulah tugas verifikasi tambahan - dan karena itu lolos
   verifikasi kini memberi 15 menit tenang. Gesekan itu juga turun seiring model belajar dari
   verifikasi tersebut: 10,0% di seperlima awal riwayat pemilik, 16,2% di tengah, 7,2% di akhir.
 - **16 relawan itu sampel kecil.** Di populasi dan situs lain angka bisa bergeser beberapa
@@ -199,7 +199,7 @@ sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
 python -m http.server 8080
 ```
 
-**Situs realistis yang sudah memasang pustaka:** <http://localhost:8080/demo/arunika/> — bank
+**Situs realistis yang sudah memasang pustaka:** <http://localhost:8080/demo/arunika/> - bank
 digital fiktif (masuk, transfer, bayar tagihan, riwayat, keamanan). Semua kode khusus
 BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integrasi.js`. Panel presentasi di
 pojok kiri bawah menampilkan fase, bukti, vonis, dan alasannya dalam bahasa biasa, serta bisa
@@ -230,13 +230,13 @@ event DOM -> buang kembar -> pendekkan jeda idle -> kumpulkan 150 event
          -> verifikasi (ritme ketik bawaan, atau OTP Anda lewat reportStepUp)
 ```
 
-- **Pendaftaran** — 10 sesi layak pertama menjadi jangkar profil pemilik dan tidak pernah
+- **Pendaftaran** - 10 sesi layak pertama menjadi jangkar profil pemilik dan tidak pernah
   tergeser.
-- **Hanya belajar dari yang tepercaya** — hanya jendela LOW atau yang lolos verifikasi yang
+- **Hanya belajar dari yang tepercaya** - hanya jendela LOW atau yang lolos verifikasi yang
   boleh melatih model, supaya penyusup tidak bisa pelan-pelan "mengajari" sistem.
-- **AFK** — jeda >= 15 detik dipendekkan, bukan dipotong. Absen 5 menit mereset
+- **AFK** - jeda >= 15 detik dipendekkan, bukan dipotong. Absen 5 menit mereset
   kepercayaan; 15 menit meminta verifikasi ulang (serangan jam makan siang).
-- **Rekam-ulang** — sesi yang hampir identik dengan sesi tersimpan divonis HIGH.
+- **Rekam-ulang** - sesi yang hampir identik dengan sesi tersimpan divonis HIGH.
 
 Detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -268,4 +268,4 @@ pengguna berumur pendek yang dicetak backend Anda sendiri.
 
 ## Lisensi
 
-MIT — lihat [LICENSE](LICENSE).
+MIT - lihat [LICENSE](LICENSE).

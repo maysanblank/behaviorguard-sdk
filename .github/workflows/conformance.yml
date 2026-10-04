@@ -20,7 +20,7 @@ jobs:
         run: |
           python core/gen_golden.py
           git diff --exit-code core/golden.json \
-            || (echo '::error::golden.json basi — jalankan `python core/gen_golden.py` dan commit'; exit 1)
+            || (echo '::error::golden.json basi - jalankan `python core/gen_golden.py` dan commit'; exit 1)
       - name: Python conformance
         run: python core/conformance.py
 

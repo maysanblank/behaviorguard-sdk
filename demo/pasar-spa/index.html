@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pasar Loka — belanja sayur & bumbu segar</title>
+<title>Pasar Loka - belanja sayur & bumbu segar</title>
 <style>
   :root{
     --bg:#0E1512; --surface:#16201C; --surface-2:#1D2A24; --line:#2A3A32;
@@ -106,7 +106,7 @@
 <main class="app" id="layar"></main>
 
 <footer><div class="app" style="padding-bottom:0">
-  Pasar Loka — aplikasi satu halaman (SPA). Pindah menu memakai History API
+  Pasar Loka - aplikasi satu halaman (SPA). Pindah menu memakai History API
   <code>pushState</code>, tanpa memuat ulang halaman sama sekali.
 </div></footer>
 
@@ -162,7 +162,7 @@
   /* ---------- router: History API, nol muat-ulang ---------- */
   // BASIS dihitung sekali dari URL awal. Rute disimpan di QUERY (?r=/keranjang),
   // bukan di path, karena server statis biasa (python -m http.server, GitHub Pages,
-  // folder mana pun) tidak punya fallback SPA — memuat ulang di /keranjang akan 404
+  // folder mana pun) tidak punya fallback SPA - memuat ulang di /keranjang akan 404
   // di tengah demo. Dengan query, `history.pushState` TETAP dipakai (itu yang
   // di-hook pelacak pihak ketiga) sekaligus refresh selalu mendarat di index.html.
   var BASIS = location.pathname.replace(/\/index\.html$/, '/').replace(/\/+$/, '/') || '/';
@@ -197,7 +197,7 @@
     layar.innerHTML = '<h1>Halaman tidak ada</h1><p class="sub">Rute <code>'+p+'</code> tidak dikenal.</p>';
   }
 
-  function rute(p){ return '<div class="rute">rute aktif: ' + p + ' — tanpa muat ulang</div>'; }
+  function rute(p){ return '<div class="rute">rute aktif: ' + p + ' - tanpa muat ulang</div>'; }
 
   function layarBelanja(p) {
     layar.innerHTML = '<h1>Sayur & bumbu segar</h1>' +
@@ -256,7 +256,7 @@
   function layarCheckout(p) {
     var k = baca(), ids = Object.keys(k), total = 0;
     ids.forEach(function(id){ var b=cari(id); if(b) total+=b.harga*k[id]; });
-    layar.innerHTML = '<h1>Pembayaran</h1><p class="sub">Antar sore ini, pukul 16.00–20.00.</p>' + rute(p) +
+    layar.innerHTML = '<h1>Pembayaran</h1><p class="sub">Antar sore ini, pukul 16.00-20.00.</p>' + rute(p) +
       '<p style="color:var(--ink-2);font-size:14px">Total belanja: <strong>'+rp(total)+'</strong> ('+ids.length+' jenis)</p>' +
       '<form id="f">' +
         '<div class="dua"><div><label for="nama">Nama penerima</label>' +
@@ -328,7 +328,7 @@
       'dan barang dipanen setelah pesanan masuk.</p>' +
       '<h2>Kenapa satu halaman?</h2>' +
       '<p class="sub" style="max-width:62ch">Seluruh situs ini adalah satu berkas HTML. Pindah menu ' +
-      'tidak memuat ulang apa pun — hanya <code>history.pushState</code> lalu isi layar diganti. ' +
+      'tidak memuat ulang apa pun - hanya <code>history.pushState</code> lalu isi layar diganti. ' +
       'Arsitektur ini yang biasanya bikin skrip pihak ketiga kehilangan jejak navigasi.</p>';
   }
 

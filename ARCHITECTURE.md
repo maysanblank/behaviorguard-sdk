@@ -2,7 +2,7 @@
 
 One script tag sits on top of a 17-module engine, a normative specification, and five
 independently verified runtime implementations. This document shows what is underneath the
-one-liner, and — more usefully — *why* each piece is shaped the way it is.
+one-liner, and - more usefully - *why* each piece is shaped the way it is.
 
 For the exact numeric contract, read [`core/SPEC.md`](core/SPEC.md). Where this document
 and the spec disagree, the spec wins.
@@ -64,7 +64,7 @@ while a JVM or a WASM host scores.
 | `core/token.js` | HMAC session token | No |
 | `core/fingerprint.js` | Lightweight device fingerprint | No |
 | `core/config.js` | Defaults and validated constants | Yes (constants) |
-| `storage.js` | IndexedDB → localStorage → memory, HMAC-sealed (unsigned on insecure origins) | No |
+| `storage.js` | IndexedDB -> localStorage -> memory, HMAC-sealed (unsigned on insecure origins) | No |
 
 "In spec" means the module's numeric behavior is pinned by `core/golden.json` and must be
 identical across all five runtimes to within 1e-9.
@@ -79,7 +79,7 @@ The single most consequential decision. Every detector must be able to **fit** i
 not merely evaluate. That immediately excluded scikit-learn's `OneClassSVM`, which looked
 strongest in the offline research harness but requires libsvm's QP solver.
 
-The first attempt at a browser-trainable substitute — a centroid-RBF approximation — was
+The first attempt at a browser-trainable substitute - a centroid-RBF approximation - was
 much worse than expected: it collapses the entire baseline pool to a single mean point,
 throwing away the shape of the distribution, and produced **FAR 36.2%** in that harness.
 
@@ -87,12 +87,12 @@ Mahalanobis distance with diagonal shrinkage keeps the covariance structure, is 
 with a Gauss-Jordan inverse in a few hundred lines, and brought the same harness to
 **FAR 5.4%** at a comparable FRR. (Those harness figures scored whole ~700-event research
 sessions; the numbers for the library as shipped, scored in 30-second windows, are in the
-README — see `core/DRIFT.md` C-29.) The decision boundary becomes an ellipse instead of a sphere, so an impostor
+README - see `core/DRIFT.md` C-29.) The decision boundary becomes an ellipse instead of a sphere, so an impostor
 sitting near the owner's mean but off-axis is still caught.
 
-Shrinkage toward the scaled identity is required, not decoration: with 10–30 baseline
-sessions and 34 features, the sample covariance is near-singular. It is adaptive —
-`min(0.9, max(0.3, d/n))` — heavy while the pool is small, decaying to 0.3 as it grows
+Shrinkage toward the scaled identity is required, not decoration: with 10-30 baseline
+sessions and 34 features, the sample covariance is near-singular. It is adaptive -
+`min(0.9, max(0.3, d/n))` - heavy while the pool is small, decaying to 0.3 as it grows
 (C-22).
 
 ### The ensemble weights are inverted from what you might expect
@@ -117,11 +117,11 @@ Risk bands are calibrated per user from that user's own baseline score distribut
 reported, 5 splits) and is the one knob an integrator moves: `init({calibration:{k_low}})`.
 
 The earlier quantile approach (`low` at the 10th percentile) depends on a single order
-statistic of a 10–30 point sample, which is fragile. The parametric form uses the whole
+statistic of a 10-30 point sample, which is fragile. The parametric form uses the whole
 distribution.
 
 `k_med_extra = 2.0` deliberately widens the `MEDIUM` band, because `MEDIUM` means "ask" and
-`HIGH` means "ask more firmly" — neither blocks on its own.
+`HIGH` means "ask more firmly" - neither blocks on its own.
 
 ### Only verified sessions may teach
 
@@ -135,7 +135,7 @@ identity through the rhythm challenge, and *then* be allowed to update the model
 is gated on proof rather than on time.
 
 Enrollment of the rhythm template happens **only during trusted `LOW` sessions**. Enrolling
-at the moment of suspicion is precisely backwards, and an earlier version did exactly that —
+at the moment of suspicion is precisely backwards, and an earlier version did exactly that -
 see `core/DRIFT.md` §C-2.
 
 ### Verdicts are sticky; blocks require a run
@@ -147,7 +147,7 @@ The rationale is asymmetric cost: owners produce isolated outliers routinely, wh
 takeover produces sustained ones. Held-out, the run rule cut the owner block rate from 9.7%
 to 2.4% without moving FAR.
 
-Risk level also has a **sticky floor** — it will not drop below the previous level until
+Risk level also has a **sticky floor** - it will not drop below the previous level until
 three consecutive `LOW` sessions decay it. The raw model verdict is still reported alongside
 (`modelLevel`, `modelScore`, `stickyFloor`) so the smoothing is always visible and never
 silently rewrites the score.
@@ -157,7 +157,7 @@ silently rewrites the score.
 The window ticks every 30 seconds, but a verdict waits for **150 events** (`minEventsAssess`).
 Evidence that has not reached 150 is carried forward for up to 15 minutes instead of being
 thrown away. Measured on the shipped library, per-owner EER is 23.8% at 30 events and 12.3%
-at 150 (C-33). A window with nothing to judge emits `UNKNOWN` / `ABSTAIN` — never silence,
+at 150 (C-33). A window with nothing to judge emits `UNKNOWN` / `ABSTAIN` - never silence,
 because silence is always read as safe. Sensitive actions call `assessNow()`, which judges
 immediately, has no side effects, and returns `UNKNOWN` (fail closed) when evidence is short.
 
@@ -165,18 +165,18 @@ immediately, has no side effects, and returns `UNKNOWN` (fail closed) when evide
 
 Gaps of 15 s or more are shortened to 15 s before features are computed, so an owner who
 steps away for coffee is not measured as a different person (AFK-injected held-out: FRR
-18.4% → 9.7% at unchanged FAR, C-28). Absence is still recorded from the original
+18.4% -> 9.7% at unchanged FAR, C-28). Absence is still recorded from the original
 timestamps: 5 minutes away resets accumulated trust, 15 minutes forces a re-verification
-even if behavior afterwards looks normal — the lunch-break attack.
+even if behavior afterwards looks normal - the lunch-break attack.
 
 ### Step-up grace
 
 After a **proven** step-up (the built-in rhythm challenge verified, or
 `reportStepUp({passed:true})`), `MEDIUM` verdicts do not ask again for `mfa.graceSec` (900 s).
-Owner friction clusters by day, not by window — an owner flagged once in a visit is usually
-flagged in every window of it — so without this an owner who just passed an OTP was asked
+Owner friction clusters by day, not by window - an owner flagged once in a visit is usually
+flagged in every window of it - so without this an owner who just passed an OTP was asked
 again 30 seconds later. `HIGH` still asks, absence revokes it, and graced windows never
-train. Owner friction 16.4% → 14.5% with no security metric worse (C-43); with the C-44
+train. Owner friction 16.4% -> 14.5% with no security metric worse (C-43); with the C-44
 features and time-ordered sessions the shipped default asks the owner 11.4% of verdicts.
 
 ### Replay is not behavior
@@ -226,7 +226,7 @@ stabilizes. Both together bound over- and under-fitting.
 
 The window ticks on a 30-second timer and on `visibilitychange`. On `pagehide` the unscored
 tail is banked to storage and scored on the next page load, so multi-page navigation does
-not lose evidence. Nothing else may call `endSession()` on unload — an earlier auto-boot did,
+not lose evidence. Nothing else may call `endSession()` on unload - an earlier auto-boot did,
 drained the buffer first, and lost every last page (C-40).
 
 The enrollment block is an anchor: it never rolls out of the training pool, which keeps the
@@ -248,7 +248,7 @@ core/bg_core.py   readable reference │──▶ core/golden.json ──▶ eve
                                     ─┘     319 checks, 1e-9
 ```
 
-`golden.json` contains **literal inputs and expected outputs** — 204 feature-extraction
+`golden.json` contains **literal inputs and expected outputs** - 204 feature-extraction
 checks (six event streams × 34 features) plus 115 engine checks. A new port never has to reproduce a generator; it reads the
 file, computes, and compares.
 
@@ -257,7 +257,7 @@ Two portability traps are called out in the spec because both silently break por
 1. **The `mulberry32` PRNG** must mask every multiply to 32 bits. This is the single most
    common cause of a failing port.
 2. **Time-of-day is computed in UTC.** It was local time once, which made feature extraction
-   non-deterministic across machines — fatal for a "one brain, every runtime" claim.
+   non-deterministic across machines - fatal for a "one brain, every runtime" claim.
 3. **A mouse turn exactly on `pi/4`.** `atan2` differs by one ulp between math libraries
    there, which flipped `direction_changes` in one language on 5 of 192 real sessions while
    every golden check passed. The spec compares against `pi/4 + 1e-9` and the golden file
@@ -288,10 +288,10 @@ it.
 ## 7. Storage
 
 Three tiers, tried in order, so the library never crashes in a private window or with site
-data blocked: **IndexedDB → localStorage → in-memory**.
+data blocked: **IndexedDB -> localStorage -> in-memory**.
 
-Values are HMAC-sealed for tamper detection. This is **integrity, not confidentiality** —
-the payload is base64, not encrypted — which is why typed characters are never captured in
+Values are HMAC-sealed for tamper detection. This is **integrity, not confidentiality** -
+the payload is base64, not encrypted - which is why typed characters are never captured in
 the first place (C-30). localStorage writes are capped at 1.8 MB; when trimming, the
 enrollment block is always kept and only the progressive history is shortened.
 
@@ -299,7 +299,7 @@ enrollment block is always kept and only the progressive history is shortened.
 
 ## 8. Where to look next
 
-- [`core/SPEC.md`](core/SPEC.md) — the normative contract
-- [`core/DRIFT.md`](core/DRIFT.md) — measured gaps between engines, and the C-1..C-45 audit
-- [`ports/README.md`](ports/README.md) — how to add a sixth runtime
-- [`THREAT-MODEL.md`](THREAT-MODEL.md) — trust boundaries and known attacks
+- [`core/SPEC.md`](core/SPEC.md) - the normative contract
+- [`core/DRIFT.md`](core/DRIFT.md) - measured gaps between engines, and the C-1..C-45 audit
+- [`ports/README.md`](ports/README.md) - how to add a sixth runtime
+- [`THREAT-MODEL.md`](THREAT-MODEL.md) - trust boundaries and known attacks

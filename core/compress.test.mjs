@@ -1,5 +1,5 @@
 /**
- * compress.test.mjs — regresi kompresi waktu diam (C-28).
+ * compress.test.mjs - regresi kompresi waktu diam (C-28).
  *
  * Yang dikunci di sini:
  *  1. Kompresi TIDAK membuang atau menambah event, dan tidak mengubah urutan.

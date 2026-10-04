@@ -1,9 +1,9 @@
 /**
- * invariance.test.mjs — C-24: invariansi panjang sesi (jendela kanonik, agregasi
+ * invariance.test.mjs - C-24: invariansi panjang sesi (jendela kanonik, agregasi
  * bukti, kalibrasi ambang di luar sampel).
  *
  * Syarat pertama dan terpenting: KETIGANYA DEFAULT MATI. Uji nomor 1 mengunci
- * bahwa tanpa knob apa pun, perilakunya identik dengan sebelum C-24 — kalau ini
+ * bahwa tanpa knob apa pun, perilakunya identik dengan sebelum C-24 - kalau ini
  * gagal, semua angka lama di config.js kehilangan reprodusibilitasnya.
  *
  * Jalankan: node core/invariance.test.mjs
@@ -109,7 +109,7 @@ const MIN = 60_000;
   for (let i = 0; i < 6; i++) { await bg.scoreExternalEvents(burst(t, 380)); t += 20 * MIN; }
 
   // Pendaftaran sengaja TIDAK diagregasi: belum ada model, jadi tidak ada skor
-  // untuk dirata-ratakan — tiap jendela cuma dikumpulkan sebagai vektor baseline.
+  // untuk dirata-ratakan - tiap jendela cuma dikumpulkan sebagai vektor baseline.
   check('agregasi: fase pendaftaran tidak menerbitkan PENDING',
     bg.sessions.length >= bg.cfg.baseline);
 
@@ -126,7 +126,7 @@ const MIN = 60_000;
     `${pending.length} pending, ${verdict.length} vonis`);
   check('agregasi: PENDING menjelaskan progresnya',
     pending[0].reasons[0].includes('1/3') && pending[1].reasons[0].includes('2/3'));
-  check('agregasi: PENDING bukan LOW — diam tidak boleh dibaca aman',
+  check('agregasi: PENDING bukan LOW - diam tidak boleh dibaca aman',
     pending.every(e => e.level === 'UNKNOWN'));
   check('agregasi: vonis menandai berapa jendela yang menyusunnya',
     verdict[0].aggregated && verdict[0].aggregated.windows === M);

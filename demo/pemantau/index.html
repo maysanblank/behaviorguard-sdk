@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BehaviorGuard — Konsol Pemantau</title>
+<title>BehaviorGuard - Konsol Pemantau</title>
 <style>body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#0b0b11;color:#e2e8f0}
 header{padding:14px 18px;background:#1e293b;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .card{background:#1a1a28;border:1px solid #2a2a3a;border-radius:12px;padding:14px;margin:12px}
@@ -12,7 +12,7 @@ canvas{width:100%;height:220px;background:#0b1222;border-radius:8px}
 .small{font-size:12px;color:#94a3b8}
 </style></head><body>
 <header>
-  <b>BehaviorGuard Pemantau — singleton SDK</b>
+  <b>BehaviorGuard Pemantau - singleton SDK</b>
   <span class="small">Situs polos di kiri (iframe) + skor via BehaviorGuard singleton (kalibrasi + anti-poisoning sama dengan reproduce_db)</span>
   <button id="end">End Session & Skor</button>
   <button id="clear">Reset</button>
@@ -22,7 +22,7 @@ canvas{width:100%;height:220px;background:#0b1222;border-radius:8px}
   <iframe id="toko" src="../situs-polos/index.html" style="width:100%;height:720px;border:1px solid #2a2a3a;border-radius:12px;background:#fff"></iframe>
   <div>
     <div class="card"><b>Konsol Risiko Hidup (singleton)</b><div id="last" style="margin:8px 0">Init SDK...</div><canvas id="chart"></canvas><div id="thrLine" class="small"></div></div>
-    <div class="card"><b>Kasus Pemilik (FRR)</b><div class="small">Pustaka ini diukur sendiri (653 sesi, 16 subjek, jendela 30 dtk): pemilik diminta verifikasi 11,4%, tidak pernah diblokir. Di pemantau live, angkanya tergantung perilaku kamu — lihat grafik skor.</div></div>
+    <div class="card"><b>Kasus Pemilik (FRR)</b><div class="small">Pustaka ini diukur sendiri (653 sesi, 16 subjek, jendela 30 dtk): pemilik diminta verifikasi 11,4%, tidak pernah diblokir. Di pemantau live, angkanya tergantung perilaku kamu - lihat grafik skor.</div></div>
     <div class="card"><b>Kasus Penyusup (FAR)</b><div class="small">10,5% penyusup lolos vonis pertama, 7,9% lolos seluruh sesinya, dan 1 dari 240 pasangan tidak pernah ketahuan dalam 6 sesi. Ini lapisan verifikasi tambahan, bukan gembok.</div></div>
     <div class="card"><b>Log Sesi</b><table id="log"><thead><tr><th>#</th><th>Skor</th><th>Level</th><th>Top fitur</th><th>Thr</th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -83,20 +83,20 @@ function draw(){
 }
 let sessIdx=0;
 document.getElementById('end').onclick=async()=>{
-  if(buffer.length<30){ lastEl.textContent='Sesi terlalu pendek — gerakkan mouse & ketik dulu di toko kiri.'; return; }
+  if(buffer.length<30){ lastEl.textContent='Sesi terlalu pendek - gerakkan mouse & ketik dulu di toko kiri.'; return; }
   const evs=buffer.splice(0, buffer.length);
   const evt=await bg.scoreExternalEvents(evs);
   if(!evt){ lastEl.textContent='Gagal skor.'; return; }
   sessIdx++; scores.push(evt.score);
   const thrTxt=`${evt.thresholds.low.toFixed(2)}/${evt.thresholds.medium.toFixed(2)}`;
-  lastEl.innerHTML=`#${sessIdx} Skor <b>${evt.score.toFixed(3)}</b> <span class="tag ${evt.level}">${evt.level}</span> thr ${thrTxt} — ${evt.reasons.join(', ')}`;
+  lastEl.innerHTML=`#${sessIdx} Skor <b>${evt.score.toFixed(3)}</b> <span class="tag ${evt.level}">${evt.level}</span> thr ${thrTxt} - ${evt.reasons.join(', ')}`;
   const tr=document.createElement('tr');
   tr.innerHTML=`<td>${sessIdx}</td><td>${evt.score.toFixed(3)}</td><td><span class="tag ${evt.level}">${evt.level}</span></td><td>${(evt.topFeatures||[]).map(t=>t.name).join(', ')}</td><td class="small">${thrTxt}</td>`;
   logBody.prepend(tr);
   draw();
 };
 document.getElementById('clear').onclick=async()=>{
-  await bg.clear(); scores=[]; buffer=[]; sessIdx=0; logBody.innerHTML=''; lastEl.textContent='Reset — singleton cleared.'; draw();
+  await bg.clear(); scores=[]; buffer=[]; sessIdx=0; logBody.innerHTML=''; lastEl.textContent='Reset - singleton cleared.'; draw();
 };
 function resize(){ chart.width=chart.clientWidth*2; chart.height=220*2; draw(); }
 window.addEventListener('resize', resize); resize();

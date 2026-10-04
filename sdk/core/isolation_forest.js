@@ -52,7 +52,7 @@ export class IsolationForest {
     if(!this.trees.length) return 0;
     const avgH = this.trees.reduce((s,t)=>s+this._pathLength(x,t,0),0)/this.trees.length;
     const anom = Math.pow(2, -avgH/this.c); // 0..1, 1=anomali
-    // map: normal → 0.3..0.6, anomali → negatif
+    // map: normal -> 0.3..0.6, anomali -> negatif
     // kami balik: score = 0.5 - anom (so high = normal ~0.5, low = anom -0.5)
     return 0.5 - anom;
   }

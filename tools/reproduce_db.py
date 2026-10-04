@@ -6,9 +6,9 @@ riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >
 lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
 `node tools/eval_sdk.mjs --live` (README "Results").
 
-reproduce_db.py — REPRODUKSI JUJUR A1+A3 (tanpa ubah base10/retrain6/F4/W7/window6/gate20)
+reproduce_db.py - REPRODUKSI JUJUR A1+A3 (tanpa ubah base10/retrain6/F4/W7/window6/gate20)
 A1: sumber kebenaran 653/16 (SUBJECT_IDS), guard 653, FAR lintas 15 subjek lain (tanpa RANDOM)
-A3: held-out 8/8 seed 42 — tune threshold via EER di FOLD-TUNE, lapor di FOLD-REPORT (headline)
+A3: held-out 8/8 seed 42 - tune threshold via EER di FOLD-TUNE, lapor di FOLD-REPORT (headline)
 Deterministik, stdout utf-8, tanpa augment, tanpa geser gate/window.
 """
 import sqlite3, math, pathlib, sys, random, argparse
@@ -42,7 +42,7 @@ DB_CANDIDATES=[
 ]
 SUBJECT_IDS=[2,3,6,7,8,9,11,12,13,15,18,19,20,22,24,25]  # 16 subjek tervalidasi = 653 sesi
 F4=['mouse_velocity_mean','mouse_velocity_std','mouse_velocity_max','mouse_acceleration_std','mouse_curvature_mean','mouse_direction_changes','mouse_pause_count','mouse_click_interval_mean','cursor_idle_ratio','cross_mouse_keyboard_coordination','keystroke_dwell_time_mean','keystroke_dwell_time_std','keystroke_flight_time_mean','keystroke_transition_entropy','keystroke_typing_speed','keystroke_cross_field_cadence','keystroke_burst_count','temporal_time_of_day_score','temporal_session_duration','temporal_activity_bursts','nav_page_transition_pattern','nav_scroll_depth_mean','nav_page_count','nav_step_transition_count','form_focus_count','form_blur_count','form_field_switch_rate','cart_action_count']
-# F3 = 37 fitur (46 - 9 bermasalah) — dari server/config.py DROPPED_FEATURES_F3
+# F3 = 37 fitur (46 - 9 bermasalah) - dari server/config.py DROPPED_FEATURES_F3
 F46=['mouse_velocity_mean','mouse_velocity_std','mouse_velocity_max','mouse_acceleration_mean','mouse_acceleration_std','mouse_acceleration_max','mouse_jerk_mean','mouse_jerk_std','mouse_curvature_mean','mouse_direction_changes','mouse_pause_count','mouse_click_interval_mean','keystroke_dwell_time_mean','keystroke_dwell_time_std','keystroke_flight_time_mean','keystroke_flight_time_std','keystroke_typing_consistency','keystroke_error_rate','keystroke_transition_entropy','keystroke_backspace_rate','keystroke_correction_rate','keystroke_typing_speed','temporal_time_of_day_score','temporal_session_duration','temporal_activity_bursts','temporal_idle_time_ratio','nav_page_transition_pattern','nav_time_per_page_mean','nav_scroll_depth_mean','nav_scroll_velocity_mean','nav_page_count','nav_back_navigation_count','nav_step_transition_count','nav_time_on_product_page','form_focus_count','form_blur_count','form_field_switch_rate','form_edit_count','cart_action_count','wishlist_action_count','scroll_direction_changes','cursor_idle_ratio','keystroke_cross_field_cadence','keystroke_burst_count','cross_mouse_keyboard_coordination','cross_copy_paste_frequency']
 DROPPED_F3=['cross_copy_paste_frequency','keystroke_typing_consistency','mouse_acceleration_mean','mouse_jerk_mean','mouse_jerk_std','nav_back_navigation_count','nav_time_on_product_page','scroll_direction_changes','wishlist_action_count']
 F3=[c for c in F46 if c not in DROPPED_F3]
@@ -140,12 +140,12 @@ class RealOCSVM:
     def __init__(self, nfeat, nu=0.1):
         self.nfeat=nfeat; self.clf=None; self.nu=nu
     def fit(self, X):
-        # sklearn OneClassSVM real (RBF, gamma scale) — deterministik
+        # sklearn OneClassSVM real (RBF, gamma scale) - deterministik
         from sklearn.svm import OneClassSVM as SK
         self.clf=SK(kernel='rbf', gamma='scale', nu=self.nu)
         self.clf.fit(X)
     def score_one(self, x):
-        # decision_function >0 = normal, <0 = anomali — samakan skala dengan centroid
+        # decision_function >0 = normal, <0 = anomali - samakan skala dengan centroid
         return float(self.clf.decision_function([x])[0])
 def compute_stats(vecs):
     d=len(vecs[0]); mean=[0]*d
@@ -222,7 +222,7 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
 
     Ditambahkan untuk C-24. Tujuannya SATU: mengevaluasi representasi lain (mis.
     jendela kanonik yang diekstrak ulang dari raw_events) di bawah protokol
-    held-out yang PERSIS SAMA — bukan protokol tandingan yang lebih longgar.
+    held-out yang PERSIS SAMA - bukan protokol tandingan yang lebih longgar.
     Kalau perbandingannya dijalankan di harness yang berbeda, angkanya tidak bisa
     dibandingkan dan klaim apa pun di atasnya tidak sah. Dengan None, perilakunya
     identik dengan sebelumnya (baca dari tabel `features`)."""
@@ -367,7 +367,7 @@ def run_fold(c, subject_ids, weights, q_low, is_tune=False, feature_cols=None, u
 def main():
     ap=argparse.ArgumentParser(description="A1+A3 reproduce DB")
     ap.add_argument('--ablation', action='store_true', help='IF 100%')
-    ap.add_argument('--centroid', action='store_true', help='pakai centroid JS (ocs.js) bukan sklearn — untuk kuantifikasi gap engine')
+    ap.add_argument('--centroid', action='store_true', help='pakai centroid JS (ocs.js) bukan sklearn - untuk kuantifikasi gap engine')
     ap.add_argument('--db', help='path DB override')
     ap.add_argument('--legacy-ocsvm', action='store_true',
                     help='C-27: pakai sklearn OCSVM + bobot IF 0,70 (mesin LAMA yang TIDAK dikirim). '
@@ -376,14 +376,14 @@ def main():
     legacy=args.legacy_ocsvm or args.centroid
     ENG = 'ocsvm' if legacy else ENGINE_DEFAULT
     if ENG=='maha' and not HAS_MAHA:
-        print('ERROR: core/bg_core.py:Mahalanobis tidak bisa diimpor — mesin yang dikirim tidak tersedia.')
+        print('ERROR: core/bg_core.py:Mahalanobis tidak bisa diimpor - mesin yang dikirim tidak tersedia.')
         print('       Jangan diam-diam jatuh ke OCSVM: itu justru cacat C-27 yang sedang diperbaiki.')
         sys.exit(1)
     base_w = WEIGHTS_LEGACY if legacy else WEIGHTS_SDK
     weights={'isolation_forest':1.0,'svm':0,'lstm':0} if args.ablation else dict(base_w)
     use_real=not args.centroid
     eng_name = ('centroid JS' if args.centroid else
-                'sklearn RealOCSVM (LAMA — tidak dikirim)' if legacy else
+                'sklearn RealOCSVM (LAMA - tidak dikirim)' if legacy else
                 'Mahalanobis + shrink adaptif (SAMA dengan sdk/core/config.js)')
     print(f"Mode: {'ABLATION IF 100%' if args.ablation else 'FINAL'} | engine={eng_name}")
     print(f"Bobot: IF {weights['isolation_forest']:.2f} / slot-2 {weights['svm']:.2f}"
@@ -400,7 +400,7 @@ def main():
     total=c.execute(f"SELECT count(*) FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q})").fetchone()[0]
     print(f"Whitelist 16 subjek {SUBJECT_IDS} -> {total} sesi berfitur")
     if total != 653:
-        print(f"ERROR Guard 653 gagal: dapat {total}, harus 653 — berhenti (sidang-proof)")
+        print(f"ERROR Guard 653 gagal: dapat {total}, harus 653 - berhenti (sidang-proof)")
         sys.exit(1)
     print("Guard 653 OK")
     rows=c.execute(f"SELECT s.user_id, count(*) FROM features f JOIN sessions s USING(session_id) WHERE s.user_id IN ({q}) GROUP BY s.user_id ORDER BY s.user_id").fetchall()
@@ -414,7 +414,7 @@ def main():
     print(f"\nFOLD-TUNE (8): {fold_tune}")
     print(f"FOLD-REPORT (8): {fold_report}  <- headline")
     # tune threshold quantile di FOLD-TUNE via EER (bukan cari FRR cakep)
-    # C-27: grid LAMA [0,10..0,20] MENTOK DI PINGGIR — kedua mesin selalu memilih 0,10,
+    # C-27: grid LAMA [0,10..0,20] MENTOK DI PINGGIR - kedua mesin selalu memilih 0,10,
     # yaitu nilai terkecil yang tersedia. Tuner ingin lebih longgar tapi tidak diberi
     # pilihan, jadi sistemnya dinilai pada titik operasi yang bukan pilihannya sendiri.
     # Itulah asal FRR 35% yang selama ini dikira batas kemampuan model. Grid dilebarkan
@@ -428,13 +428,13 @@ def main():
         print(f"  q={q:.2f} -> FRR {r['frr']:.1f}% FAR {r['far']:.1f}% gap {gap:.1f}% conv {r['conv']}/{r['nsub']}")
         if gap < best_gap:
             best_gap=gap; best_q=q; best_res=r
-    print(f"Note: q=0.10 vs 0.12 gap selisih kecil = noise — pemilihan q rapuh, EERgap hanya kriteria pemilihan q, bukan EER sungguhan")
-    print(f"Dipilih q_low={best_q:.2f} karena gap terkecil ({best_gap:.1f}%) di FOLD-TUNE — bukan karena mendekati 15.2")
+    print(f"Note: q=0.10 vs 0.12 gap selisih kecil = noise - pemilihan q rapuh, EERgap hanya kriteria pemilihan q, bukan EER sungguhan")
+    print(f"Dipilih q_low={best_q:.2f} karena gap terkecil ({best_gap:.1f}%) di FOLD-TUNE - bukan karena mendekati 15.2")
     # C-27: kalau q terpilih menyentuh ujung grid, tunernya sedang dibatasi, bukan
     # sedang memilih. Angka apa pun di bawahnya adalah titik operasi yang dipaksakan.
     if best_q in (cands[0], cands[-1]):
         print(f"PERINGATAN C-27: q_low={best_q:.2f} MENTOK di ujung grid {cands[0]}..{cands[-1]}. "
-              f"Tuner tidak sedang memilih, ia sedang dibatasi — lebarkan grid sebelum angka ini dikutip.")
+              f"Tuner tidak sedang memilih, ia sedang dibatasi - lebarkan grid sebelum angka ini dikutip.")
     rep=run_fold(c, fold_report, weights, best_q, use_real_ocsvm=use_real, engine=ENG)
     print(f"\n[HEADLINE] FOLD-REPORT (held-out, q={best_q:.2f} beku):")
     print(f"  FRR {rep['frr']:.1f}% ({rep['ownerNonLow']}/{rep['owner']}) FAR {rep['far']:.1f}% ({rep['impLow']}/{rep['imp']}) conv {rep['conv']}/{rep['nsub']}")
@@ -452,11 +452,11 @@ def main():
         r=run_fold(c, fold_report, weights, best_q, feature_cols=cols, use_real_ocsvm=use_real, engine=ENG)
         print(f"  {name:15s} FRR {r['frr']:4.1f}% FAR {r['far']:4.1f}% conv {r['conv']}/{r['nsub']}")
     print(f"\nSebelum (385/7, tanpa guard) vs Sesudah (653/16 held-out) berdampingan di atas.")
-    print("Quality gate 100/5s/6: menolak 2/653 sesi (0.3%) — praktis no-op di dataset ini, aktif untuk data live")
+    print("Quality gate 100/5s/6: menolak 2/653 sesi (0.3%) - praktis no-op di dataset ini, aktif untuk data live")
     print("Deterministik: ORDER BY session_id, Random(42) shuffle, tanpa ORDER BY RANDOM, tanpa augment")
     engine_label=eng_name
     print(f"Engine: {engine_label}; gamma scale; dedup 1e-3 tanpa temporal; quality gate 100/5s/6")
     if not use_real:
-        print("Catatan: centroid JS FAR 36.2% vs Real 0.7% — F4 terbaik hanya di Real, terbalik di centroid (F4 terburuk 36.2% vs F3 20.6%)")
+        print("Catatan: centroid JS FAR 36.2% vs Real 0.7% - F4 terbaik hanya di Real, terbalik di centroid (F4 terburuk 36.2% vs F3 20.6%)")
 
 if __name__=='__main__': main()

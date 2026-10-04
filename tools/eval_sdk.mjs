@@ -1,12 +1,12 @@
 /**
- * eval_sdk.mjs — ukur SDK yang DIKIRIM, dengan menjalankan kodenya sendiri (C-29).
+ * eval_sdk.mjs - ukur SDK yang DIKIRIM, dengan menjalankan kodenya sendiri (C-29).
  *
  * Tiga harness Python sebelumnya meniru mesin SDK dan masing-masing meleset:
  * ambang kuantil-dituning lawan parametrik k_low=3,3; z per-detektor tak di-clamp
  * [-6,6]; Mahalanobis tanpa shrink adaptif; kolam 30 lawan 10+90; sesi yang lolos MFA
  * tak pernah masuk kolam; lantai lengket & blokir-beruntun tak ada. Di sini tidak ada
  * yang ditiru: tiap sesi masuk lewat `BehaviorGuard.scoreExternalEvents`, jalur yang
- * sama yang dilewati pengguna — kompresi idle, integritas, ekstraksi fitur JS, ensemble,
+ * sama yang dilewati pengguna - kompresi idle, integritas, ekstraksi fitur JS, ensemble,
  * ambang, lantai lengket, blokir. Yang disimulasikan hanya dua hal yang memang di luar
  * kode: jam dinding (supaya rate-limit tidak menahan ribuan panggilan per detik) dan
  * hasil step-up (lewat API publik `reportStepUp`, efek yang sama dengan popup MFA aslinya).
@@ -41,7 +41,7 @@ const DUMP = arg('dump', null);
 // --cfg '{"progressiveMaxPool":20}' : timpa konfigurasi (gabung-dalam) untuk ablasi
 const CFG = JSON.parse(arg('cfg', '{}'));
 // --live : potong tiap sesi jadi jendela windowSec (30 dtk) seperti setInterval di
-// browser. Tanpa ini satu vonis = satu sesi riset utuh (menit-an, ~700 event) — satuan
+// browser. Tanpa ini satu vonis = satu sesi riset utuh (menit-an, ~700 event) - satuan
 // yang TIDAK PERNAH dinilai SDK di produksi. Lihat DRIFT C-29.
 const LIVE = process.argv.includes('--live');
 const deepMerge = (t, s) => { for (const [k, v] of Object.entries(s)) t[k] = (v && typeof v === 'object' && !Array.isArray(v)) ? deepMerge(t[k] || {}, v) : v; return t; };                    // tulis ringkasan per-subjek (JSON) untuk sapuan
@@ -86,7 +86,7 @@ if (DUMP_VEC) {
   };
 }
 const raw = JSON.parse(fs.readFileSync(DATA, 'utf8'));
-// --only 19,7 : pemilik yang dinilai (penyusup tetap semua subjek lain) — untuk diagnosa
+// --only 19,7 : pemilik yang dinilai (penyusup tetap semua subjek lain) - untuk diagnosa
 const ONLY = arg('only', null);
 const ALL_SUBJ = Object.keys(raw.subjects).map(Number);
 const SUBJ = ALL_SUBJ;
@@ -95,7 +95,7 @@ const TRACE = process.argv.includes('--trace');
 // --same-hour : penyerang PINTAR yang login di jam-dalam-hari yang sama dengan kebiasaan
 // pemilik. Tanpa ini sesi penyusup memakai jam rekamannya sendiri, dan karena tiap relawan
 // merekam di blok jam yang khas, fitur temporal_time_of_day_score ikut "menangkap" penyusup
-// — sinyal yang di dunia nyata jauh lebih lemah (C-44).
+// - sinyal yang di dunia nyata jauh lebih lemah (C-44).
 const SAME_HOUR = process.argv.includes('--same-hour');
 const todOf = evs => { const t0 = Math.min(...evs.map(e => e.timestamp)); return ((t0 % DAY) + DAY) % DAY; };
 let _k = 0;
@@ -139,7 +139,7 @@ async function freshGuard(uid) {
   return g;
 }
 // Klon status pemilik untuk satu percobaan penyusup. Model & statistik dibagi pakai
-// (tidak pernah dimutasi — _rebuildModel membuat objek baru), sisanya disalin.
+// (tidak pernah dimutasi - _rebuildModel membuat objek baru), sisanya disalin.
 function cloneGuard(g, uid) {
   const c = new BehaviorGuard();
   Object.assign(c, g);
@@ -158,7 +158,7 @@ function cloneGuard(g, uid) {
 
 /**
  * Umpankan satu sesi ke guard. Mode sesi: satu panggilan. Mode live: tiru siklus
- * produksi — `_onCaptureEvent` per event (pelacakan kehadiran/absen yang sama dengan
+ * produksi - `_onCaptureEvent` per event (pelacakan kehadiran/absen yang sama dengan
  * capture.js), lalu tiap batas windowSec: buffer >= minEventsAssess -> dinilai; kurang
  * dan event terakhirnya masih segar (< idleGapSec) -> dibawa ke jendela berikut (sama
  * dengan carry-back splitForAssessment); kurang dan basi -> dibuang.
@@ -188,7 +188,7 @@ async function feed(g, evs, stepUp = false, presetShift = null) {
   g.onRisk = e => out.push(e);             // semua vonis, persis yang diterima integrator
   let edge = sorted[0].timestamp + W, i = 0;
   // stepUp: pemilik menjawab popup SEKETIKA (sebelum jendela berikutnya), seperti di
-  // browser — bukan di akhir kunjungan. Menunda ke akhir kunjungan membuat semua jendela
+  // browser - bukan di akhir kunjungan. Menunda ke akhir kunjungan membuat semua jendela
   // sesudah vonis pertama terkunci lantai lengket (artefak yang sempat menggelembungkan
   // gesekan pemilik di run live pertama).
   const tickTo = async (t) => {
@@ -265,7 +265,7 @@ for (const uid of OWNERS) {
       tick(2_000);
       const vs = (await feed(c, evs, false, impShift(uid, evs))).filter(e => !e.abstain && !e.enrollment);
       // sesi penyusup yang TIDAK PERNAH mendapat vonis (bukti tak pernah cukup) bukan
-      // 'tidak dihitung' — ia lolos tanpa diperiksa. Dicatat terpisah.
+      // 'tidak dihitung' - ia lolos tanpa diperiksa. Dicatat terpisah.
       if (!vs.length) { noVerdict.push({ uid, vid }); continue; }
       const e = vs[0];                              // jendela/sesi PERTAMA penyusup
       if (vs.some(x => x.integrity)) impIntegrity++;
@@ -368,7 +368,7 @@ console.log(`MODE: ${LIVE ? 'LIVE (jendela ' + 30 + ' dtk, seperti produksi)' : 
 console.log(`PENYUSUP: ${SAME_HOUR ? 'jam-dalam-hari DISAMAKAN dengan pemilik (--same-hour)' : 'jam rekamannya sendiri'}`);
 console.log(`SDK: sdk/behaviorguard.js | k_low=${K_LOW ?? 'default'} | data ${path.basename(DATA)} (afk=${raw.afk}) | kompresi ${COMPRESS} dtk | pemilik-MFA=${OWNER_MFA}`);
 const rl = own.filter(x => x.rateLimited).length + imp.filter(x => x.rateLimited).length;
-if (rl) console.log(`PERINGATAN: ${rl} vonis kena rate-limit — jam simulasi terlalu rapat, angka TIDAK sah`);
+if (rl) console.log(`PERINGATAN: ${rl} vonis kena rate-limit - jam simulasi terlalu rapat, angka TIDAK sah`);
 console.log(`integritas (dituduh bot): sesi pemilik ${ownerIntegrity}, sesi penyusup ${impIntegrity}`);
 summarize('SEMUA 16 subjek', own, imp, take);
 const rf = new Set(REPORT_FOLD);

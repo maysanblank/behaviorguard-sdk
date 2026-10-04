@@ -1,14 +1,14 @@
 /**
- * idle.live.test.mjs — jalur PENUH orkestrator untuk C-23 (bukan cuma modulnya).
+ * idle.live.test.mjs - jalur PENUH orkestrator untuk C-23 (bukan cuma modulnya).
  *
  * Yang diuji di sini adalah hal yang tidak kelihatan dari `idle.test.mjs`:
  * bagaimana `behaviorguard.js` bereaksi pada sesi yang di tengahnya ada absen.
  *  A. Sesi yang di dalamnya ada jeda 20 menit tidak lagi dinilai sebagai SATU
- *     sesi panjang — ia jadi dua vonis, masing-masing dengan durasi aktifnya.
+ *     sesi panjang - ia jadi dua vonis, masing-masing dengan durasi aktifnya.
  *  B. Vonis untuk perilaku SESUDAH absen panjang membawa `resumedAfterAway`, dan
  *     LOW dinaikkan jadi MEDIUM supaya step-up jalan (serangan jam makan siang).
  *  C. Jeda idle biasa (< awaySec) dipotong untuk pengukuran tapi TIDAK mengganggu
- *     pengguna — tidak ada verifikasi ulang.
+ *     pengguna - tidak ada verifikasi ulang.
  *  D. Jendela yang isinya idle menerbitkan ABSTAIN, bukan diam yang dibaca aman.
  *  E. C-28 (DEFAULT sekarang): jeda dikompresi, batch dinilai UTUH jadi satu vonis,
  *     tapi sisi keamanannya (away / verifikasi ulang) tetap jalan.
@@ -164,7 +164,7 @@ check('E: kompresi 0 = jalur segmentasi lama',
 
 // --- laporan ---------------------------------------------------------------
 const failed = results.filter(r => !r.ok);
-const summary = `\nIDLE — JALUR PENUH ORKESTRATOR (C-23 + C-28)\n` +
+const summary = `\nIDLE - JALUR PENUH ORKESTRATOR (C-23 + C-28)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
   `\n\n  lulus ${results.length - failed.length} / ${results.length}\n` +
   `  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`;

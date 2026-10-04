@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-export_sessions.py — ekspor event mentah 16 subjek ke JSON untuk tools/eval_sdk.mjs.
+export_sessions.py - ekspor event mentah 16 subjek ke JSON untuk tools/eval_sdk.mjs.
 
 Kenapa ada: tiga harness sebelumnya (reproduce_db, experiment, frr_levers) masing-masing
-MENIRU mesin SDK di Python, dan ketiganya meleset di tempat yang berbeda — ambang kuantil
+MENIRU mesin SDK di Python, dan ketiganya meleset di tempat yang berbeda - ambang kuantil
 lawan parametrik, z tak di-clamp, Mahalanobis tanpa shrink adaptif, kolam 30 lawan 100,
 sesi lolos-MFA tak pernah masuk kolam (lihat core/DRIFT.md C-29). eval_sdk.mjs menjalankan
 sdk/behaviorguard.js ITU SENDIRI, jadi yang diukur tidak mungkin berbeda dari yang dikirim.

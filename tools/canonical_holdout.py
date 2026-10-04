@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-canonical_holdout.py — menjawab satu pertanyaan yang `idle_ablation.py` TIDAK bisa
+canonical_holdout.py - menjawab satu pertanyaan yang `idle_ablation.py` TIDAK bisa
 jawab: pada titik operasi yang SAH, representasi mana yang lebih baik?
 
 `idle_ablation.py` membangun model dari 10 sesi baseline tanpa protokol held-out,
 jadi titik operasinya longgar dan hanya selisih antar-lengannya yang sahih dibaca.
-Skrip ini memakai protokol yang PERSIS sama dengan reproduce_db.py — whitelist 16
-subjek, belah 8/8 seed 42, tuning q di FOLD-TUNE, lapor di FOLD-REPORT — lalu
+Skrip ini memakai protokol yang PERSIS sama dengan reproduce_db.py - whitelist 16
+subjek, belah 8/8 seed 42, tuning q di FOLD-TUNE, lapor di FOLD-REPORT - lalu
 menyetirnya dengan vektor yang diekstrak ulang dari `raw_events`. Satu-satunya
 yang berubah adalah REPRESENTASInya; protokolnya identik, jadi angkanya bisa
 dibandingkan.
@@ -113,10 +113,10 @@ def build_source(raw_by_uid, mode, K, afk, gap_min, seed, gap_ms_override=0, com
 def run_protocol(conn, src, weights, label, use_real=True, q_grid=None, holdout=0.0,
                  split_seed=42):
     """Protokol held-out reproduce_db.py, disetir `src`. Tuning q di FOLD-TUNE,
-    lapor di FOLD-REPORT — persis seperti angka headline skripsi dihasilkan.
+    lapor di FOLD-REPORT - persis seperti angka headline skripsi dihasilkan.
 
     `split_seed` MENGACAK belahan 8/8. Satu belahan tunggal (seed 42) memberi satu
-    angka tanpa sebaran, dan dengan hanya 8 subjek pelapor sebarannya besar — cukup
+    angka tanpa sebaran, dan dengan hanya 8 subjek pelapor sebarannya besar - cukup
     besar untuk membalik urutan peringkat antar-representasi. Karena itu skrip ini
     mengulang beberapa belahan dan melaporkan rerata plus rentangnya.
     """
@@ -157,7 +157,7 @@ def main():
     ap.add_argument('--idle-gap-sec', type=float, nargs='+', default=None,
                     help='sapu beberapa nilai session.idleGapSec untuk mode segmen. '
                          'Memotong di 30 dtk juga memotong JEDA BERPIKIR biasa, dan sesi '
-                         'yang lebih pendek membawa bukti lebih sedikit — ongkos yang '
+                         'yang lebih pendek membawa bukti lebih sedikit - ongkos yang '
                          'sama persis dengan yang menenggelamkan C-24.')
     ap.add_argument('--compress-sec', type=float, default=15,
                     help='C-28: ambang kompresi jeda (= sdk/core/config.js session.idleCompressSec)')
@@ -171,12 +171,12 @@ def main():
     conn = sqlite3.connect(db)
     # C-27: bobot mengikuti sdk/core/config.js (IF 0,30 / slot-2 0,70), dan mesinnya
     # mengikuti rdb.ENGINE_DEFAULT ('maha'). Versi lama file ini memakai 0,70/0,30 di
-    # atas OCSVM — mengukur sistem yang tidak dikirim.
+    # atas OCSVM - mengukur sistem yang tidak dikirim.
     weights = ({'isolation_forest': 1.0, 'svm': 0, 'lstm': 0} if args.ablation
                else dict(rdb.WEIGHTS_SDK))
 
     print(f"DB: {db}")
-    print(f"Protokol: reproduce_db.py — whitelist 16 subjek, belah 8/8 seed 42, "
+    print(f"Protokol: reproduce_db.py - whitelist 16 subjek, belah 8/8 seed 42, "
           f"q dituning di FOLD-TUNE, dilaporkan di FOLD-REPORT")
     print(f"Engine  : {'IF 100%' if args.ablation else 'IF 0,30 / slot-2 0,70'}, "
           f"{'Mahalanobis (sama dgn SDK)' if rdb.ENGINE_DEFAULT == 'maha' else rdb.ENGINE_DEFAULT}")
@@ -245,7 +245,7 @@ def main():
     print()
     print("CARA MEMBACA")
     print("  Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,")
-    print("  yang salah ekstraksi ulangnya, bukan representasinya — periksa itu dulu.")
+    print("  yang salah ekstraksi ulangnya, bukan representasinya - periksa itu dulu.")
     print("  Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.")
     print("  Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.")
     print("               Ini pertanyaan terpenting di tabel ini.")

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-make_tracker_maha.py — bikin Excel tracker progres sesi (L/M/H) pakai MODEL BARU
+make_tracker_maha.py - bikin Excel tracker progres sesi (L/M/H) pakai MODEL BARU
 (Mahalanobis + shrinkage + kalibrasi parametrik) dan bandingkan dgn model lama
 (centroid). Protokol identik: baseline 10, retrain tiap 6, konvergensi 6-LOW +
 gerbang kohort. Vonis dihitung pada sesi PEMILIK sendiri sepanjang waktu (in-sample
-self-progression) — sama seperti tracker_progres_sesi asli.
+self-progression) - sama seperti tracker_progres_sesi asli.
 """
 import sqlite3, importlib.util, random, sys, math, pathlib
 sys.path.insert(0, 'core'); import bg_core as bg
@@ -107,7 +107,7 @@ def main():
 
     # ---------- Sheet 1: Progres Sesi (model baru) ----------
     ws=wb.active; ws.title='Progres Sesi (Maha)'
-    ws['A1']='TRACKER PROGRES SESI — MODEL BARU (Mahalanobis + kalibrasi parametrik)'
+    ws['A1']='TRACKER PROGRES SESI - MODEL BARU (Mahalanobis + kalibrasi parametrik)'
     ws['A1'].font=Font(bold=True,size=13,color='1F3864')
     ws['A2']=f"Protokol: baseline 10 + retrain/6 + konvergensi 6-LOW & gerbang kohort. Vonis pd sesi pemilik sendiri. k_low={CFG_NEW['k_low']} shrink={CFG_NEW['shrink']} bobot IF.30/Maha.70"
     ws['A2'].font=Font(italic=True,size=9,color='606060')
@@ -147,7 +147,7 @@ def main():
             cN.fill={'LOW':fL,'MEDIUM':fM,'HIGH':fH}.get(lvl)
             cO=ws2.cell(r,5,old); cO.alignment=center
             cO.fill={'LOW':fL,'MEDIUM':fM,'HIGH':fH}.get(old)
-            ch='—' if lvl==old else f'{old}→{lvl}'
+            ch='-' if lvl==old else f'{old}->{lvl}'
             cc=ws2.cell(r,6,ch); cc.alignment=center
             if lvl!=old: cc.font=Font(bold=True,color='1F3864')
             for j in range(1,7): ws2.cell(r,j).border=border

@@ -1,4 +1,4 @@
-# BehaviorGuard — Pasang di Website Mana Pun (1 tag)
+# BehaviorGuard - Pasang di Website Mana Pun (1 tag)
 
 `dist/behaviorguard.js` = **satu file classic-script** (semua modul dibundel jadi 1).
 Tanpa `type=module`, tanpa sub-file, tanpa path absolut. Host di mana saja (CDN, GitHub
@@ -9,7 +9,7 @@ Pages, folder situs), colok satu `<script>`. Selesai.
 python tools/bundle.py     # atau: npm run bundle
 ```
 
-## Cara pasang — pilih SATU
+## Cara pasang - pilih SATU
 
 ### 1. Paling gampang: data-attribute + event DOM
 ```html
@@ -101,7 +101,7 @@ window.BehaviorGuardConfig = {
 
 ---
 
-## Mode server (opsional) — baseline lintas perangkat
+## Mode server (opsional) - baseline lintas perangkat
 
 Tanpa server, baseline hanya ada di perangkat itu: penyerang di laptopnya sendiri mulai dari
 nol dan tidak punya pembanding. Dengan server, perangkat BARU menarik baseline akun dari

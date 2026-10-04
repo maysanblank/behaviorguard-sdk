@@ -31,7 +31,7 @@ export function createCapture(onEvent){
     if(attached) return; attached=true;
     const opts={capture:true, passive:true};
     const downAt=new Map();
-    // C-30 PRIVASI: `key` DULU menyimpan KARAKTER ASLI yang diketik — termasuk di kolom
+    // C-30 PRIVASI: `key` DULU menyimpan KARAKTER ASLI yang diketik - termasuk di kolom
     // kata sandi. Momen paling berbahaya justru login: ketik sandi -> Enter -> halaman
     // pindah -> `_bankTail()` menyimpan 200 event terakhir sebagai JSON TEKS BIASA di
     // localStorage. Sandi tertinggal di browser, terbaca skrip mana pun di origin itu.
@@ -50,7 +50,7 @@ export function createCapture(onEvent){
       return t;
     };
     // C-44: KELAS POSISI tombol (tangan kiri/kanan, angka, spasi) untuk
-    // keystroke_cross_hand_ratio — dari e.code (posisi FISIK, tak bergantung tata letak),
+    // keystroke_cross_hand_ratio - dari e.code (posisi FISIK, tak bergantung tata letak),
     // bukan dari hurufnya. Di kolom kata sandi kelasnya TIDAK direkam: urutan kiri/kanan
     // sandi mempersempit tebakan, jadi di sana hanya waktu tekan yang diambil.
     const LEFT_CODES=new Set(['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyA','KeyS','KeyD','KeyF','KeyG','KeyZ','KeyX','KeyC','KeyV','KeyB']);
@@ -62,7 +62,7 @@ export function createCapture(onEvent){
       if(c==='Space') return 'S';
       return undefined;                                    // tombol lain: cukup nama tombolnya
     };
-    // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami — itu frasa tetap
+    // C-30: ketikan di popup MFA milik BG sendiri BUKAN perilaku alami - itu frasa tetap
     // yang diketik berulang dengan sengaja. Dulu ikut terekam dan mencemari fitur ketik
     // jendela berikutnya (plus FORM_FOCUS/BLUR dari kolom popup). Gerak mouse tetap
     // direkam: menggerakkan mouse ke popup adalah gerakan tangan yang wajar.
@@ -81,11 +81,11 @@ export function createCapture(onEvent){
     //   1. integrity.js membaca `e.velocity||0` -> selalu 0 -> std 0 -> sesi manusia
     //      biasa ditandai "velocity konstan" dan diblokir sebagai bot. Terpicu pada
     //      sesi yang keystroke+klik-nya < 10, yaitu sesi yang isinya kebanyakan
-    //      gerak mouse — persis perilaku pengunjung yang cuma menelusuri halaman.
+    //      gerak mouse - persis perilaku pengunjung yang cuma menelusuri halaman.
     //   2. features.js SPEC 8.4 menghitung idle = jumlah gerakan dgn velocity < 0.5;
     //      tanpa field itu SEMUA gerakan terhitung diam -> `cursor_idle_ratio` terkunci
     //      di 1.0. Satu dari 28 fitur jadi mati di produksi, padahal saat model
-    //      dilatih dari basis data riset fitur itu bervariasi — ketidakcocokan
+    //      dilatih dari basis data riset fitur itu bervariasi - ketidakcocokan
     //      latih-vs-pakai yang permanen.
     // Satuan piksel per milidetik, sama seperti `velocities` di features.js.
     let lastMovePt=null;
@@ -120,7 +120,7 @@ export function createCapture(onEvent){
       // tak-tepercaya, padahal itu perilaku aplikasi yang normal dan ikut terhitung saat data
       // riset dikumpulkan. Menyaringnya di sini hanya akan membuat form_focus_count di
       // pemakaian berbeda dari saat model dilatih. Kedua fitur itu struktural, bukan biometrik
-      // waktu — nilai sinyalnya tidak sepadan dengan risiko ketidakcocokan latih-vs-pakai.
+      // waktu - nilai sinyalnya tidak sepadan dengan risiko ketidakcocokan latih-vs-pakai.
       focus: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_FOCUS', txt: isTextEntry(e.target), page_url: location.href}); }catch{} },
       blur: e=> { try{ if(fromBg(e)) return; if(e.target && e.target.matches && e.target.matches('input,textarea,select,[contenteditable]')) push({event_type:'FORM_BLUR', page_url: location.href}); }catch{} },
       nav: ()=> push({event_type:'NAVIGATION', page_url: location.href}),
@@ -130,7 +130,7 @@ export function createCapture(onEvent){
       // Dua arah bahayanya: pemilik yang memakai password manager terlihat menyimpang
       // tiap login, DAN penyusup bisa menyenjatakannya untuk menghapus seluruh blok
       // bukti ketikan. Nol di sini berarti "tidak ada bukti", bukan "beginilah cara
-      // orang ini mengetik" — dan model tidak bisa membedakannya sendiri.
+      // orang ini mengetik" - dan model tidak bisa membedakannya sendiri.
       // Peristiwanya ditandai di sini; keputusannya (ABSTAIN pada blok keystroke)
       // ada di behaviorguard.js, sama seperti C-23 menandai idle lalu memutuskan.
       paste: e=>{ if(fromBg(e)) return; try{
@@ -138,7 +138,7 @@ export function createCapture(onEvent){
         push({event_type:'PASTE', chars:n, page_url: location.href});
       }catch{ push({event_type:'PASTE', chars:0, page_url: location.href}); } },
       // B4: di layar sentuh `mousemove` praktis tidak pernah muncul, sehingga SEMBILAN
-      // fitur mouse jadi nol — pola yang sama dengan A3, blok yang berbeda. Sentuhan
+      // fitur mouse jadi nol - pola yang sama dengan A3, blok yang berbeda. Sentuhan
       // dan mouse adalah dua ALAT UKUR untuk gerakan yang sama, jadi ia dipetakan ke
       // tipe event yang sama; tanpa ini, pengguna ponsel tidak pernah bisa dinilai
       // sama sekali. Ditandai `touch:true` supaya lapisan konteks bisa memisahkan
@@ -153,7 +153,7 @@ export function createCapture(onEvent){
     // mousemove throttled: 1 per 50ms untuk cap volume
     //
     // C-46: saringan isTrusted WAJIB di depan throttle, bukan di dalam handler.move. Kalau
-    // di dalam, event tiruan tetap lolos throttle lebih dulu dan MEMPERBARUI `lastMove` —
+    // di dalam, event tiruan tetap lolos throttle lebih dulu dan MEMPERBARUI `lastMove` -
     // sehingga skrip yang membanjiri mousemove 1000/dtk membuat gerakan mouse ASLI selalu
     // jatuh di dalam jendela 50 ms dan tak pernah terekam. Menolak event palsu jadi malah
     // membungkam yang asli; penyerang tidak perlu memalsukan perilaku, cukup menghapusnya.

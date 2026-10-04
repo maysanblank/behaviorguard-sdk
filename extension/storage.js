@@ -120,7 +120,7 @@ export const storage={
       let toSave=v;
       if(v && v.sessions && v.sessions.length>30){
         // B7: DULU dipotong ke 30 sesi terakhir. IndexedDB menerima yang utuh, jadi
-        // biasanya tak terasa — tapi di mode penyamaran atau browser yang memblokir
+        // biasanya tak terasa - tapi di mode penyamaran atau browser yang memblokir
         // IDB, kolam terkunci di 30 padahal progressiveMaxPool = 90. C-22 sudah
         // menunjukkan apa akibat kolam terlalu kecil dibanding d=28: kovarians goyah,
         // deteksi melemah. Dan karena hanya menimpa SEBAGIAN pengguna, gejalanya
@@ -128,7 +128,7 @@ export const storage={
         // Yang dibutuhkan model cuma `vector`; `feat` (28 pasangan nama-nilai) murni
         // untuk penjelasan. Membuangnya membuat jauh lebih banyak sesi muat.
         const slim=v.sessions.map(x=> x && x.feat ? {...x, feat:null} : x);
-        // C-31: DULU `slim.slice(-90)` — memotong 90 TERAKHIR, jadi blok pendaftaran di
+        // C-31: DULU `slim.slice(-90)` - memotong 90 TERAKHIR, jadi blok pendaftaran di
         // DEPAN ikut terbuang. Sesudah reload, 10 sesi apa pun yang kebetulan ada di
         // depan (bisa sesi MEDIUM/HIGH, bisa sesi penyusup) diperlakukan sebagai
         // pendaftaran tanpa syarat: peracunan baseline lewat pemotongan. Blok

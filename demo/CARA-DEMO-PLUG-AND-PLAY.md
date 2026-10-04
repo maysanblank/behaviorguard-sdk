@@ -1,19 +1,19 @@
-# Cara demo plug-and-play — tiga situs, tiga arsitektur
+# Cara demo plug-and-play - tiga situs, tiga arsitektur
 
 Panduan langkah demi langkah untuk memasang BehaviorGuard **langsung di depan penonton**,
 ke tiga situs yang arsitekturnya berbeda-beda.
 
-Ketiga situs **belum berisi BehaviorGuard sama sekali** — itu memang disengaja. Penonton
+Ketiga situs **belum berisi BehaviorGuard sama sekali** - itu memang disengaja. Penonton
 melihat situs polos, lalu melihat kamu menempel dua baris, lalu melihat sistemnya hidup.
 
 | Folder | Toko | Arsitektur | Yang dibuktikan |
 |---|---|---|---|
 | `toko-klasik/` | Toko Kopi Nusantara | HTML multi-halaman, tanpa framework | Navigasi antar-halaman sungguhan |
-| `pasar-spa/` | Pasar Loka | SPA vanilla, History API | `pushState` — nol muat ulang |
+| `pasar-spa/` | Pasar Loka | SPA vanilla, History API | `pushState` - nol muat ulang |
 | `butik-react/` | Butik Rasa | React 18 | Framework dengan event sintetis sendiri |
 
 **Ketiganya punya sistem akun sendiri**: daftar, masuk, keluar. Sebelum masuk, seluruh toko
-terkunci. Ini penting untuk demomu — ceritanya dimulai dari **mendaftar akun baru**, bukan
+terkunci. Ini penting untuk demomu - ceritanya dimulai dari **mendaftar akun baru**, bukan
 dari akun yang entah dari mana.
 
 ---
@@ -52,7 +52,7 @@ Ketiganya akan langsung menampilkan layar **"Masuk / Daftar"** karena belum ada 
 <script src="../../dist/behaviorguard.js" defer></script>
 ```
 
-**Baris pertama** memberi tahu BehaviorGuard siapa yang sedang masuk — persis seperti
+**Baris pertama** memberi tahu BehaviorGuard siapa yang sedang masuk - persis seperti
 aplikasi nyata, yang selalu tahu penggunanya. Ketiga situs sudah mengumumkan akun aktifnya
 lewat `window.penggunaAktif`, jadi baris ini identik di semuanya.
 
@@ -60,13 +60,13 @@ lewat `window.penggunaAktif`, jadi baris ini identik di semuanya.
 
 ---
 
-## 1. Situs pertama — Toko Kopi Nusantara (multi-halaman)
+## 1. Situs pertama - Toko Kopi Nusantara (multi-halaman)
 
 ### Langkah 1.1 · Tunjukkan situsnya masih polos
 
 Buka <http://localhost:8080/demo/toko-klasik/index.html>
 
-Kamu langsung dialihkan ke halaman **Masuk ke akunmu**. Tekan **F12** → **Console**:
+Kamu langsung dialihkan ke halaman **Masuk ke akunmu**. Tekan **F12** -> **Console**:
 
 ```js
 typeof window.BehaviorGuard
@@ -76,7 +76,7 @@ Hasilnya `"undefined"`. **Katakan:** *"Belum ada apa-apa di situs ini."*
 
 ### Langkah 1.2 · Daftar akun baru (di depan penonton)
 
-Di tab **"Daftar akun baru"**, isi nama, surel, kata sandi → **Buat akun**.
+Di tab **"Daftar akun baru"**, isi nama, surel, kata sandi -> **Buat akun**.
 
 Kamu masuk ke katalog, dan di kanan atas muncul **"Halo, <namamu>"**.
 
@@ -87,7 +87,7 @@ window.penggunaAktif
 ```
 
 Muncul `{email: "...", nama: "..."}`. **Katakan:** *"Situsnya sekarang tahu siapa saya.
-Ini yang akan dipakai BehaviorGuard sebagai identitas — bukan cookie, bukan perangkat."*
+Ini yang akan dipakai BehaviorGuard sebagai identitas - bukan cookie, bukan perangkat."*
 
 ### Langkah 1.3 · Buka berkas di VS Code
 
@@ -120,9 +120,9 @@ Klik di **ujung baris 31**, tekan **Enter**, tempel dua baris tadi. Jadinya:
 
 ### Langkah 1.5 · Muat ulang
 
-Browser → **Ctrl+Shift+R**.
+Browser -> **Ctrl+Shift+R**.
 
-Panel muncul di **pojok kanan bawah** bertuliskan **MENGENALI…**. Di Console:
+Panel muncul di **pojok kanan bawah** bertuliskan **MENGENALI...**. Di Console:
 
 ```js
 BehaviorGuard._instance.userId
@@ -142,24 +142,24 @@ Ulangi untuk empat berkas sisanya. Dua baris yang ditempel **sama persis**:
 | `keranjang.html` | `32` | 31 |
 | `checkout.html` | `57` | 56 |
 
-**Katakan:** *"Situs multi-halaman butuh tagnya di tiap halaman — sama seperti Google
+**Katakan:** *"Situs multi-halaman butuh tagnya di tiap halaman - sama seperti Google
 Analytics. Tapi profilnya tetap satu, karena diikat ke akun."*
 
 ---
 
-## 2. Situs kedua — Pasar Loka (SPA)
+## 2. Situs kedua - Pasar Loka (SPA)
 
 Cuma **satu berkas**, tempel **sekali**.
 
 ### Langkah 2.1 · Tunjukkan ini beneran SPA
 
-Buka <http://localhost:8080/demo/pasar-spa/> → daftar akun baru dulu.
+Buka <http://localhost:8080/demo/pasar-spa/> -> daftar akun baru dulu.
 
-Setelah masuk, klik **Belanja → Keranjang → Bayar → Tentang**. Tunjukkan:
+Setelah masuk, klik **Belanja -> Keranjang -> Bayar -> Tentang**. Tunjukkan:
 - Alamat berubah (`?r=/keranjang`, `?r=/checkout`)
 - **Ikon reload browser tidak pernah berputar**
 
-Di tiap layar ada kotak: `rute aktif: /keranjang — tanpa muat ulang`.
+Di tiap layar ada kotak: `rute aktif: /keranjang - tanpa muat ulang`.
 
 ### Langkah 2.2 · Tempel
 
@@ -172,7 +172,7 @@ Buka `demo/pasar-spa/index.html`, **Ctrl+End**.
 351  </html>
 ```
 
-Klik ujung **baris 349**, Enter, tempel dua baris tadi. **Ctrl+S** → **Ctrl+Shift+R**.
+Klik ujung **baris 349**, Enter, tempel dua baris tadi. **Ctrl+S** -> **Ctrl+Shift+R**.
 
 ### Langkah 2.3 · Buktikan `pushState` tertangkap
 
@@ -182,7 +182,7 @@ Di Console:
 BehaviorGuard._instance.capture.peek().filter(e => e.event_type === 'NAVIGATION').length
 ```
 
-Hasilnya `0`. Klik **Keranjang**, lalu **Bayar**, jalankan lagi → hasilnya **`2`**.
+Hasilnya `0`. Klik **Keranjang**, lalu **Bayar**, jalankan lagi -> hasilnya **`2`**.
 
 **Katakan:** *"Situs ini tidak pernah memuat ulang halaman. BehaviorGuard tetap tahu
 penggunanya berpindah, karena dia mengaitkan diri ke `history.pushState`. Ini yang biasanya
@@ -190,15 +190,15 @@ gagal di SPA."*
 
 ---
 
-## 3. Situs ketiga — Butik Rasa (React 18)
+## 3. Situs ketiga - Butik Rasa (React 18)
 
 Cuma **satu berkas**, tempel **sekali**.
 
 ### Langkah 3.1 · Tunjukkan ini React beneran
 
-Buka <http://localhost:8080/demo/butik-react/> → daftar akun baru.
+Buka <http://localhost:8080/demo/butik-react/> -> daftar akun baru.
 
-Di Console: `React.version` → `"18.3.1"`. Klik filter kategori — daftarnya dirender ulang
+Di Console: `React.version` -> `"18.3.1"`. Klik filter kategori - daftarnya dirender ulang
 oleh komponen React.
 
 ### Langkah 3.2 · Tempel
@@ -212,7 +212,7 @@ Buka `demo/butik-react/index.html`, **Ctrl+End**.
 413  </html>
 ```
 
-Klik ujung **baris 411**, Enter, tempel. **Ctrl+S** → **Ctrl+Shift+R**.
+Klik ujung **baris 411**, Enter, tempel. **Ctrl+S** -> **Ctrl+Shift+R**.
 
 ### Langkah 3.3 · Buktikan interaksi React tertangkap
 
@@ -239,11 +239,11 @@ Ini bagian yang paling meyakinkan, dan urutannya persis seperti pengalaman pengg
 |---|---|
 | Baru daftar, sesi 1 | **MENGENALI 1/10** + bar 10% |
 | Sesi ke-5 | **MENGENALI 5/10** + bar 50% |
-| Sesi ke-10 | **MENGENALI 10/10** — *"profil siap"* |
+| Sesi ke-10 | **MENGENALI 10/10** - *"profil siap"* |
 | Sesi ke-11+ | **LOW · AMAN** dengan skor perilaku |
 | Orang lain memakai | **MEDIUM · WASPADA** atau **HIGH · BAHAYA** |
 
-Bar progresnya bergerak tiap sesi berakhir — jadi penonton melihat sistemnya **sedang
+Bar progresnya bergerak tiap sesi berakhir - jadi penonton melihat sistemnya **sedang
 belajar**, bukan menggantung.
 
 ### ⚠️ Yang harus kamu lakukan SEBELUM berdiri di depan orang
@@ -254,7 +254,7 @@ vonis pertama ≈ **5 menit interaksi aktif terus-menerus**. Penonton tidak akan
 **Rencana yang benar:**
 
 1. **Sebelum booth:** daftar akun (misalnya `andi@tokokopi.id`), pasang tagnya, lalu pakai
-   tokonya seperti manusia normal ~5 menit — gerakkan mouse, ketik di formulir, klik produk,
+   tokonya seperti manusia normal ~5 menit - gerakkan mouse, ketik di formulir, klik produk,
    isi checkout. Jangan diam; satu sesi butuh ≥100 event dan ≥5 detik.
 
    Pantau di Console:
@@ -270,7 +270,7 @@ vonis pertama ≈ **5 menit interaksi aktif terus-menerus**. Penonton tidak akan
    setelah pendaftaran selesai. Ketik frasanya **3 kali** dengan ritme normalmu.
 
    > Kalau diabaikan, template ritme tidak tersimpan, dan saat vonis HIGH nanti step-up
-   > **tidak akan muncul** — itu perilaku aman yang disengaja (penyusup tidak boleh
+   > **tidak akan muncul** - itu perilaku aman yang disengaja (penyusup tidak boleh
    > mendaftarkan ritmenya sendiri), tapi di panggung terlihat seperti fiturnya rusak.
 
 3. **Jangan tekan Keluar, jangan Reset, jangan mode penyamaran.** Profil tersimpan di
@@ -278,25 +278,25 @@ vonis pertama ≈ **5 menit interaksi aktif terus-menerus**. Penonton tidak akan
 
 ### Saat demo: dua pilihan cerita
 
-**Cerita A — "sistemnya sedang belajar"** (kalau mau menunjukkan dari nol)
+**Cerita A - "sistemnya sedang belajar"** (kalau mau menunjukkan dari nol)
 Daftar akun baru di depan penonton, pakai tokonya ~1 menit, tunjukkan panel bergerak
-**1/10 → 2/10 → 3/10**. Tidak perlu menunggu sampai 10; yang penting terlihat progresnya.
+**1/10 -> 2/10 -> 3/10**. Tidak perlu menunggu sampai 10; yang penting terlihat progresnya.
 
-**Cerita B — "login sah, sesinya tidak"** (pakai akun yang sudah matang)
-1. Masuk dengan akun yang sudah kamu latih. Pakai sebentar → panel **LOW · AMAN**.
+**Cerita B - "login sah, sesinya tidak"** (pakai akun yang sudah matang)
+1. Masuk dengan akun yang sudah kamu latih. Pakai sebentar -> panel **LOW · AMAN**.
 2. **Minta penonton memakai mouse dan keyboardmu** ~30 detik dengan gayanya sendiri.
 3. Tunggu sesi berakhir, atau paksa lewat Console:
    ```js
    await BehaviorGuard.endSession()
    ```
 4. Panel berubah **MEDIUM** atau **HIGH**, popup verifikasi ritme muncul.
-5. Penonton mencoba mengetik frasanya → **ditolak**. Kamu ketik → **lolos**.
+5. Penonton mencoba mengetik frasanya -> **ditolak**. Kamu ketik -> **lolos**.
 
 Kalimat penutupnya: *"Login-nya sah. Sesinya tidak."*
 
 ### Serangan otomatis (opsional)
 
-<http://localhost:8080/demo/attack_sim.html> — tunggu seeding ~10 detik, klik keempat
+<http://localhost:8080/demo/attack_sim.html> - tunggu seeding ~10 detik, klik keempat
 tombol. Semuanya harus **HIGH**, dan yang Mimicry tertangkap oleh **ensemble**, bukan oleh
 heuristik bot.
 
@@ -311,7 +311,7 @@ Hapus profil perilaku saja (akun tetap ada):
 await BehaviorGuard._instance.clear()
 ```
 
-Hapus semuanya termasuk akun: F12 → **Application** → **Storage** → **Clear site data**.
+Hapus semuanya termasuk akun: F12 -> **Application** -> **Storage** -> **Clear site data**.
 
 ---
 
@@ -322,7 +322,7 @@ Hapus semuanya termasuk akun: F12 → **Application** → **Storage** → **Clea
 | Panel tidak muncul | Server dijalankan dari folder salah. Harus dari `BEHAVIORGUARD-SDK`. |
 | Console: `404 behaviorguard.js` | Dari `demo/nama-situs/` path-nya memang `../../dist/`. |
 | `BehaviorGuard._instance.userId` = `undefined` | Kamu belum masuk akun, atau baris config ditempel **sebelum** skrip situsnya. Harus **setelah**. |
-| `typeof window.BehaviorGuard` tetap `undefined` | Tag ketempel setelah `</body>`, lupa Ctrl+S, atau pakai F5 — harus **Ctrl+Shift+R**. |
+| `typeof window.BehaviorGuard` tetap `undefined` | Tag ketempel setelah `</body>`, lupa Ctrl+S, atau pakai F5 - harus **Ctrl+Shift+R**. |
 | Panel diam di MENGENALI 0 | Interaksi terlalu sedikit. Satu sesi butuh ≥100 event dan ≥5 detik. Gerakkan mouse dan ketik. |
 | Sesi tidak bertambah | Sama seperti di atas. Cek `getState().sessions.length`. |
 | Popup verifikasi tidak muncul saat HIGH | Template ritme belum didaftarkan. Ulangi bagian 4 nomor 2. |

@@ -1,5 +1,5 @@
 /**
- * challenge.test.mjs — uji regresi lapisan step-up (C-1).
+ * challenge.test.mjs - uji regresi lapisan step-up (C-1).
  *
  * Berkas ini mengunci celah "tempel frasa = lolos MFA": verify() versi lama
  * mengiterasi panjang TEMPLATE dan membandingkan `undefined` -> NaN, dan
@@ -47,7 +47,7 @@ const mustFail = [
   ['lebih panjang dari template', { dwell: new Array(13).fill(90), flight: new Array(12).fill(140) }],
 ];
 for (const [name, sample] of mustFail) {
-  check(`ditolak — ${name}`, verify(sample, tmpl).ok === false);
+  check(`ditolak - ${name}`, verify(sample, tmpl).ok === false);
 }
 
 // --- Bentuk template ---

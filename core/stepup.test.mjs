@@ -1,5 +1,5 @@
 /**
- * stepup.test.mjs — API integrator & jalur step-up versi produksi (C-45).
+ * stepup.test.mjs - API integrator & jalur step-up versi produksi (C-45).
  *
  *  A. init() diantrekan: dua panggilan bersamaan tidak berjalan tumpang-tindih.
  *  B. status(): fase belajar -> melindungi, tanpa membeberkan vektor.

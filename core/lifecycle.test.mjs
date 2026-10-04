@@ -1,5 +1,5 @@
 /**
- * lifecycle.test.mjs — siklus hidup jangka panjang & API integrator (C-31..C-33).
+ * lifecycle.test.mjs - siklus hidup jangka panjang & API integrator (C-31..C-33).
  *
  *  A. Blok pendaftaran adalah jangkar: tidak bergulir keluar dari kolam, tidak
  *     terpotong penyimpanan, walau ada sesi tak-layak di masa pendaftaran.

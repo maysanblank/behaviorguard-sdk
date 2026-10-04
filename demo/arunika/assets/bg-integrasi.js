@@ -1,5 +1,5 @@
 /*
- * bg-integrasi.js — SATU-SATUNYA berkas yang ditulis pemilik situs untuk memasang BehaviorGuard.
+ * bg-integrasi.js - SATU-SATUNYA berkas yang ditulis pemilik situs untuk memasang BehaviorGuard.
  *
  * Situs Arunika (app.js + halaman-halamannya) sudah jadi sebelum pustaka dipasang. Berkas ini
  * menambahkan empat hal, dan tidak ada baris kode aplikasi lain yang diubah:
@@ -13,7 +13,7 @@
  * irama ketik (berapa lama tiap tombol ditekan, jeda antar-tombol) dengan irama pemilik
  * yang tersimpan di perangkat ini. Kode sekali pakai hanya muncul kalau jalur itu tidak
  * bisa dipakai: pemiliknya belum mengatur irama, memakai keyboard yang berbeda dari saat
- * mendaftar, atau menekan "Gunakan cara lain". Ia jalan KELUAR, bukan pintu depan —
+ * mendaftar, atau menekan "Gunakan cara lain". Ia jalan KELUAR, bukan pintu depan -
  * tanpanya, pemilik yang gagal ritme tidak punya pilihan selain diblokir.
  *
  * Dialog kode di bawah milik SITUS. Di produksi, kodenya dikirim DAN dicek oleh server-mu;
@@ -214,7 +214,7 @@
   // ------------------------------------------------------------------ 4. kode cadangan
   // Di produksi: server mengirim kode (SMS/email/authenticator) DAN memeriksanya, lalu
   // mengembalikan true/false. Di demo: kodenya "dikirim" sebagai notifikasi di pojok layar.
-  // Perhatikan `ctx.why` — pustaka memberi tahu KENAPA jalur cadangan dipakai, dan alasan
+  // Perhatikan `ctx.why` - pustaka memberi tahu KENAPA jalur cadangan dipakai, dan alasan
   // itu ditampilkan ke pengguna. Tanpa itu, dialog kode muncul seakan-akan tanpa sebab.
   const ALASAN_CADANGAN = {
     'no-template': 'Verifikasi irama ketik belum diatur di perangkat ini.',

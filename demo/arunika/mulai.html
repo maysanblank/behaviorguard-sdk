@@ -41,7 +41,7 @@
 
   <div class="hero">
     <h1 id="halo">Rekeningmu sudah jadi.</h1>
-    <p id="lead">Mulai sekarang Arunika mengenali <b>caramu</b> memakai akun ini — bukan hanya kata sandimu. Profilnya dibangun dari nol, di perangkat ini, dari pemakaian biasamu sendiri.</p>
+    <p id="lead">Mulai sekarang Arunika mengenali <b>caramu</b> memakai akun ini - bukan hanya kata sandimu. Profilnya dibangun dari nol, di perangkat ini, dari pemakaian biasamu sendiri.</p>
   </div>
 
   <div class="grid g-2">
@@ -62,7 +62,7 @@
             </div>
             <div class="txt">
               <div class="st" id="st">Belum ada bukti yang terkumpul</div>
-              <div class="sd" id="sd">Pakai saja situsnya seperti biasa — mengetik, menggulir, berpindah halaman. Setiap 30 detik pemakaian jadi satu potong bukti.</div>
+              <div class="sd" id="sd">Pakai saja situsnya seperti biasa - mengetik, menggulir, berpindah halaman. Setiap 30 detik pemakaian jadi satu potong bukti.</div>
               <div class="progress" style="margin-top:12px"><i id="bar" style="width:0%"></i></div>
               <div class="meter">
                 <span>Potong bukti <b id="m-win">0 / 10</b></span>
@@ -81,10 +81,10 @@
         <div class="card-b">
           <div class="contoh-tx" id="contoh"></div>
           <label class="sr" for="tulis">Salin kalimat di atas</label>
-          <textarea class="input tulis" id="tulis" spellcheck="false" placeholder="Ketik di sini…"></textarea>
+          <textarea class="input tulis" id="tulis" spellcheck="false" placeholder="Ketik di sini..."></textarea>
           <div class="meter">
             <span>Huruf diketik <b id="m-char">0</b></span>
-            <span>Kecepatan <b id="m-wpm">—</b></span>
+            <span>Kecepatan <b id="m-wpm">-</b></span>
             <span><a href="#" id="ganti">ganti kalimat</a></span>
           </div>
         </div>
@@ -108,7 +108,7 @@
           <label class="small" style="display:flex;gap:9px;align-items:flex-start;color:var(--ink-2)">
             <input type="checkbox" id="cepat" style="margin-top:3px">
             <span><b>Mode presentasi.</b> Perkecil ukuran bukti supaya pengenalan selesai ±3x lebih cepat.
-            <span class="muted">Angka akurasi resmi tidak berlaku di mode ini — ia diukur dengan 150 kejadian per penilaian.</span></span>
+            <span class="muted">Angka akurasi resmi tidak berlaku di mode ini - ia diukur dengan 150 kejadian per penilaian.</span></span>
           </label>
         </div>
       </section>
@@ -141,7 +141,7 @@
     ['Tarik tunai tanpa kartu', 'Ambil uang di ATM Arunika hanya dengan kode dari aplikasi.'],
     ['Bunga deposito naik', 'Deposito 6 bulan kini 4,25% per tahun.'],
     ['Bayar tagihan otomatis', 'Atur sekali, tagihan listrik dan air terbayar sendiri tiap bulan.'],
-    ['Jadwal pemeliharaan sistem', 'Minggu, 02.00–04.00 WIB layanan transfer sementara tidak tersedia.'],
+    ['Jadwal pemeliharaan sistem', 'Minggu, 02.00-04.00 WIB layanan transfer sementara tidak tersedia.'],
     ['Kartu debit desain baru', 'Ganti kartu lamamu gratis di cabang mana pun.'],
     ['Arunika untuk usaha kecil', 'Rekening bisnis tanpa biaya admin tahun pertama.'],
   ];
@@ -164,10 +164,10 @@
     const v = $('tulis').value;
     huruf = v.length;
     $('m-char').textContent = huruf;
-    if (!huruf) { mulaiKetik = 0; $('m-wpm').textContent = '—'; return; }
+    if (!huruf) { mulaiKetik = 0; $('m-wpm').textContent = '-'; return; }
     if (!mulaiKetik) mulaiKetik = Date.now();
     const menit = (Date.now() - mulaiKetik) / 60000;
-    $('m-wpm').textContent = menit > 0.08 ? Math.round((huruf / 5) / menit) + ' kpm' : '—';
+    $('m-wpm').textContent = menit > 0.08 ? Math.round((huruf / 5) / menit) + ' kpm' : '-';
   }
   $('tulis').addEventListener('input', hitungKetik);
   // kalimat selesai -> ganti otomatis, supaya orang terus mengetik tanpa berpikir
@@ -200,7 +200,7 @@
     if (!st) { b.innerHTML = '<p class="small muted">Pustaka keamanan tidak termuat.</p>'; return; }
     if (st.mfa.enrolled) {
       b.innerHTML = `<div class="banner bn-ok" style="margin:0">${I.check}<div><div class="t">Irama ketik sudah diatur</div>
-        <div>Kalau ada aktivitas janggal, kamu cukup mengetik ulang satu frasa pendek — tidak perlu menunggu kode.</div></div></div>`;
+        <div>Kalau ada aktivitas janggal, kamu cukup mengetik ulang satu frasa pendek - tidak perlu menunggu kode.</div></div></div>`;
       return;
     }
     const bisa = st.mfa.canEnroll;

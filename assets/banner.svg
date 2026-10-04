@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="BehaviorGuard: continuous behavioral-biometrics account-takeover detection">
+  <defs>
+    <linearGradient id="bgfill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f1e"/>
+      <stop offset="0.55" stop-color="#0d1526"/>
+      <stop offset="1" stop-color="#101d33"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="22%" cy="20%" r="60%">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="92%" cy="90%" r="55%">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#132137"/>
+      <stop offset="1" stop-color="#0c1830"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="1280" height="400" rx="24" fill="url(#bgfill)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#glow)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#glow2)"/>
+  <rect x="1.5" y="1.5" width="1277" height="397" rx="22.5" fill="none" stroke="#223049" stroke-width="3"/>
+
+  <!-- faint signal trace across the whole width -->
+  <path d="M0 322 L150 322 L182 300 L210 342 L238 262 L268 322 L560 322 L590 300 L618 344 L646 250 L676 322 L1280 322"
+        fill="none" stroke="url(#accent)" stroke-width="2" opacity="0.18"/>
+
+  <!-- logo tile -->
+  <g transform="translate(74,104)">
+    <rect width="192" height="192" rx="40" fill="url(#tile)" stroke="#2a3c5a" stroke-width="2"/>
+    <rect x="1" y="1" width="190" height="190" rx="39" fill="none" stroke="url(#accent)" stroke-width="2" opacity="0.5"/>
+
+    <!-- shield -->
+    <path d="M96 24 L156 46 V104 C156 142 131 166 96 178 C61 166 36 142 36 104 V46 Z"
+          fill="#0b1324" stroke="url(#accent)" stroke-width="6" stroke-linejoin="round"/>
+
+    <!-- continuous-auth pulse inside the shield -->
+    <path d="M52 108 H74 L84 86 L98 130 L110 96 L118 108 H140"
+          fill="none" stroke="url(#accent)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- keystroke-rhythm dots -->
+    <circle cx="70" cy="150" r="5" fill="#22d3ee"/>
+    <circle cx="90" cy="150" r="5" fill="#38bdf8"/>
+    <circle cx="110" cy="150" r="5" fill="#34d399"/>
+    <circle cx="126" cy="150" r="3.4" fill="#34d399" opacity="0.6"/>
+  </g>
+
+  <!-- wordmark -->
+  <g transform="translate(300,150)" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="0" y="0" font-size="82" font-weight="800" fill="#f8fafc" letter-spacing="-2">Behavior<tspan fill="url(#word)">Guard</tspan></text>
+    <text x="3" y="48" font-size="27" font-weight="500" fill="#aab6c8">Continuous behavioral-biometrics account-takeover detection</text>
+    <text x="3" y="86" font-size="20" font-weight="400" fill="#6b7a90">On-device scoring. Built-in step-up MFA. One script tag. Zero dependencies.</text>
+  </g>
+
+  <!-- feature chips -->
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" transform="translate(303,292)">
+    <g>
+      <rect width="214" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>
+      <circle cx="22" cy="20" r="5" fill="#22d3ee"/>
+      <text x="40" y="26" fill="#cbd5e1">319/319 conformance</text>
+    </g>
+    <g transform="translate(230,0)">
+      <rect width="150" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>
+      <circle cx="22" cy="20" r="5" fill="#38bdf8"/>
+      <text x="40" y="26" fill="#cbd5e1">5 runtimes</text>
+    </g>
+    <g transform="translate(396,0)">
+      <rect width="138" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>
+      <circle cx="22" cy="20" r="5" fill="#34d399"/>
+      <text x="40" y="26" fill="#cbd5e1">37 KB gzip</text>
+    </g>
+    <g transform="translate(548,0)">
+      <rect width="168" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>
+      <circle cx="22" cy="20" r="5" fill="#f1f5f9"/>
+      <text x="40" y="26" fill="#cbd5e1">MIT licensed</text>
+    </g>
+  </g>
+</svg>
