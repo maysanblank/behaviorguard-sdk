@@ -4,7 +4,7 @@
 KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
 riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
 lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
-`node tools/eval_sdk.mjs --live` (README "Results").
+`node research/eval_sdk.mjs --live` (README "Results").
 
 experiment.py - cari rumus PENGGANTI centroid yang LEBIH AKURAT tapi tetap
 browser-trainable & nol-dependensi (portabel ke 5 runtime). Protokol held-out
@@ -34,7 +34,7 @@ def calibrate_thresholds_parametric(baseline_scores, k_low=3.3, k_med_extra=2.0)
     Ditambahkan 2026-09-04: konfigurasi TERKIRIM memakai calibrationMode='parametric',
     tetapi berkas ini dulu hanya bisa mengukur mode 'quantile'. Akibatnya angka
     headline parametrik di config.js TIDAK bisa direproduksi oleh skrip mana pun
-    di repo ini. Sekarang bisa: `python tools/experiment.py --calib parametric`."""
+    di repo ini. Sekarang bisa: `python research/experiment.py --calib parametric`."""
     n=len(baseline_scores)
     if n==0: return {'low':-0.4,'medium':-0.8}
     m=sum(baseline_scores)/n

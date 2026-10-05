@@ -28,7 +28,7 @@ canvas{width:100%;height:220px;background:#0b1222;border-radius:8px}
   </div>
 </div>
 <script type="module">
-import bgSingleton from '../../sdk/behaviorguard.js';
+import bgSingleton from '../../../sdk/behaviorguard.js';
 import { F4 } from '../../sdk/core/features.js';
 const bg = bgSingleton._instance || bgSingleton;
 await bg.init({ userId: 'pemantau-demo', onRisk: (evt)=> console.log('onRisk', evt)});

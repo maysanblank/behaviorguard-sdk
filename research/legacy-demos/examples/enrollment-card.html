@@ -21,7 +21,7 @@
   <div id="enrollment"></div>
 </main>
 <script>window.BehaviorGuardConfig = { userId: 'card-example@demo.example', panel: true, mfa: { brand: 'Senja Coffee', accent: '#8a4b16', theme: 'light', lang: 'en', phrase: 'senja coffee guards my account' } };</script>
-<script src="behaviorguard.js"></script>
+<script src="../../../dist/behaviorguard.js"></script>
 <script>
   BehaviorGuard.mountEnrollment('#enrollment', { lang: 'en' });
   document.getElementById('open').onclick = () => BehaviorGuard.openEnrollment({ practice: false, lang: 'en' });

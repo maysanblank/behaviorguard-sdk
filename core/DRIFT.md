@@ -10,7 +10,7 @@ This repo has **two separately hand-written copies of the engine**:
 | | File | Role |
 |---|---|---|
 | **A** | `sdk/core/*.js` | the engine that is **actually installed** on people's sites |
-| **B** | `tools/reproduce_db.py` | the engine that **produces the headline numbers** in the README |
+| **B** | `research/reproduce_db.py` | the engine that **produces the headline numbers** in the README |
 
 The two were never cross-tested. This file reports the results of doing so.
 Reproduce: `python core/drift_check.py`.
@@ -90,7 +90,7 @@ The SVM part has two versions of the formula:
 | | SVM formula version |
 |---|---|
 | A (shipped) | centroid-RBF approximation - `sdk/core/ocsvm.js`, 36 lines, runs in the browser |
-| B (thesis measurement) | scikit-learn `OneClassSVM` - `tools/reproduce_db.py` |
+| B (thesis measurement) | scikit-learn `OneClassSVM` - `research/reproduce_db.py` |
 
 **Proven:** of 16 golden probes, **3 change verdict** just by swapping the formula version.
 
@@ -102,7 +102,7 @@ footnote to a measured, automatically tested difference.
 version is not shipped, because training it needs scikit-learn, which does not run in a
 browser. `core/` now has a single formula; there is no longer a confusing choice.
 
-`tools/reproduce_db.py` is **deliberately left untouched** - that is where the thesis
+`research/reproduce_db.py` is **deliberately left untouched** - that is where the thesis
 numbers are reproduced, and it must keep running as is.
 
 Still to do (deferred, not forgotten):
@@ -303,7 +303,7 @@ so a partial configuration still inherits the rest. Verified in the browser.
 
 ## C-12 · The attack simulator was completely dead
 
-`demo/attack_sim.html` used `bg._instance`, but the module's default export **already is**
+`research/legacy-demos/attack_sim.html` used `bg._instance`, but the module's default export **already is**
 the singleton (`_instance` only exists on `window.BehaviorGuard`). `init()` threw at module
 level, so the `window.run` below it was never installed and all four attack buttons did
 nothing, with no trace in the UI. The flagship Arsenal demo could not be clicked. Fixed to
@@ -367,9 +367,9 @@ judged HIGH - mimicry through `[ensemble]`, no longer through the heuristics. Th
 simulator set for itself ("the SDK must say HIGH for all of them") is finally met.
 
 Locked by: `core/ensemble.test.mjs` (11 tests) pins the gate semantics; orchestrator
-behaviour is tested end to end through `demo/attack_sim.html`.
+behaviour is tested end to end through `research/legacy-demos/attack_sim.html`.
 
-**Note on published numbers:** the held-out evaluation in `tools/experiment.py` rebuilds the
+**Note on published numbers:** the held-out evaluation in `research/experiment.py` rebuilds the
 model through its own path and does not go through `_ingestVector`, so FRR 16.1% / FAR 5.4%
 are **not affected** by this bug. What is affected is the library actually running on the
 device - exactly the kind of gap `DRIFT.md` exists for.
@@ -544,7 +544,7 @@ in `behaviorguard.js` (not MFA / not the plug-and-play logic):
    init threw them away. (Bonus: `storage.set` writes to IndexedDB, a DIFFERENT store from
    `bg:pending` in localStorage - so that line never connected anyway.)
 
-Combined effect: on a multi-page site (e.g. `demo/shop-multipage`), browsing page to page
+Combined effect: on a multi-page site (e.g. `research/legacy-demos/shop-multipage`), browsing page to page
 discarded the tail on every transition -> sessions were never long enough for
 `minEventsTrain` (100) -> enrollment stuck at 0/10.
 
@@ -697,7 +697,7 @@ against field data; all three are exposed as knobs in `init({session, idle})`.
 **Tests:** `core/idle.test.mjs` 33/33 (module + the evidence for the numbers in the table
 above), `core/idle.live.test.mjs` 20/20 (full orchestrator path: two verdicts from one gapped
 batch, `resumedAfterAway`, LOW->MEDIUM, ABSTAIN). Full proposal + similar cases:
-`docs/CONTEXT-AND-IDLE-PROPOSAL.md`.
+`research/notes/CONTEXT-AND-IDLE-PROPOSAL.md`.
 
 ---
 
@@ -714,7 +714,7 @@ segmentation.
 `nav_step_transition_count`, `form_focus_count`, `form_blur_count`, `cart_action_count` -
 which grow with session length. As a result **every** change in session length is read as a
 change in identity. This predates idle and affects almost every case in
-`docs/CONTEXT-AND-IDLE-PROPOSAL.md` §4 that changes session length.
+`research/notes/CONTEXT-AND-IDLE-PROPOSAL.md` §4 that changes session length.
 
 **Two routes, and why the second was chosen.**
 (a) Turn the formulas into rates (`count / active_duration`) -> SPEC v1.3, regenerate the
@@ -732,7 +732,7 @@ train-vs-serve mismatch for another.
 **Three knobs, ALL off by default** (`session.canonicalWindow: 0`, `aggregateWindows: 1`,
 `calibrationHoldout: 0`) so the old path is untouched and the headline numbers stay valid.
 
-**Measured** (`tools/idle_ablation.py --canonical 120`, 19 subjects, 482,203 raw events;
+**Measured** (`research/idle_ablation.py --canonical 120`, 19 subjects, 482,203 raw events;
 mean |z| against the owner baseline):
 
 | Arm | TIME features | COUNT features | SHAPE features |
@@ -894,14 +894,14 @@ enough to rank anything. Any number from this protocol - **including the old hea
 numbers** - should be reported with a spread over several splits, not as a single number.
 
 Reproduce:
-`python tools/canonical_holdout.py --only 1 2 3 --idle-gap-sec 30 120 300 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15`
+`python research/canonical_holdout.py --only 1 2 3 --idle-gap-sec 30 120 300 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15`
 
 ---
 ## C-25 - Audit: "the instrument changed, not the person"
 
 After C-23 and C-24, this defect class was traced through the whole code base. Twelve
 findings, three of them proven by running the code. Details in
-`docs/MEASUREMENT-VALIDITY-AUDIT.md`; what was patched:
+`research/notes/MEASUREMENT-VALIDITY-AUDIT.md`; what was patched:
 
 **A1 - CRITICAL, "just browsing" sessions blocked as bots.** The fallback
 `filtered.length>=10 ? filtered : events` in `integrity.js` DEFEATED the intent of T5: when
@@ -975,7 +975,7 @@ integrity 10/10).
 
 
 A 23% FRR at 2% FAR is not shippable. This section takes apart where that number comes from.
-The tool is `tools/frr_levers.py`, which **reproduces `reproduce_db.py` digit for digit** before
+The tool is `research/frr_levers.py`, which **reproduces `reproduce_db.py` digit for digit** before
 any lever is applied - its first version did not, because it dropped half of the convergence
 condition, and that alone cost 0.11 AUC. A harness that has not first been matched against its
 reference cannot be trusted.
@@ -1061,7 +1061,7 @@ better FAR@FRR15 - that is a product decision, not a metric decision, and it mak
 existing headline numbers incomparable. Proposed, not shipped.
 
 Reproduce:
-`python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --baseline 16 --eval-from 16`
+`python research/frr_levers.py --levers none --seeds 42 7 13 2026 99 --baseline 16 --eval-from 16`
 
 ---
 
@@ -1074,7 +1074,7 @@ worse than it really is.
 | | detector 2 | weights |
 |---|---|---|
 | `sdk/core/config.js` (**what ships**) | `model2:'mahalanobis'` | IF **0.30** / slot 2 **0.70** |
-| `tools/reproduce_db.py` (**what measures**) | sklearn `RealOCSVM` | IF **0.70** / slot 2 **0.30** |
+| `research/reproduce_db.py` (**what measures**) | sklearn `RealOCSVM` | IF **0.70** / slot 2 **0.30** |
 
 Not only is the engine different - **the weights are reversed.** So every number
 `reproduce_db.py` ever produced, including all the C-23..C-26 tables above, measured a system
@@ -1147,7 +1147,7 @@ headline numbers must be recomputed there. Until that is done, every number from
 `reproduce_db.py` must be labelled with the engine it used.
 
 Reproduce:
-`python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --scorer maha --w-if 0.30`
+`python research/frr_levers.py --levers none --seeds 42 7 13 2026 99 --scorer maha --w-if 0.30`
 
 ---
 
@@ -1353,7 +1353,7 @@ restored, shape features identical, count features do not shrink). `core/idle.li
 older suite stays green.
 
 Reproduce:
-`python tools/canonical_holdout.py --only 1 2 7 8 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15 0.18 0.20`
+`python research/canonical_holdout.py --only 1 2 7 8 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15 0.18 0.20`
 
 > **Note after C-29.** The absolute C-28 numbers come from an imitation Python harness, with
 > whole sessions as the unit and duplicated data. On the real SDK (live mode, C-29) the
@@ -1378,12 +1378,12 @@ Python. Once the imitation was compared against the real SDK, it still missed in
 | sticky floor, consecutive blocks | absent | present |
 | **verdict unit** | **whole research session (~700 events)** | **30 s window** |
 
-**New tool: `tools/eval_sdk.mjs`.** Every session is fed into the real `BehaviorGuard`. The
+**New tool: `research/eval_sdk.mjs`.** Every session is fed into the real `BehaviorGuard`. The
 `--live` mode calls `endSession()` every 30 seconds against a simulated buffer, so compression,
 integrity, JS feature extraction, thresholds, the floor, tail carry-back, cross-visit
 `bg:pending` and per-visit `init()` all run on the SDK's own code. Only two things are
 simulated: the wall clock, and the answer to the verification popup (through the public
-`reportStepUp` API). The data is exported by `tools/export_sessions.py` to an OS temp
+`reportStepUp` API). The data is exported by `research/export_sessions.py` to an OS temp
 directory, **never into the repo**.
 
 **Seven measurement artefacts were found and removed before the numbers were trusted.** All of
@@ -1446,9 +1446,9 @@ sessions as the unit. -> C-33.
 
 Reproduce:
 ```
-python tools/export_sessions.py            # + --afk for AFK data
-node tools/eval_sdk.mjs --live             # the shipped defaults
-node tools/eval_sdk.mjs                    # whole-session unit (research comparison)
+python research/export_sessions.py            # + --afk for AFK data
+node research/eval_sdk.mjs --live             # the shipped defaults
+node research/eval_sdk.mjs                    # whole-session unit (research comparison)
 ```
 
 ---
@@ -1540,7 +1540,7 @@ tuner picked 1.75 / 1.75 / 1.5 / 2.0 / 1.5. Reported averages: owner asked to ve
 [12..19], intruder passes the first verdict **8.9%** [4..14], takeover undetected within 6
 sessions 0.2%.
 
-**Results with the shipped defaults (`node tools/eval_sdk.mjs --live`, 16 subjects):**
+**Results with the shipped defaults (`node research/eval_sdk.mjs --live`, 16 subjects):**
 
 | | old (30 ev, k 3.3) | **new** |
 |---|---:|---:|
@@ -1644,7 +1644,7 @@ listener was removed; auto-boot now forwards `session/idle/calibration/userToken
   Also: `.login{display:grid}` beat the `hidden` attribute, so the login form could never be
   closed (the drawer had the same defect) - now `[hidden]{display:none!important}`.
   Test: `server/test_app.py` 35/35; verified in the browser: the payload renders as text.
-- **The loader** `loader/bg-loader.js` had the same C-40 defect (`pagehide`/`beforeunload`
+- **The loader** `sdk/bg-loader.js` had the same C-40 defect (`pagehide`/`beforeunload`
   -> `endSession`). Removed; the loader now forwards the same options as auto-boot.
 - **The bundle requested the site's `/storage.js`.** `token.js` loaded storage through
   `import('../storage.js')`; in a single-file bundle that path is relative to the PAGE, so every
@@ -1747,7 +1747,7 @@ Tests: `core/lifecycle.test.mjs` J (10 checks) and K (5 sliding-window checks).
 `ORDER BY session_id`. Every harness up to C-43 therefore enrolled the owner with 10 RANDOM
 sessions from the whole data-collection period, and then judged the rest in random order too.
 Real users are not like that: they enroll with their FIRST visits and then keep using the site.
-`tools/export_sessions.py --order time` (now the default) sorts sessions per subject by the
+`research/export_sessions.py --order time` (now the default) sorts sessions per subject by the
 timestamp of their first event.
 
 In time order, owner friction by quintile of usage (C-44 engine): 10.0 / 13.8 / 16.2 / 10.1 /
@@ -1918,7 +1918,7 @@ session stopped, bot injection -> BLOCK, the full live path with the 30 s clock,
 | MFA FRR/FAR before vs after C-20 | Gaussian jitter simulation (18-char phrase) | FRR 63.6%->~2%, FAR ~0% |
 | Storage C-10 (browser) | `storage.del` on an empty store | does not throw, 0 errors |
 | Detector gate C-15/C-8 | `core/ensemble.test.html` / `.mjs` | 11/11 pass |
-| Attack simulator C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
+| Attack simulator C-12..C-15 | `research/legacy-demos/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
 | Integrity heuristics C-16 | `core/integrity.test.html` / `.mjs` | 10/10 pass |
 | Full live path C-16..C-18 | real page + DOM events | enrollment 10/10, correct LOW/MEDIUM verdicts, persistent after reload |
 | sdk<->extension sync (extension scheduled for removal, C-41) | `tools/sync_core.ps1` | identical, exit 0 |
@@ -1926,17 +1926,17 @@ session stopped, bot injection -> BLOCK, the full live path with the 30 s clock,
 | Full idle path C-23 | `core/idle.live.test.mjs` | 20/20 pass |
 | Session-length invariance C-24 | `core/invariance.test.mjs` / `.html` | 26/26 pass |
 | Measurement validity audit C-25 | `core/audit.test.mjs` | 32/32 pass |
-| Held-out validation C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIVE for C-23 segmentation |
+| Held-out validation C-23/C-24 | `python research/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIVE for C-23 segmentation |
 | Idle compression C-28 | `core/compress.test.mjs` | 22/22 pass |
 | Full idle path C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 pass |
-| Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18.4% -> 9.7%, FAR unchanged |
+| Held-out C-28 | `python research/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18.4% -> 9.7%, FAR unchanged |
 | Capture privacy C-30, C-44 | `node core/privacy.test.mjs` | 14/14 pass |
 | Lifecycle C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 pass |
 | Production step-up, integrator API, real conditions C-45 | `node core/stepup.test.mjs` | 61/61 pass |
 | Script-made input, fallback time limit C-46 | `node core/c46.test.mjs` | 25/25 pass |
-| Short-burst typing rhythm (rejected C-46 idea) | `node tools/eval_typing.mjs --sweep` | EER 29-38% -> not shipped |
+| Short-burst typing rhythm (rejected C-46 idea) | `node research/eval_typing.mjs --sweep` | EER 29-38% -> not shipped |
 | Server auth + log sanitising C-39, C-41 | `python server/test_app.py` | 35/35 pass |
-| Shipped SDK, 30 s windows, time order (C-44) | `node tools/eval_sdk.mjs --live` | owner 11.4%, intruder first verdict 10.5%, whole session 7.9%, AUC 0.953 |
+| Shipped SDK, 30 s windows, time order (C-44) | `node research/eval_sdk.mjs --live` | owner 11.4%, intruder first verdict 10.5%, whole session 7.9%, AUC 0.953 |
 | Java / Rust / WASM conformance | `npm run conformance:java` / `:rust` / `:wasm` | 319/319 conformant |
 
 ## C-46 - script-made behaviour, and a harness that silently measured another configuration
@@ -2004,7 +2004,7 @@ synthetic; real typing afterwards was still recorded normally.
 
 C-45 added `this.cfg = clone(DEFAULTS)` in `_init()` so options from a previous `init()` do not
 carry into the next `init()` (C-38, logout A -> login B). Correct for the SDK. But
-`tools/eval_sdk.mjs` applied its overrides to `g.cfg` **before** `init()`:
+`research/eval_sdk.mjs` applied its overrides to `g.cfg` **before** `init()`:
 
 ```js
 if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);   // <- wiped by _init()
@@ -2045,7 +2045,7 @@ template exists - i.e. on every new installation - step-up falls 100% to the int
 
 The idea: judge the FREE typing rhythm of one input field (~20 keys) against the owner's
 statistics, using the scale-free F4 subspace (dwell mean/std/median, flight median/IQR,
-backspace / cross-hand / shift ratios). Measured by `tools/eval_typing.mjs`, held out per owner
+backspace / cross-hand / shift ratios). Measured by `research/eval_typing.mjs`, held out per owner
 (trained on the first 10 sessions, tested on later sessions, intruders = the 15 other subjects):
 
 | burst | owner rejected (k=2.5) | intruder passes | AUC | EER |
@@ -2152,7 +2152,7 @@ An average that improves while one user gets a third worse is not a trade worth 
 stronger evidence.
 
 The ablation copy is not part of the repo (written to an OS temp dir); what is reproducible is the
-method: copy `sdk/`, change the formulas, then `node tools/eval_sdk.mjs --live --sdk <copy>` and
+method: copy `sdk/`, change the formulas, then `node research/eval_sdk.mjs --live --sdk <copy>` and
 compare the **report split**, not the 16-subject number.
 
 ## C-48 - an intruder sent money without being asked during the learning period; the enrollment card moves into the library

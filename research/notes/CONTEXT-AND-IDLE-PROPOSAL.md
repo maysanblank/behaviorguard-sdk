@@ -104,7 +104,7 @@ every 30 seconds. A user browsing slowly eventually adds up to a session.
 
 ## 3. Ablation on the research database - and one derived finding
 
-`python tools/idle_ablation.py` re-extracts features from `raw_events` (482,203 events, 19
+`python research/idle_ablation.py` re-extracts features from `raw_events` (482,203 events, 19
 subjects with ≥14 sessions), injects **one** AFK pause of 2-20 minutes at a random point in each
 test session, and judges four arms with **exactly the same model and thresholds**. The main
 metric is the mean |z| against the owner baseline, grouped by how time can damage a feature:
@@ -165,7 +165,7 @@ Both are more biometric than "how long the session happened to be". Hard require
 **enrollment AND scoring** - if only one of them, we just trade one train-vs-serve mismatch for
 another.
 
-**Results** (`tools/idle_ablation.py --canonical 120`, mean |z|):
+**Results** (`research/idle_ablation.py --canonical 120`, mean |z|):
 
 | Arm | TIME features | COUNT features | SHAPE features |
 |---|---:|---:|---:|
@@ -427,5 +427,5 @@ contribution.
 | `core/idle.test.mjs` / `.html` | 33 module tests + the §1.1 numbers |
 | `core/idle.live.test.mjs` | 20 full orchestrator path tests |
 | `core/invariance.test.mjs` / `.html` | 26 C-24 tests; the first locks "the defaults change nothing" |
-| `tools/idle_ablation.py` | The §3 ablation on the research database |
+| `research/idle_ablation.py` | The §3 ablation on the research database |
 | `core/DRIFT.md` § C-23, C-24 | Defect records in this repo's audit format |

@@ -350,7 +350,10 @@ In backend mode the profile belongs to the account on your server (C-49). A new 
 device is scored against the owner's profile from its first window (tested:
 `server/test_app.py`, `server/test_backend_sdk.py`, and with real browsers in the Arunika and
 shop-checkout demos). What remains is a **brand-new account** - no owner profile exists yet,
-for anyone - which is why the fail-closed policy above matters.
+for anyone - which is why the fail-closed policy above matters. Sites where a password can
+leak before the owner's first sessions can also turn on `enrollRequiresVerified` (see
+[server/README.md](server/README.md)): the account then learns only from logins that passed a
+verification.
 
 ### 4.14 The step-up fallback and rhythm guessing - MITIGATED (C-45)
 
@@ -413,7 +416,7 @@ the security sense but broken as a product:
 - **Earlier numbers measured other engines.** The Python research harnesses imitated the
   library and each missed it somewhere (whole sessions instead of 30-second windows,
   different thresholds, no sticky floor). Headline numbers now come from
-  `tools/eval_sdk.mjs`, which drives the shipped code itself (C-29); the Python tools are
+  `research/eval_sdk.mjs`, which drives the shipped code itself (C-29); the Python tools are
   research-only.
 
 ---

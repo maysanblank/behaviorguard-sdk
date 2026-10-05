@@ -1,6 +1,6 @@
 /**
  * bg-loader.js - drop-in 1 script untuk build ES-module (sdk/). Padanan dist/behaviorguard.js.
- * Pakai: <script src="/loader/bg-loader.js" data-user="andi@example.com" data-callback="onRisk"></script>
+ * Pakai: <script src="/sdk/bg-loader.js" data-user="andi@example.com" data-callback="onRisk"></script>
  * Opsional: data-pk, data-endpoint, data-user-token (mode cloud, C-39), atau
  *           window.BehaviorGuardConfig = { session, idle, calibration, mfa, ... } sebelum tag ini.
  * SDK inti sudah auto-skor (interval 30s + visibilitychange + SPA) dan menyimpan ekor
@@ -15,7 +15,7 @@
   const onRisk = (cbName && typeof window[cbName]==='function') ? window[cbName]
                : (typeof cfg.onRisk==='function' ? cfg.onRisk : (e=> console.log('[BG]', e)));
   if(!user){ console.warn('[BehaviorGuard] data-user belum diisi'); return; }
-  const base=s.src.replace(/\/loader\/bg-loader\.js.*$/,'');
+  const base=s.src.replace(/\/sdk\/bg-loader\.js.*$/,'');
   import(base+'/sdk/behaviorguard.js').then(m=>{
     const bg=m.default||m.singleton;
     const opts={userId:user, onRisk:(e)=>{

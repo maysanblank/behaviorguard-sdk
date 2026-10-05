@@ -9,24 +9,25 @@ self-progression) - sama seperti tracker_progres_sesi asli.
 """
 import sqlite3, importlib.util, random, sys, math, pathlib
 sys.path.insert(0, 'core'); import bg_core as bg
-spec=importlib.util.spec_from_file_location("exp","tools/experiment.py")
+spec=importlib.util.spec_from_file_location("exp","research/experiment.py")
 exp=importlib.util.module_from_spec(spec); spec.loader.exec_module(exp)
+import os, tempfile
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-DB=r'C:\Users\USER\OneDrive\Documents\skripsi\database\05 08 2026\behavior_detection_20260805_085856.db'
+DB=os.environ.get("BG_RESEARCH_DB", "behavior_detection.db")  # the research database is not in the repository
 F4=exp.F4
 # subjek + urutan PERSIS tracker asli (nama -> id)
-SUBJECTS=[('kezia',7),('kapioo',2),('mikhael',18),('teddy',12),('andika',9),
-          ('dodi',20),('Tutel',22),('diani',15),('maysan',19),('depe',5),
-          ('delon',13),('kelin',25),('kevin',8),('Frans',24),('cencen',6),('erni',11)]
+SUBJECTS=[('S07',7),('S02',2),('S18',18),('S12',12),('S09',9),
+          ('S20',20),('S22',22),('S15',15),('S19',19),('S05',5),
+          ('S13',13),('S25',25),('S08',8),('S24',24),('S06',6),('S11',11)]
 ALL_IDS=[uid for _,uid in SUBJECTS]
 
 # ---- konfigurasi dua model ----
-CFG_NEW=dict(model='maha', weights={'isolation_forest':0.30,'svm':0.70,'lstm':0},
+CFG_NEW=dict(model='maha', weights={'isolation_forest':0.30,'S00': 0.70,'S00': 0},
              shrink=bg.DEFAULTS['mahalanobis']['shrink'],
              k_low=bg.DEFAULTS['k_low'], k_med_extra=bg.DEFAULTS['k_med_extra'])
-CFG_OLD=dict(model='centroid', weights={'isolation_forest':0.70,'svm':0.30,'lstm':0},
+CFG_OLD=dict(model='centroid', weights={'isolation_forest':0.70,'S00': 0.30,'S00': 0},
              q_low=0.10, q_med=0.033)
 
 compute_stats=exp.compute_stats; standardize=exp.standardize; score_stats=exp.score_stats
@@ -180,7 +181,7 @@ def main():
         cell=ws3.cell(rt,j,v); cell.font=Font(bold=True); cell.fill=PatternFill('solid',fgColor='DDEBF7'); cell.border=border; cell.alignment=center
     for col,w in zip('ABCDEFGHIJ',[12,17,10,10,10,10,10,10,15,15]): ws3.column_dimensions[col].width=w
 
-    out=r'C:\Users\USER\OneDrive\Documents\skripsi\database\05 08 2026\tracker_progres_MAHA_05-08.xlsx'
+    out=os.path.join(tempfile.gettempdir(), 'tracker_progres_MAHA.xlsx')  # derived research data: never in the repo
     wb.save(out)
     print('\nTOTAL lama  L/M/H:',totO,'\nTOTAL baru  L/M/H:',totN)
     print('Saved:',out)

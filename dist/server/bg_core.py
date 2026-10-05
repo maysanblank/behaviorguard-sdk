@@ -48,7 +48,7 @@ DEFAULTS = {
     'calibrateThresholds': True,
     # Kalibrasi pita risiko. Mode default = 'parametric' (mean - k*std skor
     # baseline) yang jauh lebih efisien titik-operasinya daripada kuantil.
-    # C-33: k_low 1,75 dipilih ulang dengan SDK sungguhan (tools/eval_sdk.mjs --live).
+    # C-33: k_low 1,75 dipilih ulang dengan SDK sungguhan (research/eval_sdk.mjs --live).
     # Nilai lama 3,3 dipilih di atas data riset yang eventnya kembar (C-29).
     'calibrationMode': 'parametric',
     # k_med_extra melebarkan pita MEDIUM(MFA): makin besar -> lebih banyak

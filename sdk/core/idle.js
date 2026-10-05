@@ -130,7 +130,7 @@ export function segmentByIdle(events, gapMs=GAP_MS_DEFAULT){
  * sesudah jeda digeser mundur sebesar kelebihan jedanya. Jeda berpikir (< gapMs)
  * tidak tersentuh sama sekali.
  *
- * Tidak memutasi masukan. Padanan Python: tools/idle_ablation.py:compress_idle.
+ * Tidak memutasi masukan. Padanan Python: research/idle_ablation.py:compress_idle.
  * @returns {Array} event baru, urut waktu, timestamp sudah dikompresi
  */
 export function compressIdle(events, gapMs){

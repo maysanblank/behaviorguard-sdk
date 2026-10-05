@@ -4,7 +4,7 @@ What is planned, what is being considered, and what is deliberately out of scope
 roadmap, not a promise - items move as evidence comes in.
 
 ## Planned
-- [ ] English UI for the Indonesian demo shops (`demo/shop-*`, `monitor/`, `attack_sim.html`).
+- [ ] English UI for the Indonesian demo shops (`research/legacy-demos/shop-*`, `monitor/`, `attack_sim.html`).
 - [ ] Labeled screenshots in `assets/` (see `assets/README.md` for the shot list).
 - [ ] Publish the minified bundle to a CDN path documented in QUICKSTART.
 

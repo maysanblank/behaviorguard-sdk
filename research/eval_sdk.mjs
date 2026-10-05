@@ -19,8 +19,8 @@
  *  AMBIL-ALIH penyusup memakai akun beberapa sesi berturut: berapa sesi ia lolos
  *            sebelum ketahuan, dan apakah akhirnya diblokir.
  *
- *   python tools/export_sessions.py [--afk]
- *   node tools/eval_sdk.mjs [--data F] [--owner-mfa pass|none] [--compress 15|0]
+ *   python research/export_sessions.py [--afk]
+ *   node research/eval_sdk.mjs [--data F] [--owner-mfa pass|none] [--compress 15|0]
  */
 import fs from 'node:fs';
 import os from 'node:os';

@@ -169,7 +169,7 @@ membatalkannya).
 ## Hasil
 
 Diukur pada **653 sesi dari 16 relawan** dengan menjalankan **pustaka yang dikirim itu
-sendiri** (`node tools/eval_sdk.mjs --live`): tiap sesi riset diputar ulang lewat jalur
+sendiri** (`node research/eval_sdk.mjs --live`): tiap sesi riset diputar ulang lewat jalur
 asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di browser. Sesi
 diputar **menurut urutan rekamannya**, satu kunjungan per sesi (muat halaman, status dibaca
 ulang dari penyimpanan), jadi pendaftaran = sepuluh kunjungan pertama tiap pemilik. Pemilik
@@ -256,18 +256,18 @@ tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
 - **Datanya.** 16 relawan, 653 sesi, direkam dalam skenario berbasis tugas (menjelajah,
   mencari, mengisi formulir, checkout). Sesinya padat dan jarang ada jeda panjang, beda dengan
   pemakaian nyata; karena itu ada penanganan idle
-  ([docs/CONTEXT-AND-IDLE-PROPOSAL.md](docs/CONTEXT-AND-IDLE-PROPOSAL.md)).
+  ([research/notes/CONTEXT-AND-IDLE-PROPOSAL.md](research/notes/CONTEXT-AND-IDLE-PROPOSAL.md)).
 - **Tidak dipublikasikan.** Setiap relawan setuju data interaksinya dipakai untuk riset ini.
   Data itu biometrik perilaku orang sungguhan, jadi tidak masuk repo ini:
-  `tools/export_sessions.py` menulis ke direktori sementara OS, tidak pernah ke repo.
-- **Ukur dengan data sendiri.** `tools/eval_sdk.mjs` membaca satu berkas JSON,
+  `research/export_sessions.py` menulis ke direktori sementara OS, tidak pernah ke repo.
+- **Ukur dengan data sendiri.** `research/eval_sdk.mjs` membaca satu berkas JSON,
   `{"subjects": {"<id>": [[event, ...], ...]}}`, sesi urut waktu rekam, event dengan format
   capture di [core/SPEC.md](core/SPEC.md) bagian 8 (isi `BehaviorGuard._instance.capture.peek()`).
   Minimal 11 sesi per subjek (10 untuk pendaftaran) dan dua subjek atau lebih:
 
   ```bash
-  node tools/eval_sdk.mjs --data sesi_saya.json --live
-  node tools/eval_sdk.mjs --data sesi_saya.json --live --same-hour
+  node research/eval_sdk.mjs --data sesi_saya.json --live
+  node research/eval_sdk.mjs --data sesi_saya.json --live --same-hour
   ```
 
 ---
@@ -314,15 +314,16 @@ python demo/shop-checkout/shop.py    # http://127.0.0.1:5000
 ```
 
 **Mode lokal, tanpa server:** `python -m http.server 8080`, lalu
-<http://localhost:8080/demo/monitor/> (toko tanpa satu baris kode BehaviorGuard pun, dinilai
-dari luar) dan tiga toko plug-and-play di [demo/README.md](demo/README.md).
+<http://localhost:8080/research/legacy-demos/monitor/> (toko tanpa satu baris kode BehaviorGuard
+pun, dinilai dari luar) dan tiga toko plug-and-play di
+[research/legacy-demos/](research/legacy-demos/README.md).
 
 ```bash
 python core/conformance.py           # mesin vs golden.json              -> 319/319
 node   core/lifecycle.test.mjs       # siklus hidup & API integrator     -> 49/49
 node   core/stepup.test.mjs          # verifikasi, cadangan, penguncian  -> 61/61
 node   core/privacy.test.mjs         # huruf ketikan tidak tersimpan     -> 14/14
-python server/test_app.py            # API server: token, gerbang, IDOR  -> 58/58
+python server/test_app.py            # API server: token, gerbang, IDOR  -> 61/61
 python server/test_parity.py         # mesin server == pustaka JS        -> 67 jendela
 python server/test_backend_sdk.py    # pustaka lewat HTTP vs server      -> 21/21
 python demo/arunika/test_server.py   # backend bank demo                 -> 38/38

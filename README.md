@@ -192,7 +192,7 @@ Every verdict carries its reasoning - the top deviating features with their z-sc
 ## Results
 
 Measured on **653 sessions from 16 human subjects** by driving the **shipped library
-itself** (`node tools/eval_sdk.mjs --live`): every session is replayed through the real
+itself** (`node research/eval_sdk.mjs --live`): every session is replayed through the real
 capture-to-verdict path in 30-second windows, exactly as `setInterval` runs in a browser.
 The harness drives the library in local mode; the server engine (`server/engine.py`) is
 checked against it decision by decision (`python server/test_parity.py`: the same level,
@@ -294,19 +294,19 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
 
 - **The data.** 16 volunteers, 653 sessions, recorded in task-based scenarios (browse, search,
   fill in forms, check out). Those sessions are dense, with few long pauses; real use is not,
-  which is why idle handling exists ([docs/CONTEXT-AND-IDLE-PROPOSAL.md](docs/CONTEXT-AND-IDLE-PROPOSAL.md)).
+  which is why idle handling exists ([research/notes/CONTEXT-AND-IDLE-PROPOSAL.md](research/notes/CONTEXT-AND-IDLE-PROPOSAL.md)).
 - **Not published.** Every volunteer agreed to their interaction data being used for this
   research. It is behavioral biometric data of real people, so it stays out of this
-  repository: `tools/export_sessions.py` writes to the OS temp directory, never to the repo.
-- **Run the same measurement on your own data.** `tools/eval_sdk.mjs` reads one JSON file,
+  repository: `research/export_sessions.py` writes to the OS temp directory, never to the repo.
+- **Run the same measurement on your own data.** `research/eval_sdk.mjs` reads one JSON file,
   `{"subjects": {"<id>": [[event, ...], ...]}}`, sessions in recording order, events in the
   capture format of [core/SPEC.md](core/SPEC.md) section 8 (what
   `BehaviorGuard._instance.capture.peek()` returns). At least 11 sessions per subject (10 to
   enroll) and two or more subjects:
 
   ```bash
-  node tools/eval_sdk.mjs --data my_sessions.json --live
-  node tools/eval_sdk.mjs --data my_sessions.json --live --same-hour
+  node research/eval_sdk.mjs --data my_sessions.json --live
+  node research/eval_sdk.mjs --data my_sessions.json --live --same-hour
   ```
 
 ---
@@ -375,8 +375,9 @@ python demo/shop-checkout/shop.py    # http://127.0.0.1:5000
 ```
 
 **Local mode, no server:** `python -m http.server 8080`, then
-<http://localhost:8080/demo/monitor/> (a shop page with zero BehaviorGuard code, scored from
-the outside) and the three plug-and-play shops in [demo/](demo/README.md).
+<http://localhost:8080/research/legacy-demos/monitor/> (a shop page with zero BehaviorGuard code,
+scored from the outside) and the three plug-and-play shops in
+[research/legacy-demos/](research/legacy-demos/README.md).
 
 ```bash
 python core/conformance.py           # engine vs golden.json              -> 319/319
@@ -384,14 +385,14 @@ node   core/lifecycle.test.mjs       # long-run lifecycle & APIs          -> 49/
 node   core/stepup.test.mjs          # step-up, fallback, lockout         -> 61/61
 node   core/c46.test.mjs             # script-made input rejected         -> 25/25
 node   core/privacy.test.mjs         # no typed characters stored         -> 14/14
-python server/test_app.py            # server API: tokens, gate, IDOR     -> 58/58
+python server/test_app.py            # server API: tokens, gate, IDOR     -> 61/61
 python server/test_parity.py         # server engine == JS library        -> 67 windows
 python server/test_rhythm.py         # server rhythm check == JS          -> 40 cases
 python server/test_backend_sdk.py    # the library over HTTP vs a server  -> 21/21
 python demo/arunika/test_server.py   # the demo bank's backend            -> 38/38
 ```
 
-`demo/attack_sim.html` runs four attack vectors - paste replay, speed bot, minimal mouse
+`research/legacy-demos/attack_sim.html` runs four attack vectors - paste replay, speed bot, minimal mouse
 path, and rhythm mimicry - against a seeded owner model.
 
 ---
@@ -452,7 +453,7 @@ The combination below is what we have not found elsewhere:
    the step-up, the run rule, the re-verify-after-absence rule and the integrator APIs.
 5. **Cross-language conformance as a first-class artifact.** A spec plus a golden file means
    a port is *proven* equivalent, not hoped to be.
-6. **It measures itself.** `tools/eval_sdk.mjs` replays research data through the shipped
+6. **It measures itself.** `research/eval_sdk.mjs` replays research data through the shipped
    code, and [`core/DRIFT.md`](core/DRIFT.md) records every place where an earlier number
    turned out to describe something else.
 
@@ -521,18 +522,19 @@ call `guard.forget(..., require_verified=False)` when an account is deleted.
 ## Project layout
 
 ```
-sdk/          the browser library (entry + 18 core modules)   <- single source of truth
-server/       the backend: guard.py (API, tokens, gate), engine.py (decisions), rhythm.py,
-              app.py (standalone service + operator dashboard), tests
-dist/         one-file bundle for a plain <script> tag, and dist/server/ (flat server copy)
-loader/       one-line drop-in loader for the ES-module build
-core/         SPEC.md, golden.json, conformance runners, DRIFT.md, tests
-ports/        Rust, Java and WASM implementations
-demo/         Arunika (bank with a backend), shop-checkout (install demo), local-mode demos
-tools/        eval_sdk.mjs (measures the shipped library), research scripts, bundler
-extension/    experimental Chrome extension: the same engine on any site (copy of sdk/)
+dist/         WHAT YOU COPY: behaviorguard.js (+ .min.js) for the page, dist/server/ for
+              your backend, INSTALL.md
+sdk/          the browser library source (entry + 18 core modules)  <- single source of truth
+server/       the backend source: guard.py (API, tokens, gate), engine.py (decisions),
+              rhythm.py, app.py (standalone service + operator dashboard), tests
+demo/         Arunika (a bank with a backend) and shop-checkout (the install demo)
 docs/         documentation set - start at docs/README.md
-assets/       banner and screenshots used in this README
+core/         SPEC.md, golden.json, conformance runners, DRIFT.md (audit log), tests
+ports/        Rust, Java and WASM implementations of the engine
+tools/        build and check scripts (bundler, extension sync, parity and min checks)
+research/     the scripts and notes behind the published numbers, and the earlier local-mode demos
+extension/    experimental Chrome extension: the same engine on any site (a synced copy of sdk/)
+assets/       banner and GIFs used in this README
 ```
 
 ---

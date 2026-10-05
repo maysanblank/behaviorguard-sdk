@@ -359,7 +359,7 @@ window.BehaviorGuardConfig = {
 
 **The defaults are the measured configuration.** Move `calibration.k_low` to trade owner
 friction against impostor passes (the README has the table). Change the rest only if you
-run your own evaluation with `tools/eval_sdk.mjs` - the published numbers describe the
+run your own evaluation with `research/eval_sdk.mjs` - the published numbers describe the
 defaults.
 
 Thresholds are recalibrated per user from their own baseline score distribution; do not set
@@ -476,7 +476,7 @@ connects to your endpoint (`connect-src`); in local mode it makes no network req
 python core/conformance.py           # engine matches the spec           -> 319/319
 node   core/lifecycle.test.mjs       # lifecycle and integrator APIs     -> 49/49
 node   core/challenge.test.mjs       # step-up layer is fail-closed
-python server/test_app.py            # server API, tokens, gate          -> 58/58
+python server/test_app.py            # server API, tokens, gate          -> 61/61
 python server/test_backend_sdk.py    # the library over HTTP vs a server -> 21/21
 python demo/arunika/server.py        # then open http://127.0.0.1:8300
 ```

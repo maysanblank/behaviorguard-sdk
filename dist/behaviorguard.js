@@ -9,7 +9,7 @@ __M["core/config.js"] = (function(){
 /**
  * config.js - default SDK yang DIKIRIM.
  *
- * Angka resmi diukur dengan SDK ini sendiri (`node tools/eval_sdk.mjs --live`: 653 sesi,
+ * Angka resmi diukur dengan SDK ini sendiri (`node research/eval_sdk.mjs --live`: 653 sesi,
  * 16 subjek, jendela 30 dtk persis setInterval browser, sesi URUT WAKTU seperti pemakaian
  * nyata, step-up dijawab lewat API publik):
  *   pemilik diminta verifikasi 11,4%   diblokir 0%
@@ -26,7 +26,7 @@ __M["core/config.js"] = (function(){
  */
 const DEFAULTS = {
   // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
-  // KLAIM ITU DITARIK. Ia diukur lewat tools/reproduce_db.py, yang memakai sklearn
+  // KLAIM ITU DITARIK. Ia diukur lewat research/reproduce_db.py, yang memakai sklearn
   // OCSVM + bobot IF 0,70 - BUKAN Mahalanobis + IF 0,30 yang dikirim dari file ini.
   // Di mesin yang benar, 10 lawan 16 (himpunan uji identik) memberi AUC 0,948 vs 0,946
   // dan EER 11,6% vs 10,9% - selisihnya di dalam sebaran antar-belahan. Shrinkage
@@ -144,7 +144,7 @@ const DEFAULTS = {
   // C-33: `minEventsAssess` 30 -> 150 dan `carryMaxAgeSec` 900. Vonis dulu jatuh tiap
   // jendela 30 dtk (~30-100 event) - satuan yang TIDAK PERNAH diukur: semua angka lama
   // memakai sesi riset utuh (~700 event). Diukur dengan SDK ini sendiri
-  // (tools/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
+  // (research/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
   // pemilik: 30 ev 23,8% | 100 ev 14,2% | 150 ev 12,3% | 200 ev 10,7% (tapi 4,5% sesi
   // penyusup tak pernah mendapat vonis). Kini jendela tetap berdetak tiap 30 dtk, tetapi
   // bukti yang belum cukup DIKUMPULKAN (hingga 15 mnt) sampai 150 event. Untuk aksi
@@ -170,7 +170,7 @@ const DEFAULTS = {
   //  - emitAbstain: jendela yang isinya idle/bukti kurang TIDAK lagi diam-diam
   //    dianggap aman. Sistem menerbitkan vonis 'UNKNOWN' + action 'ABSTAIN' sekali
   //    per rentetan idle, supaya integrator tahu bedanya "terverifikasi aman" dan
-  //    "tidak ada bukti apa-apa" (lihat docs/CONTEXT-AND-IDLE-PROPOSAL.md §2).
+  //    "tidak ada bukti apa-apa" (lihat research/notes/CONTEXT-AND-IDLE-PROPOSAL.md §2).
   idle: {
     awaySec: 300,
     reverifyAfterSec: 900,
@@ -194,7 +194,7 @@ const DEFAULTS = {
   //   keduanya lebih biometrik daripada "sesinya kebetulan sepanjang apa".
   //   WAJIB dipakai di pendaftaran DAN penilaian, kalau tidak cuma menukar satu
   //   ketidakcocokan latih-vs-pakai dengan yang lain.
-  //   Terukur (K=120, tools/idle_ablation.py): |z| fitur-cacah pemilik-dipotong
+  //   Terukur (K=120, research/idle_ablation.py): |z| fitur-cacah pemilik-dipotong
   //   2,02 -> 1,01, yaitu sama persis dengan sesi utuh. Invariansi pulih penuh.
   //
   // aggregateWindows (M): jendela pendek lebih lemah per-vonis, jadi bukti M jendela
@@ -1174,7 +1174,7 @@ function segmentByIdle(events, gapMs=GAP_MS_DEFAULT){
  * sesudah jeda digeser mundur sebesar kelebihan jedanya. Jeda berpikir (< gapMs)
  * tidak tersentuh sama sekali.
  *
- * Tidak memutasi masukan. Padanan Python: tools/idle_ablation.py:compress_idle.
+ * Tidak memutasi masukan. Padanan Python: research/idle_ablation.py:compress_idle.
  * @returns {Array} event baru, urut waktu, timestamp sudah dikompresi
  */
 function compressIdle(events, gapMs){
@@ -2895,7 +2895,7 @@ __M["behaviorguard.js"] = (function(){
  *   <script src="behaviorguard.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
  *
  * LOCAL MODE (no endpoint): the same engine runs in this browser and the profile stays on
- * this device. Kept for offline evaluation (tools/eval_sdk.mjs), the conformance suite and
+ * this device. Kept for offline evaluation (research/eval_sdk.mjs), the conformance suite and
  * the browser extension. It cannot see a takeover from another device.
  */
 const { DEFAULTS, normalizeWeights } = __M["core/config.js"];
@@ -3958,7 +3958,7 @@ class BehaviorGuard {
              attemptsExhausted:!!(r.mfa && r.mfa.attemptsExhausted) };
   }
 
-  // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya tools/eval_sdk.mjs
+  // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya research/eval_sdk.mjs
   // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini - bukan
   // tiruan tangan yang lama-lama menyimpang (C-29).
   _applyMfaVerified(evt={}, now=Date.now()){
@@ -3985,7 +3985,7 @@ class BehaviorGuard {
    * untuk memberi tahu hasilnya ke pustaka. Akibatnya bagi integrator yang tidak memakai
    * popup ritme bawaan: lantai lengket tak pernah dibersihkan, sesi pemilik yang lolos
    * verifikasi tak pernah mengajari model, dan HIGH beruntun berakhir BLOCK untuk
-   * pemilik sendiri. Terukur (tools/eval_sdk.mjs, pemilik tanpa jalur verifikasi):
+   * pemilik sendiri. Terukur (research/eval_sdk.mjs, pemilik tanpa jalur verifikasi):
    * gesekan 40,5%, DIBLOKIR 13,3%.
    *   passed:true  -> efeknya sama persis dengan MFA bawaan yang terverifikasi.
    *   passed:false -> tidak mengubah apa pun selain tercatat; hukuman tetap milik

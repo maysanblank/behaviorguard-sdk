@@ -30,7 +30,7 @@ pre{background:#0f0f1a;border:1px solid var(--line);border-radius:8px;padding:12
 <div class="card" style="margin-top:12px"><button class="ghost" onclick="reset()">Reset (clear + seed ulang)</button> <span class="small">Seed 24 sesi pemilik dulu (>=20 agar Mahalanobis aktif), baru serangan bermakna</span></div>
 </div>
 <script type="module">
-import bg from '../sdk/behaviorguard.js';
+import bg from '../../sdk/behaviorguard.js';
 // C-12: ekspor default dari behaviorguard.js SUDAH singleton-nya; `bg._instance`
 // undefined -> init() melempar -> `window.run` di bawah tidak pernah terpasang ->
 // keempat tombol serangan mati total tanpa pesan apa pun. `window.BehaviorGuard`

@@ -22,16 +22,20 @@ Start here. This is the map to every document in the project.
   explicit list of what BehaviorGuard is *not*.
 
 ## Trust the numbers
-- [MEASUREMENT-VALIDITY-AUDIT.md](MEASUREMENT-VALIDITY-AUDIT.md) - the measurement-validity
+- [MEASUREMENT-VALIDITY-AUDIT.md](../research/notes/MEASUREMENT-VALIDITY-AUDIT.md) - the measurement-validity
   audit: how the benchmark is run so it measures the engine that actually ships.
-- [holdout-c23-c24.txt](holdout-c23-c24.txt) - held-out results for changes C-23/C-24.
-- [holdout-tuning.txt](holdout-tuning.txt) - held-out results across the tuning sweep.
+- [holdout-c23-c24.txt](../research/notes/holdout-c23-c24.txt) - held-out results for changes C-23/C-24.
+- [holdout-tuning.txt](../research/notes/holdout-tuning.txt) - held-out results across the tuning sweep.
 - [../core/DRIFT.md](../core/DRIFT.md) - the C-1..C-49 audit log: every defect, its evidence
   and the test that now guards it.
 
 ## Design notes
-- [CONTEXT-AND-IDLE-PROPOSAL.md](CONTEXT-AND-IDLE-PROPOSAL.md) - the context-and-idle proposal
+- [CONTEXT-AND-IDLE-PROPOSAL.md](../research/notes/CONTEXT-AND-IDLE-PROPOSAL.md) - the context-and-idle proposal
   behind the idle-segmentation work.
+
+## Research
+- [../research/](../research/README.md) - the scripts behind the published numbers, the
+  research notes, and the earlier local-mode demos.
 
 ## Operate
 - [../server/README.md](../server/README.md) - the server: keys, user tokens, endpoints, the

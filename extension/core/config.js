@@ -1,7 +1,7 @@
 /**
  * config.js - default SDK yang DIKIRIM.
  *
- * Angka resmi diukur dengan SDK ini sendiri (`node tools/eval_sdk.mjs --live`: 653 sesi,
+ * Angka resmi diukur dengan SDK ini sendiri (`node research/eval_sdk.mjs --live`: 653 sesi,
  * 16 subjek, jendela 30 dtk persis setInterval browser, sesi URUT WAKTU seperti pemakaian
  * nyata, step-up dijawab lewat API publik):
  *   pemilik diminta verifikasi 11,4%   diblokir 0%
@@ -18,7 +18,7 @@
  */
 export const DEFAULTS = {
   // C-26/C-27: sempat disimpulkan 10 TERLALU PENDEK (pendaftaran 16 jauh lebih baik).
-  // KLAIM ITU DITARIK. Ia diukur lewat tools/reproduce_db.py, yang memakai sklearn
+  // KLAIM ITU DITARIK. Ia diukur lewat research/reproduce_db.py, yang memakai sklearn
   // OCSVM + bobot IF 0,70 - BUKAN Mahalanobis + IF 0,30 yang dikirim dari file ini.
   // Di mesin yang benar, 10 lawan 16 (himpunan uji identik) memberi AUC 0,948 vs 0,946
   // dan EER 11,6% vs 10,9% - selisihnya di dalam sebaran antar-belahan. Shrinkage
@@ -136,7 +136,7 @@ export const DEFAULTS = {
   // C-33: `minEventsAssess` 30 -> 150 dan `carryMaxAgeSec` 900. Vonis dulu jatuh tiap
   // jendela 30 dtk (~30-100 event) - satuan yang TIDAK PERNAH diukur: semua angka lama
   // memakai sesi riset utuh (~700 event). Diukur dengan SDK ini sendiri
-  // (tools/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
+  // (research/eval_sdk.mjs --live, jendela 30 dtk persis setInterval browser), EER per
   // pemilik: 30 ev 23,8% | 100 ev 14,2% | 150 ev 12,3% | 200 ev 10,7% (tapi 4,5% sesi
   // penyusup tak pernah mendapat vonis). Kini jendela tetap berdetak tiap 30 dtk, tetapi
   // bukti yang belum cukup DIKUMPULKAN (hingga 15 mnt) sampai 150 event. Untuk aksi
@@ -162,7 +162,7 @@ export const DEFAULTS = {
   //  - emitAbstain: jendela yang isinya idle/bukti kurang TIDAK lagi diam-diam
   //    dianggap aman. Sistem menerbitkan vonis 'UNKNOWN' + action 'ABSTAIN' sekali
   //    per rentetan idle, supaya integrator tahu bedanya "terverifikasi aman" dan
-  //    "tidak ada bukti apa-apa" (lihat docs/CONTEXT-AND-IDLE-PROPOSAL.md §2).
+  //    "tidak ada bukti apa-apa" (lihat research/notes/CONTEXT-AND-IDLE-PROPOSAL.md §2).
   idle: {
     awaySec: 300,
     reverifyAfterSec: 900,
@@ -186,7 +186,7 @@ export const DEFAULTS = {
   //   keduanya lebih biometrik daripada "sesinya kebetulan sepanjang apa".
   //   WAJIB dipakai di pendaftaran DAN penilaian, kalau tidak cuma menukar satu
   //   ketidakcocokan latih-vs-pakai dengan yang lain.
-  //   Terukur (K=120, tools/idle_ablation.py): |z| fitur-cacah pemilik-dipotong
+  //   Terukur (K=120, research/idle_ablation.py): |z| fitur-cacah pemilik-dipotong
   //   2,02 -> 1,01, yaitu sama persis dengan sesi utuh. Invariansi pulih penuh.
   //
   // aggregateWindows (M): jendela pendek lebih lemah per-vonis, jadi bukti M jendela

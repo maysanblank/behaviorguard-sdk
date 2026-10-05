@@ -62,7 +62,7 @@ Setiap elemen: bilangan pecahan presisi ganda (IEEE-754 binary64), selalu finit.
 | `zClamp` | 6.0 | **S-2** clamp nilai-z |
 
 **S-1 dan S-2 adalah titik perbedaan yang sudah terbukti** antara dua salinan kode di
-repo ini (`sdk/core/*.js` dan `tools/reproduce_db.py`). Nilai di atas = perilaku SDK JS
+repo ini (`sdk/core/*.js` dan `research/reproduce_db.py`). Nilai di atas = perilaku SDK JS
 yang benar-benar dipasang di situs orang. Lihat `core/DRIFT.md`.
 
 ---
@@ -128,7 +128,7 @@ padanan `sdk/core/mahalanobis.js`. Dari kolam baseline terstandardisasi `X` (n×
 Urutan operasi float (loop i-luar/j-dalam, normalisasi baris penuh, eliminasi)
 **wajib identik** antar bahasa agar bit-exact 1e-9. Rumus lama tetap ada di `ocsvm.js`
 untuk `model2='centroid'`. Latar: centroid menggepengkan kolam jadi satu titik -> FAR 36%;
-Mahalanobis memperhitungkan kovarians -> held-out FAR **5.4%**, FRR **16.1%**, AUC **0.942**, EER **11.9%** di harness riset offline yang menilai sesi utuh (~700 event). Pustaka yang dikirim, diukur per jendela 30 dtk yang benar-benar ia nilai (`tools/eval_sdk.mjs --live`), dilaporkan di README. Lihat `DRIFT.md` C-29.
+Mahalanobis memperhitungkan kovarians -> held-out FAR **5.4%**, FRR **16.1%**, AUC **0.942**, EER **11.9%** di harness riset offline yang menilai sesi utuh (~700 event). Pustaka yang dikirim, diukur per jendela 30 dtk yang benar-benar ia nilai (`research/eval_sdk.mjs --live`), dilaporkan di README. Lihat `DRIFT.md` C-29.
 
 ### 5.5 Kalibrasi & campuran
 Untuk tiap sub-model: rerata + simpangan baku skor baseline, lalu **S-2**

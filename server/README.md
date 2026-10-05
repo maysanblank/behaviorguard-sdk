@@ -92,6 +92,20 @@ most 7 days; 15 minutes is a good value, and the library refreshes through `toke
 `check()` fails closed: no assessment in the last 90 seconds means `UNKNOWN`, which needs a
 verification. The page's `assessNow()` is what records a fresh one.
 
+**Stricter enrollment (optional).** By default a brand-new account learns from its first
+logged-in windows, whoever is logged in. If a password can be stolen before the owner has
+used the account, let it learn only from logins that passed a verification (an OTP at
+sign-up, for example):
+
+```python
+import engine
+guard = Guard(db_path, tenant=(pk, sk), cfg={**engine.CFG, 'enrollRequiresVerified': True})
+```
+
+Until that login verifies, its windows are not added to the profile and the verdict says
+`enrollment waits for a verification in this login`. Off by default, so the server engine
+still takes the same decisions as the browser library.
+
 ## Endpoints
 
 Browser (headers `Authorization: Bearer <pk>` and `X-BG-User-Token: <token>`):
@@ -134,7 +148,7 @@ implementation (Flask + SQLite, a per-account lock), not a hardened service; see
 ## Tests
 
 ```bash
-python server/test_app.py            # 58: tokens, sessions, gate, report, IDOR, XSS, CSP, rate limits
+python server/test_app.py            # 61: tokens, sessions, gate, report, IDOR, XSS, CSP, rate limits
 python server/test_parity.py         # engine.py == the JS library, 67 windows   (needs node; NODE=path)
 python server/test_rhythm.py         # rhythm.py == challenge.js, 40 cases       (needs node)
 python server/test_backend_sdk.py    # the library over HTTP against app.py, 21  (needs node)

@@ -3,7 +3,7 @@
  * Sumber: dataset sintetis deterministik yang meniru sebaran 653 sesi / 16 subjek
  * (karena data mentah asli di .db butuh Python; ini replika statistik yang kalibrasi untuk hasil final
  *  base10·retrain/6·F4·W7 -> FRR 15.2 / FAR 12.1 - deterministik, cocok untuk kriteria terima demo)
- * Untuk reproduksi 100% atas DB asli, jalankan `python tools/reproduce_db.py` (tersedia di repo riset)
+ * Untuk reproduksi 100% atas DB asli, jalankan `python research/reproduce_db.py` (tersedia di repo riset)
  */
 import { IsolationForest } from '../sdk/core/isolation_forest.js';
 import { OCSVM } from '../sdk/core/ocsvm.js';

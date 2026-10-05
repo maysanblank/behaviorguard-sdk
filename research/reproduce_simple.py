@@ -3,7 +3,7 @@ reproduce_simple.py - ILUSTRASI RUMUS (bukan reproduksi data)
 Menunjukkan bagaimana FRR 15.2% (75/493) & FAR 12.1% (1185/9795) dihitung via phi(),
 dengan distribusi sintetis N(0.63,1)/N(-1.57,1) yang sengaja dikalibrasi agar
 keluar angka target. 0.63/-1.57 adalah reverse-engineered - NOL bukti model/data.
-Untuk BUKTI atas DB asli, jalankan tools/reproduce_db.py
+Untuk BUKTI atas DB asli, jalankan research/reproduce_db.py
 """
 import random, math
 
@@ -28,7 +28,7 @@ thr_low=-0.4
 print("BehaviorGuard - ILUSTRASI RUMUS (bukan reproduksi DB)")
 print("FRR = owner_nonLOW/493, FAR = impostor_LOW/9795 - lihat PERAN")
 print("Distribusi sintetis N(0.63,1)/N(-1.57,1) sengaja dipilih agar phi()=15.2/12.1 - sirkular")
-print("Untuk bukti nyata: python tools/reproduce_db.py")
+print("Untuk bukti nyata: python research/reproduce_db.py")
 print("------------------------------------------------------------")
 # FINAL F4.W7: ekspektasi matematis 15.2/12.1
 exp_frr,exp_far,samp_frr,samp_far=run_case(0.63, -1.57, 1.0, thr_low, seed=42)

@@ -25,8 +25,8 @@ biasanya terjadi sekali, terarah, dan relatif bersih, sedangkan pemakaian sehari
 tidak. Menyuntik ke dua-duanya akan menyembunyikan persoalannya.
 
 Jalankan:
-  python tools/canonical_holdout.py
-  python tools/canonical_holdout.py --canonical 120 --gap-min 2 5 10 20
+  python research/canonical_holdout.py
+  python research/canonical_holdout.py --canonical 120 --gap-min 2 5 10 20
 """
 import argparse
 import importlib.util
@@ -244,7 +244,7 @@ def main():
 
     print()
     print("CARA MEMBACA")
-    print("  Baris 1 adalah kontrol: kalau ia jauh dari angka `python tools/reproduce_db.py`,")
+    print("  Baris 1 adalah kontrol: kalau ia jauh dari angka `python research/reproduce_db.py`,")
     print("  yang salah ekstraksi ulangnya, bukan representasinya - periksa itu dulu.")
     print("  Baris 2 vs 1  = kerusakan idle di dunia nyata, pada titik operasi yang sah.")
     print("  Baris 3 vs 2  = APAKAH C-23 (yang dikirim, default nyala) benar-benar menolong.")

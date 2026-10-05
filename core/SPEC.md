@@ -65,7 +65,7 @@ Every element is a double-precision float (IEEE-754 binary64), and is always fin
 | `zClamp` | 6.0 | **S-2** z-value clamp |
 
 **S-1 and S-2 are proven divergence points** between the two copies of the engine in this
-repository (`sdk/core/*.js` and `tools/reproduce_db.py`). The values above are the
+repository (`sdk/core/*.js` and `research/reproduce_db.py`). The values above are the
 behavior of the JS SDK that actually ships to users' sites. See `core/DRIFT.md`.
 
 ---
@@ -136,7 +136,7 @@ remains in `ocsvm.js` for `model2='centroid'`. Background: the centroid collapse
 to a single point -> FAR 36%; Mahalanobis accounts for covariance -> held-out FAR **5.4%**,
 FRR **16.1%**, AUC **0.942**, EER **11.9%** in the offline research harness, which scored
 whole ~700-event sessions. The shipped library, measured in the 30-second windows it
-actually scores (`tools/eval_sdk.mjs --live`), is reported in the README. See `DRIFT.md`
+actually scores (`research/eval_sdk.mjs --live`), is reported in the README. See `DRIFT.md`
 C-29.
 
 ### 5.5 Calibration and blending
@@ -238,7 +238,7 @@ unchanged; **patch** = documentation clarification only. `golden.json` records t
   (2) Default `k_low` 3.3 -> **1.75** (recorded explicitly in `golden.json` `config`).
   The v1.2.0 held-out figures below were measured by a Python imitation of the engine on
   whole research sessions, and **do not describe the shipped SDK**. The SDK is now measured
-  by itself: `tools/eval_sdk.mjs --live` (DRIFT C-29, C-33).
+  by itself: `research/eval_sdk.mjs --live` (DRIFT C-29, C-33).
 - **v1.2.0** (2026-09-04) - **MAJOR**: detector-2 centroid-RBF -> **Mahalanobis +
   shrinkage** (§5.4), threshold calibration -> **parametric** (§5.6), IF/SVM weights
   0.70/0.30 -> **0.30/0.70**, HIGH action `BLOCK_SESSION` -> **`REQUIRE_STEPUP`** plus the

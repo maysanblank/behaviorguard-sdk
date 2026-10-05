@@ -192,4 +192,4 @@ print(f"Ablation: FAR tanpa SVM {r2[1]:.1f}% vs dengan SVM {r1[1]:.1f}% -> {r2[1
 is_close = abs(r1[0]-15.2)<3 and abs(r1[1]-12.1)<3
 print(f"Kriteria FINAL FRR~15.2 FAR~12.1 -> got {r1[0]:.1f}/{r1[1]:.1f} {'✓ dalam toleransi' if is_close else '✗ MELenceng - jangan klaim lulus, ini sintetis'}")
 if not is_close:
-    print("CATATAN: ini sintetis blob, bukan bukti validasi. Jalankan tools/reproduce_db.py untuk angka DB asli.")
+    print("CATATAN: ini sintetis blob, bukan bukti validasi. Jalankan research/reproduce_db.py untuk angka DB asli.")

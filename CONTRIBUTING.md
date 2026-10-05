@@ -16,8 +16,8 @@ a change to the orchestration in `sdk/behaviorguard.js` needs the same change in
 and `python server/test_parity.py` must still pass.
 
 **Measure the library, not an imitation of it.** Any change that can move a verdict must be
-measured with `node tools/eval_sdk.mjs --live` (it drives the shipped code over the research
-sessions, exported locally with `python tools/export_sessions.py`; the export holds human
+measured with `node research/eval_sdk.mjs --live` (it drives the shipped code over the research
+sessions, exported locally with `python research/export_sessions.py`; the export holds human
 behavioral data and must never be committed). Report owner friction, impostor first-verdict
 and whole-session pass, and takeover detection - before and after.
 
@@ -31,7 +31,7 @@ regenerating `core/golden.json`, and re-running conformance in all five runtimes
 python core/conformance.py           # engine vs golden.json              -> 319/319
 node   core/challenge.test.mjs       # step-up regression
 node   core/ensemble.test.mjs        # detector-gate regression
-python server/test_app.py            # server API and gate                -> 58/58
+python server/test_app.py            # server API and gate                -> 61/61
 python server/test_parity.py         # engine.py == the JS library
 python server/test_backend_sdk.py    # the library over HTTP vs a server  -> 21/21
 ```

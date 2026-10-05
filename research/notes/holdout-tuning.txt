@@ -9,7 +9,7 @@ Condition                                    q     FRR     FAR     AUC     EER  
 6. canonical 120 + segment.,  with AFK   0.02   55.1%    7.3%   0.802   25.8%      51.5%  0/8
 
 HOW TO READ
-  Row 1 is the control: if it is far from the numbers of `python tools/reproduce_db.py`,
+  Row 1 is the control: if it is far from the numbers of `python research/reproduce_db.py`,
   the re-extraction is wrong, not the representation - check that first.
   Row 2 vs 1  = idle damage in the real world, at a valid operating point.
   Row 3 vs 2  = WHETHER C-23 (shipped, on by default) really helps.
@@ -33,7 +33,7 @@ Condition                                    q     FRR     FAR     AUC     EER  
 6. canonical 120 + segment.,  with AFK   0.05   46.7%    7.0%   0.823   22.3%      43.0%  0/8
 
 HOW TO READ
-  Row 1 is the control: if it is far from the numbers of `python tools/reproduce_db.py`,
+  Row 1 is the control: if it is far from the numbers of `python research/reproduce_db.py`,
   the re-extraction is wrong, not the representation - check that first.
   Row 2 vs 1  = idle damage in the real world, at a valid operating point.
   Row 3 vs 2  = WHETHER C-23 (shipped, on by default) really helps.

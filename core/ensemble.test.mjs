@@ -9,7 +9,7 @@
  *
  * These tests pin the gate semantics. The orchestrator-level rule ("crossing a gate
  * threshold forces a rebuild even when converged") is exercised end-to-end by
- * demo/attack_sim.html, which requires a DOM.
+ * research/legacy-demos/attack_sim.html, which requires a DOM.
  *
  * Run: node core/ensemble.test.mjs
  */

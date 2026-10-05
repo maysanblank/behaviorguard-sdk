@@ -6,7 +6,7 @@ drift_check.py - ukur selisih antara MESIN YANG DIKIRIM dan MESIN YANG DIVALIDAS
 Repo ini punya dua salinan mesin yang ditulis tangan terpisah:
 
   A. sdk/core/*.js        -> yang benar-benar dipasang di situs orang
-  B. tools/reproduce_db.py -> yang menghasilkan angka headline di README
+  B. research/reproduce_db.py -> yang menghasilkan angka headline di README
 
 Berkas ini menjalankan primitif dari (B) di atas kasus core/golden.json yang
 sama, dengan struktur pipeline identik, lalu melaporkan di mana keduanya
@@ -23,7 +23,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(ROOT, 'tools'))
+sys.path.insert(0, os.path.join(ROOT, 'research'))
 
 import bg_core as bg          # noqa: E402  (A) implementasi acuan == SDK JS
 import reproduce_db as rdb    # noqa: E402  (B) mesin validasi

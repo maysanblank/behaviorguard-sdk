@@ -4,7 +4,7 @@
 KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
 riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
 lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
-`node tools/eval_sdk.mjs --live` (README "Results").
+`node research/eval_sdk.mjs --live` (README "Results").
 
 reproduce_db.py - REPRODUKSI JUJUR A1+A3 (tanpa ubah base10/retrain6/F4/W7/window6/gate20)
 A1: sumber kebenaran 653/16 (SUBJECT_IDS), guard 653, FAR lintas 15 subjek lain (tanpa RANDOM)
@@ -36,9 +36,9 @@ except Exception:
     pass
 
 DB_CANDIDATES=[
-  r"C:\Users\USER\OneDrive\Documents\skripsi\database\05 08 2026\behavior_detection_20260805_085856.db",
-  r"C:\Users\USER\OneDrive\Documents\skripsi\ato-detection-2-main (2) jadi cuy\ato-detection-2-main\data\behavior_detection.db",
-  r"C:\Users\USER\OneDrive\Documents\skripsi\BEHAVIORGUARD-DEMO\behaviorguard\data\behavior_detection.db",
+  # the research database is not in the repository: point BG_RESEARCH_DB at your copy
+  __import__('os').environ.get('BG_RESEARCH_DB', ''),
+  'behavior_detection.db',
 ]
 SUBJECT_IDS=[2,3,6,7,8,9,11,12,13,15,18,19,20,22,24,25]  # 16 subjek tervalidasi = 653 sesi
 F4=['mouse_velocity_mean','mouse_velocity_std','mouse_velocity_max','mouse_acceleration_std','mouse_curvature_mean','mouse_direction_changes','mouse_pause_count','mouse_click_interval_mean','cursor_idle_ratio','cross_mouse_keyboard_coordination','keystroke_dwell_time_mean','keystroke_dwell_time_std','keystroke_flight_time_mean','keystroke_transition_entropy','keystroke_typing_speed','keystroke_cross_field_cadence','keystroke_burst_count','temporal_time_of_day_score','temporal_session_duration','temporal_activity_bursts','nav_page_transition_pattern','nav_scroll_depth_mean','nav_page_count','nav_step_transition_count','form_focus_count','form_blur_count','form_field_switch_rate','cart_action_count']
@@ -55,7 +55,7 @@ except Exception:
 
 def find_db():
     for p in DB_CANDIDATES:
-        if pathlib.Path(p).exists(): return p
+        if p and pathlib.Path(p).exists(): return p
     return None
 def quantile(sorted_vals, q):
     if not sorted_vals: return -0.4

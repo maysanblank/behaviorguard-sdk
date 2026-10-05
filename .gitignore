@@ -9,7 +9,7 @@ server/bg_server.db
 scratch_*.json
 
 # --- Data subjek manusia (lanjutan): ekspor sesi & vektor riset -------------
-# Ditulis tools/export_sessions.py & eval_sdk --dump-vec. Tempatnya di temp OS,
+# Ditulis research/export_sessions.py & eval_sdk --dump-vec. Tempatnya di temp OS,
 # tapi disebut di sini supaya salah-salin tidak pernah bisa masuk repo.
 bg_sessions*.json
 bg_vecs.json

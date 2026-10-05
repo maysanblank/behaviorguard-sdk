@@ -52,6 +52,10 @@ CFG.update({
     'idle': {'awaySec': 300, 'reverifyAfterSec': 900},
     'mfa': {'graceSec': 900, 'lockAfterFailures': 3, 'attempts': 3},
     'probe': {'minEvents': 30},
+    # Server-only option (no browser counterpart, off by default so the parity tests hold):
+    # a brand-new account learns only from logins that passed a verification. Closes the
+    # gap where a stolen password used before the owner's first sessions would be enrolled.
+    'enrollRequiresVerified': False,
 })
 
 _ORDER = {'LOW': 0, 'MEDIUM': 1, 'HIGH': 2}
@@ -252,6 +256,9 @@ class Engine:
 
         if self.eligible_count(acc) < self.cfg['baseline']:
             ses['away'] = None     # nothing to compare against yet
+            waits = bool(eligible and self.cfg.get('enrollRequiresVerified') and not ses.get('mfaPassedAt'))
+            if waits:
+                eligible = False
             self._push(acc, vec, 'LOW', 0.0, eligible, now, ses, wid)
             done = self.eligible_count(acc)
             ready = False
@@ -260,9 +267,11 @@ class Engine:
                 ready = True
             evt = {**meta, 'level': 'LOW', 'score': 0, 'action': 'ALLOW_SESSION', 'blocked': False,
                    'reasons': ['enrollment %d/%d' % (done, self.cfg['baseline']) if eligible
+                               else 'enrollment waits for a verification in this login' if waits
                                else 'ineligible window - not added to the training pool'],
                    'topFeatures': [], 'convergence': 'enrollment', 'eligible': eligible,
-                   'enrollment': {'done': done, 'need': self.cfg['baseline'], 'ready': ready}}
+                   'enrollment': {'done': done, 'need': self.cfg['baseline'], 'ready': ready,
+                                  'waitingForVerification': waits}}
             if synthetic:
                 evt['automation'] = {'syntheticInputs': syn}
             return self._finish(acc, ses, evt, wid, now)

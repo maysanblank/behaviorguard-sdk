@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-export_sessions.py - ekspor event mentah 16 subjek ke JSON untuk tools/eval_sdk.mjs.
+export_sessions.py - ekspor event mentah 16 subjek ke JSON untuk research/eval_sdk.mjs.
 
 Kenapa ada: tiga harness sebelumnya (reproduce_db, experiment, frr_levers) masing-masing
 MENIRU mesin SDK di Python, dan ketiganya meleset di tempat yang berbeda - ambang kuantil
@@ -13,8 +13,8 @@ Skrip ini hanya menyiapkan datanya.
 PRIVASI: keluarannya berisi perilaku manusia sungguhan. Default ditulis ke direktori
 sementara OS, BUKAN ke repo. Jangan pernah meng-commit berkas ini.
 
-  python tools/export_sessions.py                 # sesi apa adanya
-  python tools/export_sessions.py --afk           # + jeda AFK 2-20 mnt, RNG = C-28
+  python research/export_sessions.py                 # sesi apa adanya
+  python research/export_sessions.py --afk           # + jeda AFK 2-20 mnt, RNG = C-28
 """
 import argparse, json, os, pathlib, random, sqlite3, sys, tempfile
 

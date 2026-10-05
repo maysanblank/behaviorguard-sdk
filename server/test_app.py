@@ -237,6 +237,22 @@ r = c.post('/v1/forget', json={'userId': 'budi@example.com'}, headers=SK).get_js
 check('/v1/forget with the sk erases the account', r['removed'] is True and
       sqlite3.connect(_tmp.name).execute("SELECT COUNT(*) FROM accounts WHERE user_id='budi@example.com'").fetchone()[0] == 0)
 
+# enrollRequiresVerified: a brand-new account learns only from a login that has verified
+import engine as E  # noqa: E402
+eng = E.Engine(cfg={**E.CFG, 'enrollRequiresVerified': True}, model_cache={})
+acc, ses = E.new_account(), E.new_session()
+t0 = 10 ** 12
+e1 = eng.assess(acc, ses, win(owner), t0)
+check('enrollRequiresVerified: an unverified login does not enroll',
+      e1['eligible'] is False and eng.eligible_count(acc) == 0 and e1['enrollment']['waitingForVerification'] is True, e1)
+eng.apply_verified(acc, ses, t0 + 1000)
+e2 = eng.assess(acc, ses, win(owner), t0 + 31000)
+check('... and the same login enrolls once it has verified',
+      e2['eligible'] is True and eng.eligible_count(acc) == 1 and e2['enrollment']['waitingForVerification'] is False, e2)
+eng_default = E.Engine(model_cache={})
+acc2, ses2 = E.new_account(), E.new_session()
+check('off by default (the library behaves the same)', eng_default.assess(acc2, ses2, win(owner), t0)['eligible'] is True)
+
 failed = [r for r in results if not r[1]]
 print('\nSERVER API')
 for n, ok, note in results:

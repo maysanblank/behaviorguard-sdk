@@ -17,8 +17,8 @@ Tiga lengan, model dan ambang IDENTIK di ketiganya (hanya sesi UJI yang berbeda)
   BERGAP + SEGMEN   jeda yang sama, dipecah per C-23      - perilaku sesudah tambalan
 
 Jalankan:
-  python tools/idle_ablation.py
-  python tools/idle_ablation.py --gap-min 2 5 10 20 --afk-rate 1.0
+  python research/idle_ablation.py
+  python research/idle_ablation.py --gap-min 2 5 10 20 --afk-rate 1.0
 """
 import argparse
 import importlib.util

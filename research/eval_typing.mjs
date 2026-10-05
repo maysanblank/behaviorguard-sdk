@@ -20,8 +20,8 @@
  *   - AUC/EER  : per pemilik, dirata-rata.
  *
  * Jalankan:
- *   node tools/eval_typing.mjs --data <bg_sessions_time.json> [--burst 20] [--k 2.5]
- *   node tools/eval_typing.mjs --data ... --sweep        (tabel burst x k)
+ *   node research/eval_typing.mjs --data <bg_sessions_time.json> [--burst 20] [--k 2.5]
+ *   node research/eval_typing.mjs --data ... --sweep        (tabel burst x k)
  */
 import fs from 'node:fs';
 import { extractF4 } from '../sdk/core/features.js';
@@ -30,7 +30,7 @@ const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
 const has = n => argv.includes('--' + n);
 
-const DATA = arg('data', 'C:/Users/USER/AppData/Local/Temp/bg_sessions_time.json');
+const DATA = arg('data', (await import('node:path')).join((await import('node:os')).tmpdir(), 'bg_sessions_time.json'));
 const BASELINE = +arg('baseline', 10);
 
 // Sub-ruang bebas-skala: nilainya tidak ikut membesar bersama jumlah tombol.

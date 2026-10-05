@@ -3,7 +3,7 @@
 KHUSUS RISET (C-29). Angka dari skrip ini BUKAN angka pustaka yang dikirim: ia menilai sesi
 riset utuh (~700 event), padahal pustaka menilai jendela 30 detik dengan bukti >= 150 event,
 lantai lengket, masa berlaku step-up, dan aturan absen. Angka resmi pustaka:
-`node tools/eval_sdk.mjs --live` (README "Results").
+`node research/eval_sdk.mjs --live` (README "Results").
 frr_levers.py - mengukur tuas-tuas yang bisa menurunkan FRR, di bawah protokol
 held-out yang sama dengan reproduce_db.py.
 
@@ -41,7 +41,7 @@ Tuas yang diuji, masing-masing bisa dinyalakan sendiri:
           sementara jarak ke penyusup tetap. Tuas paling baku di autentikasi kontinu,
           dan knob-nya SUDAH ada di sdk (`aggregateWindows`, default 1).
 
-Jalankan: python tools/frr_levers.py --levers none znorm loo znorm+loo
+Jalankan: python research/frr_levers.py --levers none znorm loo znorm+loo
 """
 import argparse, math, random, sqlite3, sys, pathlib
 

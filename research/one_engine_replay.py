@@ -7,15 +7,15 @@ Siklus    : port 1:1 sdk/behaviorguard.js (_trainingVectors, _rebuildModel,
             trust-loop: sesi non-LOW yang lolos MFA pemilik ikut kolam + rebuild).
 Yang boleh beda antar-percobaan HANYA: daftar fitur, bobot, jenis detektor-2.
 """
-import sys, math, json, sqlite3, pathlib
+import os, sys, math, json, sqlite3, pathlib
 from multiprocessing import Pool
-SDK = pathlib.Path(r"C:\Users\USER\OneDrive\Documents\skripsi\BEHAVIORGUARD-SDK")
+SDK = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SDK / 'core'))
 import bg_core as B
 
-DB = r"C:\Users\USER\OneDrive\Documents\skripsi\database\05 08 2026\behavior_detection_20260805_085856.db"
-SUBJ = {'kapioo': 2, 'denzel': 3, 'cencen': 6, 'kezia': 7, 'kevin': 8, 'andika': 9, 'erni': 11, 'teddy': 12,
-        'delon': 13, 'diani': 15, 'mikhael': 18, 'maysan': 19, 'dodi': 20, 'Tutel': 22, 'Frans': 24, 'kelin': 25}
+DB = os.environ.get("BG_RESEARCH_DB", "behavior_detection.db")  # the research database is not in the repository
+SUBJ = {'S02': 2, 'S03': 3, 'S06': 6, 'S07': 7, 'S08': 8, 'S09': 9, 'S11': 11, 'S12': 12,
+        'S13': 13, 'S15': 15, 'S18': 18, 'S19': 19, 'S20': 20, 'S22': 22, 'S24': 24, 'S25': 25}
 CFG = B.DEFAULTS
 
 _c = sqlite3.connect(DB)
@@ -150,7 +150,7 @@ def run(args):
     return key, dict(frr=round(100 * N / D, 1), far=round(100 * tl / tt, 1), non=N, n=D, fl=tl, ft=tt,
                      nconv=sum(1 for r in res.values() if r['conv']), nfeat=len(feats), w=w, m2=m2, subj=res)
 
-def W(i, s): return {'isolation_forest': i, 'svm': s, 'lstm': 0}
+def W(i, s): return {'isolation_forest': i, 'svm': s, 'S00': 0}
 JOBS = []
 for k, f in FEATS.items(): JOBS.append((k, f, W(1, 0), 'centroid'))
 # W1-W10 = persentase riset IF/SVM/LSTM. Mesin prod tak punya LSTM -> porsi LSTM

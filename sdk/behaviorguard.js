@@ -9,7 +9,7 @@
  *   <script src="behaviorguard.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
  *
  * LOCAL MODE (no endpoint): the same engine runs in this browser and the profile stays on
- * this device. Kept for offline evaluation (tools/eval_sdk.mjs), the conformance suite and
+ * this device. Kept for offline evaluation (research/eval_sdk.mjs), the conformance suite and
  * the browser extension. It cannot see a takeover from another device.
  */
 import { DEFAULTS, normalizeWeights } from './core/config.js';
@@ -1072,7 +1072,7 @@ class BehaviorGuard {
              attemptsExhausted:!!(r.mfa && r.mfa.attemptsExhausted) };
   }
 
-  // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya tools/eval_sdk.mjs
+  // Akibat MFA yang TERVERIFIKASI. Dipisah dari popup-nya supaya research/eval_sdk.mjs
   // bisa mensimulasikan "pemilik lolos verifikasi" dengan kode yang PERSIS ini - bukan
   // tiruan tangan yang lama-lama menyimpang (C-29).
   _applyMfaVerified(evt={}, now=Date.now()){
@@ -1099,7 +1099,7 @@ class BehaviorGuard {
    * untuk memberi tahu hasilnya ke pustaka. Akibatnya bagi integrator yang tidak memakai
    * popup ritme bawaan: lantai lengket tak pernah dibersihkan, sesi pemilik yang lolos
    * verifikasi tak pernah mengajari model, dan HIGH beruntun berakhir BLOCK untuk
-   * pemilik sendiri. Terukur (tools/eval_sdk.mjs, pemilik tanpa jalur verifikasi):
+   * pemilik sendiri. Terukur (research/eval_sdk.mjs, pemilik tanpa jalur verifikasi):
    * gesekan 40,5%, DIBLOKIR 13,3%.
    *   passed:true  -> efeknya sama persis dengan MFA bawaan yang terverifikasi.
    *   passed:false -> tidak mengubah apa pun selain tercatat; hukuman tetap milik
