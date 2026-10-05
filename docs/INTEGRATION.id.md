@@ -4,6 +4,8 @@ Panduan ini untuk web yang **sudah punya login** dan ingin menjaga aksi sensitif
 transfer, ganti email) tanpa membongkar kode yang sudah ada. Contoh hidupnya ada di
 [`demo/toko-checkout/`](../demo/toko-checkout/).
 
+> English version: [INTEGRATION.md](INTEGRATION.md)
+
 ## Peta: cuma 3 tempat yang disentuh
 
 | # | Tempat | File | Yang ditambah | Kenapa di situ |

@@ -9,14 +9,8 @@ berpindah halaman - seluruhnya di perangkat pengguna, lengkap dengan verifikasi 
 ## Demo
 
 <p align="center">
-  <img src="assets/demo-colok.gif" alt="Mencolok BehaviorGuard ke situs checkout polos" width="100%">
+  <img src="assets/demo.gif" alt="BehaviorGuard dicolok ke situs checkout polos" width="100%">
 </p>
-
-Toko polos yang cuma punya login dan checkout, tanpa MFA. Satu baris masuk ke backend
-(`shop.py`), satu tag script ke halaman (`index.html`), server di-restart, dan checkout
-sekarang minta verifikasi dulu sebelum lanjut. Coba sendiri:
-[demo/toko-checkout](demo/toko-checkout/). Pasang di web kamu sendiri (Flask, Express, PHP,
-Laravel): [docs/PASANG-DI-WEB-KAMU.md](docs/PASANG-DI-WEB-KAMU.md).
 
 ---
 

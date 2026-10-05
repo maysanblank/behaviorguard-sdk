@@ -16,14 +16,8 @@ device, with a built-in step-up challenge. One script tag. No backend required.*
 ## Demo
 
 <p align="center">
-  <img src="assets/demo-colok.gif" alt="Plugging BehaviorGuard into a plain checkout site" width="100%">
+  <img src="assets/demo.gif" alt="BehaviorGuard plugged into a plain checkout site" width="100%">
 </p>
-
-A plain shop with login and checkout only, no MFA. One line goes into the backend
-(`shop.py`), one script tag into the page (`index.html`), the server restarts, and checkout
-now asks for verification before it goes through. Run it yourself:
-[demo/toko-checkout](demo/toko-checkout/). To do the same on your own site (Flask, Express,
-PHP, Laravel): [docs/PASANG-DI-WEB-KAMU.md](docs/PASANG-DI-WEB-KAMU.md).
 
 ---
 

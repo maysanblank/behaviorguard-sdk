@@ -1,86 +1,82 @@
-# Demo: colok BehaviorGuard ke toko yang cuma punya checkout
+# Demo: plug BehaviorGuard into a checkout-only shop
 
-Satu situs **polos**: toko online beneran yang cuma punya **login + checkout**, punya
-**backend sendiri**, dan **tidak punya MFA / proteksi sesi apa pun**. Lalu di depan penonton
-kita colok BehaviorGuard: **1 baris di backend, 1 baris di halaman**. Kode login dan
-checkout toko tidak disentuh.
+A **plain** shop: a real online store with only **login + checkout**, its **own backend**, and
+**no MFA or session protection** of any kind. BehaviorGuard is plugged in with **one line in
+the backend and one line in the page**. The shop's login and checkout code is not touched.
 
-![Colok BehaviorGuard ke toko polos](../../assets/demo-colok.gif)
+![BehaviorGuard plugged into a plain shop](../../assets/demo.gif)
 
-Mau pasang di web kamu sendiri (Node, PHP, Laravel)? Lihat
-[docs/PASANG-DI-WEB-KAMU.md](../../docs/PASANG-DI-WEB-KAMU.md).
+Integrating with your own site (Node, PHP, Laravel)? See
+[docs/INTEGRATION.md](../../docs/INTEGRATION.md).
 
-## Isi folder
+## Files
 
-| File | Apa | Disentuh saat colok? |
+| File | What | Touched when plugging in? |
 |---|---|---|
-| `shop.py` | Backend toko (Flask): login, checkout, daftar pesanan | 1 baris di bawah (hapus tanda `#`) |
-| `index.html` | Halaman toko | 1 baris (hapus komentar di blok `COLOK`) |
-| `bg_backend.py` | Bagian backend BehaviorGuard: route `/api/bg-token` dan `/api/bg-reauth` | tidak, cukup di-import |
-| `plug-behaviorguard.js` | Bagian halaman: muat pustaka, badge, gerbang tombol, konfirmasi sandi | tidak, cukup dipanggil |
+| `shop.py` | Shop backend (Flask): login, checkout, order list | 1 line near the bottom (remove the `#`) |
+| `index.html` | Shop page | 1 line (the `COLOK` comment block) |
+| `bg_backend.py` | BehaviorGuard backend part: `/api/bg-token` and `/api/bg-reauth` | no, just imported |
+| `plug-behaviorguard.js` | Page part: loads the library, badge, button gate, password confirm | no, just referenced |
 
-## Arsitektur
+## Architecture
 
 ```
-browser (tangkap mouse/ketik/scroll)
-   |  34 angka fitur per 30 detik + vonis         (event mentah TIDAK dikirim)
+browser (captures mouse / keys / scroll)
+   |  34 feature values per 30 s + verdict        (raw events are NOT sent)
    v
-server BG :5055  --->  baseline lintas-perangkat + log  --->  dashboard operator
+BG server :5055  --->  cross-device baseline + log  --->  operator dashboard
    ^
-backend toko :5000  /api/bg-token   cetak token user yang login (pakai sk tenant)
-                    /api/bg-reauth  cek ulang sandi (jalur verifikasi, toko ini belum punya MFA)
+shop backend :5000  /api/bg-token   mint a token for the logged-in user (with the tenant sk)
+                    /api/bg-reauth  re-check the password (verification path; the shop has no MFA)
 ```
-Catatan jujur untuk presentasi: **skor dihitung di browser**; server BG menyimpan fitur +
-vonis untuk dashboard dan baseline lintas-perangkat.
+The score is computed in the browser; the BG server stores features and verdicts for the
+dashboard and the cross-device baseline.
 
-## 0. Persiapan
+## 0. Setup
 
 ```bash
 pip install flask
 ```
-Dua terminal:
+Two terminals:
 ```bash
-python server/app.py                 # server BG + dashboard  -> http://127.0.0.1:5055
+python server/app.py                 # BG server + dashboard  -> http://127.0.0.1:5055
 ```
 ```bash
-python demo/toko-checkout/shop.py    # toko                   -> http://127.0.0.1:5000
+python demo/toko-checkout/shop.py    # shop                   -> http://127.0.0.1:5000
 ```
 
-## Skrip video
+## Walkthrough
 
-### Babak 1 - situs polos (rapuh)
-- Buka `http://127.0.0.1:5000`, login (login pertama = daftar), pilih barang, **Bayar** ->
-  langsung berhasil.
-- DevTools > Network: **tidak ada** `behaviorguard.js`. Tidak ada proteksi.
-- Narasi: "Login sah. Tapi siapa pun yang memegang sesi ini bisa checkout."
+### 1. The plain site
+- Open `http://127.0.0.1:5000`, log in (first login registers the account), pick items,
+  **Bayar sekarang** (pay): it goes straight through.
+- DevTools > Network: **no** `behaviorguard.js`. Nothing is watching the session.
 
-### Babak 2 - colok (dua baris, di depan kamera)
-1. **Backend** - `shop.py`, blok `COLOK BEHAVIORGUARD (bagian backend)`, hapus tanda `#`:
+### 2. Plug it in
+1. **Backend** - in `shop.py`, block `COLOK BEHAVIORGUARD (bagian backend)`, remove the `#`:
    ```python
    from bg_backend import pasang; pasang(app, current_user=lambda: session.get("user"), verify_password=cek_sandi)
    ```
-   Restart `shop.py` (Ctrl+C, jalankan lagi).
-2. **Halaman** - `index.html`, blok `COLOK BEHAVIORGUARD DI SINI`, hapus tag komentarnya
-   supaya baris ini aktif:
+   Restart `shop.py`.
+2. **Page** - in `index.html`, under the `COLOK BEHAVIORGUARD DI SINI` comment, add:
    ```html
    <script src="plug-behaviorguard.js" defer></script>
    ```
-3. Login lagi (restart mengosongkan data demo). **Badge muncul** di kiri bawah:
-   "belajar pola pemilik ... mode: backend".
+3. Log in again (the restart clears the demo data). The **badge** appears in the bottom-left
+   corner: learning the owner, `mode: backend`.
 
-### Babak 3 - proteksi hidup
-- **User baru (belum punya profil, toko belum punya MFA):** klik Bayar -> muncul
-  **Konfirmasi sandi** -> sandi salah ditolak server -> sandi benar -> checkout lanjut.
-- **Pemilik yang sudah dikenali** (pakai toko normal beberapa menit sampai badge **AMAN**):
-  klik Bayar -> lolos tanpa gangguan.
-- **Sesi dibajak:** orang lain memakai sesi itu ~30-60 detik -> badge **BAHAYA** -> Bayar
-  -> diminta verifikasi -> penyerang tidak tahu sandinya -> **ditahan**.
-- **Dashboard:** `http://127.0.0.1:5055/dashboard`, tempel `sk` dari
+### 3. Protection on
+- **New user (no profile yet, and the shop has no MFA):** pay, a **password confirmation**
+  appears, a wrong password is rejected by the server, the right one lets checkout through.
+- **Recognised owner** (use the shop normally for a few minutes until the badge turns green):
+  pay goes through without interruption.
+- **Hijacked session:** someone else uses the session for 30-60 s, the badge turns red, pay
+  asks for verification, the attacker does not know the password, the action is **held**.
+- **Dashboard:** `http://127.0.0.1:5055/dashboard`, paste the `sk` from
   `demo/toko-checkout/.bg-tenant.json`.
 
-Selesai demo, kembalikan dua baris tadi ke keadaan dikomentari supaya demo berikutnya
-mulai dari polos lagi.
+Afterwards, comment the two lines out again so the next run starts plain.
 
-## Kalau server BG (5055) tidak dijalankan
-Plug tetap jalan **mode on-device**: BehaviorGuard melindungi dan verifikasi tetap bekerja,
-cuma tanpa sinkron baseline dan tanpa dashboard. Badge tertulis "mode: on-device".
+## If the BG server (5055) is not running
+The plug still works in **on-device mode**: protection and verification still run, just
+without the baseline sync and the dashboard. The badge says `mode: on-device`.
