@@ -162,7 +162,7 @@ export const DEFAULTS = {
   //  - emitAbstain: jendela yang isinya idle/bukti kurang TIDAK lagi diam-diam
   //    dianggap aman. Sistem menerbitkan vonis 'UNKNOWN' + action 'ABSTAIN' sekali
   //    per rentetan idle, supaya integrator tahu bedanya "terverifikasi aman" dan
-  //    "tidak ada bukti apa-apa" (lihat docs/USULAN-KONTEKS-DAN-IDLE.md §2).
+  //    "tidak ada bukti apa-apa" (lihat docs/CONTEXT-AND-IDLE-PROPOSAL.md §2).
   idle: {
     awaySec: 300,
     reverifyAfterSec: 900,

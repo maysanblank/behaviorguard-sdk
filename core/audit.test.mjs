@@ -1,6 +1,6 @@
 /**
  * audit.test.mjs - regresi untuk temuan audit A1..A5 / B1..B7
- * (docs/AUDIT-VALIDITAS-PENGUKURAN.md). Semua temuan di kelas yang sama:
+ * (docs/MEASUREMENT-VALIDITY-AUDIT.md). Semua temuan di kelas yang sama:
  * ada sesuatu selain IDENTITAS yang menggeser sinyalnya.
  *
  * Jalankan: node core/audit.test.mjs

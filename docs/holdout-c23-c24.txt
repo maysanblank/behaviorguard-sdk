@@ -1,0 +1,37 @@
+DB: research database (not part of this repo)
+Protocol: reproduce_db.py - whitelist of 16 subjects, 8/8 split seed 42, q tuned on FOLD-TUNE, reported on FOLD-REPORT
+Engine  : W7 70/30, sklearn RealOCSVM
+Canonical: K=120 events | AFK: [2, 5, 10, 20] minutes, evaluation sessions only
+
+Loading raw_events for 16 subjects ...
+  653 sessions with events
+
+running: 1. full, no AFK (control) ...
+running: 2. full, with AFK (today) ...
+running: 3. full + C-23 segmentation, with AFK ...
+running: 4. full + C-23 segmentation, no AFK ...
+running: 5. canonical 120 (C-24), no AFK ...
+running: 6. canonical 120 + segmentation, with AFK ...
+
+Condition                                    q     FRR     FAR     AUC     EER  FAR@FRR15  conv
+----------------------------------------------------------------------------------------------------
+1. full, no AFK             (control)     0.10   35.5%    2.5%   0.907   17.9%      20.1%  0/8
+2. full, with AFK           (today)       0.10   51.2%    7.3%   0.874   14.9%      14.8%  0/8
+3. full + C-23 segmentation, with AFK    0.10   60.7%    0.7%   0.902   15.1%      16.7%  0/8
+4. full + C-23 segmentation, no AFK      0.10   37.1%    0.6%   0.941   11.0%       4.6%  1/8
+5. canonical 120 (C-24),      no AFK     0.10   66.1%    2.3%   0.820   24.6%      46.4%  0/8
+6. canonical 120 + segment.,  with AFK   0.10   66.5%    2.5%   0.808   24.7%      44.9%  0/8
+
+HOW TO READ
+  Row 1 is the control: if it is far from the numbers of `python tools/reproduce_db.py`,
+  the re-extraction is wrong, not the representation - check that first.
+  Row 2 vs 1  = idle damage in the real world, at a valid operating point.
+  Row 3 vs 2  = WHETHER C-23 (shipped, on by default) really helps.
+               This is the most important question in this table.
+  Row 3 vs 1  = how close C-23 brings things back to before idle existed.
+  Row 4 vs 1  = the cost of C-23 when there is NO idle at all (should be ~zero).
+  Row 5 vs 1  = the pure cost of C-24 canonicalisation (OFF by default).
+
+  Look at EER and AUC first: both are independent of the operating point. FRR/FAR
+  depend on the q tuned per condition, so they can trade against each other
+  without anything really improving.

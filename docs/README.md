@@ -20,15 +20,15 @@ Start here. This is the map to every document in the project.
   explicit list of what BehaviorGuard is *not*.
 
 ## Trust the numbers
-- [AUDIT-VALIDITAS-PENGUKURAN.md](AUDIT-VALIDITAS-PENGUKURAN.md) - the measurement-validity
+- [MEASUREMENT-VALIDITY-AUDIT.md](MEASUREMENT-VALIDITY-AUDIT.md) - the measurement-validity
   audit: how the benchmark is run so it measures the engine that actually ships.
-- [hasil-holdout-c23-c24.txt](hasil-holdout-c23-c24.txt) - held-out results for changes C-23/C-24.
-- [hasil-holdout-tuning.txt](hasil-holdout-tuning.txt) - held-out results across the tuning sweep.
+- [holdout-c23-c24.txt](holdout-c23-c24.txt) - held-out results for changes C-23/C-24.
+- [holdout-tuning.txt](holdout-tuning.txt) - held-out results across the tuning sweep.
 - [../core/DRIFT.md](../core/DRIFT.md) - the C-1..C-48 audit log: every defect, its evidence
   and the test that now guards it.
 
 ## Design notes
-- [USULAN-KONTEKS-DAN-IDLE.md](USULAN-KONTEKS-DAN-IDLE.md) - the context-and-idle proposal
+- [CONTEXT-AND-IDLE-PROPOSAL.md](CONTEXT-AND-IDLE-PROPOSAL.md) - the context-and-idle proposal
   behind the idle-segmentation work.
 
 ## Operate

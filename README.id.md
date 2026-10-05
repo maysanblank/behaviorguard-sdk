@@ -78,7 +78,7 @@ identik.
 
 Panduan lengkap (modul ES, objek konfigurasi, server opsional):
 [docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang berbahasa Indonesia:
-[dist/PASANG.md](dist/PASANG.md).
+[dist/INSTALL.md](dist/INSTALL.md).
 
 ---
 
@@ -217,7 +217,7 @@ mensimulasikan kembali-setelah-absen, rekam-ulang, dan bot.
 
 Tampilan tanpa kode: <http://localhost:8080/demo/pemantau/>. Panel kiri adalah toko biasa **tanpa satu baris
 kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor langsung.
-Panduan lengkap: [demo/CARA-DEMO-PLUG-AND-PLAY.md](demo/CARA-DEMO-PLUG-AND-PLAY.md).
+Panduan lengkap: [demo/README.md](demo/README.md).
 
 ```bash
 python core/conformance.py         # mesin vs golden.json            -> 319/319
@@ -268,7 +268,7 @@ pengguna berumur pendek yang dicetak backend Anda sendiri.
 | Dokumen | Isi |
 | --- | --- |
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | Semua cara integrasi dan konfigurasi |
-| [dist/PASANG.md](dist/PASANG.md) | Panduan pasang satu tag (Indonesia) |
+| [dist/INSTALL.md](dist/INSTALL.md) | Panduan pasang satu tag (bahasa Inggris) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, peta modul, keputusan desain |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Batas kepercayaan, serangan yang belum tertutup |
 | [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-45: tiap cacat, buktinya, dan ujinya |

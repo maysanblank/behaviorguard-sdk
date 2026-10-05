@@ -1,0 +1,47 @@
+########## A. q grid widened downwards (calibration still in-sample) ##########
+Condition                                    q     FRR     FAR     AUC     EER  FAR@FRR15  conv
+----------------------------------------------------------------------------------------------------
+1. full, no AFK             (control)     0.05   30.2%    1.3%   0.924   12.1%       6.0%  0/8
+2. full, with AFK           (today)       0.01   36.7%    2.7%   0.913   13.3%      11.9%  0/8
+3. full + C-23 segmentation, with AFK    0.01   41.4%    4.4%   0.879   18.5%      24.1%  0/8
+4. full + C-23 segmentation, no AFK      0.01   23.0%    2.0%   0.912   11.0%       5.9%  1/8
+5. canonical 120 (C-24),      no AFK     0.01   49.1%   11.3%   0.802   25.6%      43.2%  0/8
+6. canonical 120 + segment.,  with AFK   0.02   55.1%    7.3%   0.802   25.8%      51.5%  0/8
+
+HOW TO READ
+  Row 1 is the control: if it is far from the numbers of `python tools/reproduce_db.py`,
+  the re-extraction is wrong, not the representation - check that first.
+  Row 2 vs 1  = idle damage in the real world, at a valid operating point.
+  Row 3 vs 2  = WHETHER C-23 (shipped, on by default) really helps.
+               This is the most important question in this table.
+  Row 3 vs 1  = how close C-23 brings things back to before idle existed.
+  Row 4 vs 1  = the cost of C-23 when there is NO idle at all (should be ~zero).
+  Row 5 vs 1  = the pure cost of C-24 canonicalisation (OFF by default).
+
+  Look at EER and AUC first: both are independent of the operating point. FRR/FAR
+  depend on the q tuned per condition, so they can trade against each other
+  without anything really improving.
+
+########## B. wide grid + OUT-OF-SAMPLE threshold calibration ##########
+Condition                                    q     FRR     FAR     AUC     EER  FAR@FRR15  conv
+----------------------------------------------------------------------------------------------------
+1. full, no AFK             (control)     0.01   20.6%   32.7%   0.825   25.8%      45.6%  2/8
+2. full, with AFK           (today)       0.02   33.9%   28.2%   0.652   39.2%      69.7%  1/8
+3. full + C-23 segmentation, with AFK    0.01   38.9%    8.7%   0.828   19.5%      27.6%  0/8
+4. full + C-23 segmentation, no AFK      0.03   29.7%    8.6%   0.872   22.5%      33.5%  1/8
+5. canonical 120 (C-24),      no AFK     0.05   46.8%    3.6%   0.863   19.7%      41.6%  0/8
+6. canonical 120 + segment.,  with AFK   0.05   46.7%    7.0%   0.823   22.3%      43.0%  0/8
+
+HOW TO READ
+  Row 1 is the control: if it is far from the numbers of `python tools/reproduce_db.py`,
+  the re-extraction is wrong, not the representation - check that first.
+  Row 2 vs 1  = idle damage in the real world, at a valid operating point.
+  Row 3 vs 2  = WHETHER C-23 (shipped, on by default) really helps.
+               This is the most important question in this table.
+  Row 3 vs 1  = how close C-23 brings things back to before idle existed.
+  Row 4 vs 1  = the cost of C-23 when there is NO idle at all (should be ~zero).
+  Row 5 vs 1  = the pure cost of C-24 canonicalisation (OFF by default).
+
+  Look at EER and AUC first: both are independent of the operating point. FRR/FAR
+  depend on the q tuned per condition, so they can trade against each other
+  without anything really improving.

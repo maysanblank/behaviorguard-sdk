@@ -25,6 +25,7 @@ import { getFingerprint, FP_VERSION } from './core/fingerprint.js';
 import { checkCollect } from './core/ratelimit.js';
 import { buildTemplate, verify as verifyChallenge } from './core/challenge.js';
 import { runMfaChallenge } from './core/mfa.js';
+import { mountEnrollment, openEnrollment } from './core/enroll_ui.js';
 
 const VERSION = '2.2.0';
 // C-45: structuredClone baru ada sejak Chrome 98 / Safari 15.4; di browser lebih tua pustaka
@@ -1399,7 +1400,7 @@ class BehaviorGuard {
       risk: this.lastRisk,
       lastVerdict: e ? { level:e.level, action:e.action, score:e.score, blocked:!!e.blocked, at:e.at,
                          reasons:(e.reasons||[]).slice(0,3), mfa:e.mfa||null } : null,
-      evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess },
+      evidence: { buffered: this.capture ? this.capture.buffer.length : 0, need: this.cfg.session.minEventsAssess, windowSec: this.cfg.session.windowSec },
       // C-46: `enrollment` berhenti di baseline (10) dan tidak pernah bergerak lagi, padahal
       // mesinnya BELUM utuh di sana: gerbang ensemble membungkam detektor-2 (Mahalanobis,
       // bobot 0,70) sampai kolam latih mencapai `ensembleMinSamples.svm` = 20 vektor (C-15).
@@ -1489,6 +1490,18 @@ class BehaviorGuard {
 
 // singleton global untuk loader 3-baris
 const singleton=new BehaviorGuard();
+// kartu "Mengenali perangkat ini" bawaan: warna/merek/tema ikut mfa supaya dialog & kartu serupa
+const uiApi={
+  status: ()=> singleton.status(),
+  enrollMfa: ()=> singleton.enrollMfa(),
+  subscribe: fn=>{
+    if(typeof window==='undefined') return ()=>{};
+    const h=()=>{ try{ fn(); }catch{} };
+    window.addEventListener('behaviorguard:risk', h);
+    return ()=> window.removeEventListener('behaviorguard:risk', h);
+  },
+};
+const uiOpts=o=>{ const m=(singleton.cfg && singleton.cfg.mfa) || {}; return { accent:m.accent, brand:m.brand, theme:m.theme, lang:m.lang, ...(o||{}) }; };
 // C-45: skrip yang dimuat DUA kali (tag manager + tag manual, atau dua bundel) dulu menimpa
 // window.BehaviorGuard dengan singleton kedua - dua penangkap jalan bersamaan, dan init() yang
 // dipanggil integrator mengenai instance yang berbeda dari yang memegang profil. Yang pertama
@@ -1511,6 +1524,8 @@ if(typeof window!=='undefined' && window.BehaviorGuard && window.BehaviorGuard._
     forget: ()=> singleton.forget(),
     setUserToken: (t)=> singleton.setUserToken(t),
     getVector: ()=> singleton.getVector(),
+    mountEnrollment: (target, o)=> mountEnrollment(uiApi, target, uiOpts(o)),
+    openEnrollment: (o)=> openEnrollment(uiApi, uiOpts(o)),
     // berlangganan vonis tanpa menimpa onRisk: BehaviorGuard.on('risk', fn) -> fungsi berhenti
     on: (name, fn)=>{
       if(name!=='risk' || typeof fn!=='function') return ()=>{};

@@ -1,7 +1,7 @@
 name: conformance
 
-# Membuktikan "satu otak, banyak bahasa": tiap runtime wajib lulus core/golden.json
-# yang SAMA (319 pemeriksaan, toleransi 1e-9). Kalau salah satu meleset, build merah.
+# Proves "one brain, many languages": every runtime must pass the SAME core/golden.json
+# (319 checks, tolerance 1e-9). If any of them misses, the build goes red.
 
 on:
   push:
@@ -16,11 +16,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - name: Golden tetap sinkron dengan bg_core.py
+      - name: Golden file in sync with bg_core.py
         run: |
           python core/gen_golden.py
           git diff --exit-code core/golden.json \
-            || (echo '::error::golden.json basi - jalankan `python core/gen_golden.py` dan commit'; exit 1)
+            || (echo '::error::golden.json is stale - run `python core/gen_golden.py` and commit'; exit 1)
       - name: Python conformance
         run: python core/conformance.py
 
@@ -32,34 +32,34 @@ jobs:
         with: { node-version: '20' }
       - name: JS conformance (headless)
         run: node core/conformance.node.mjs
-      - name: WASM conformance (artefak yang di-commit)
+      - name: WASM conformance (committed artefact)
         run: node ports/wasm/run.mjs
 
   stepup:
-    # C-1: mengunci celah "tempel frasa = lolos MFA". verify() harus gagal-TERTUTUP
-    # untuk sampel yang tidak lengkap/tidak finit; kalau longgar lagi, build merah.
+    # C-1: locks the "paste the phrase = pass MFA" hole. verify() must fail CLOSED
+    # for incomplete/non-finite samples; if it loosens again, the build goes red.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - name: Uji regresi lapisan step-up
+      - name: Step-up layer regression
         run: node core/challenge.test.mjs
-      - name: Uji regresi gerbang detektor (C-15)
+      - name: Detector gate regression (C-15)
         run: node core/ensemble.test.mjs
-      - name: Uji regresi heuristik integrity (C-16)
+      - name: Integrity heuristics regression (C-16)
         run: node core/integrity.test.mjs
-      - name: Siklus hidup & API integrator (C-31..C-43)
+      - name: Lifecycle & integrator API (C-31..C-43)
         run: node core/lifecycle.test.mjs
-      - name: Privasi penangkapan (C-30, C-44)
+      - name: Capture privacy (C-30, C-44)
         run: node core/privacy.test.mjs
-      - name: Step-up versi produksi & kondisi nyata (C-45)
+      - name: Production step-up & real-world conditions (C-45)
         run: node core/stepup.test.mjs
-      - name: Masukan buatan skrip & batas waktu jalur cadangan (C-46)
+      - name: Script-made input & fallback time limit (C-46)
         run: node core/c46.test.mjs
-      - name: Bundel kecil (min) berperilaku identik dengan bundel penuh
+      - name: Minified bundle behaves identically to the full bundle
         run: node tools/min_check.mjs
-      - name: Idle, kompresi, invariansi (C-23, C-24, C-28)
+      - name: Idle, compression, invariance (C-23, C-24, C-28)
         run: |
           node core/idle.test.mjs
           node core/idle.live.test.mjs
@@ -67,20 +67,20 @@ jobs:
           node core/invariance.test.mjs
 
   sync:
-    # C-9: sdk/ adalah satu-satunya sumber; extension/ hanya salinan. Kalau keduanya
-    # menyimpang (orkestrator dulu tidak ikut disinkron), build merah.
+    # C-9: sdk/ is the only source; extension/ is just a copy. If the two drift apart
+    # (the orchestrator used to be left out of the sync), the build goes red.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: sdk/ dan extension/ wajib identik
+      - name: sdk/ and extension/ must be identical
         run: |
           fail=0
           for f in sdk/core/*.js; do
             b="extension/core/$(basename "$f")"
-            diff -q "$f" "$b" >/dev/null 2>&1 || { echo "::error::menyimpang: $f vs $b"; fail=1; }
+            diff -q "$f" "$b" >/dev/null 2>&1 || { echo "::error::drifted: $f vs $b"; fail=1; }
           done
           for t in storage.js behaviorguard.js; do
-            diff -q "sdk/$t" "extension/$t" >/dev/null 2>&1 || { echo "::error::menyimpang: sdk/$t vs extension/$t"; fail=1; }
+            diff -q "sdk/$t" "extension/$t" >/dev/null 2>&1 || { echo "::error::drifted: sdk/$t vs extension/$t"; fail=1; }
           done
           [ $fail -eq 0 ] && echo "sdk/ == extension/ : OK"
           exit $fail
@@ -112,10 +112,10 @@ jobs:
         with: { targets: wasm32-unknown-unknown }
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - name: Rebuild bg_core.wasm dari sumber Rust
+      - name: Rebuild bg_core.wasm from the Rust source
         run: |
           cd ports/rust
           cargo build --release --target wasm32-unknown-unknown --lib
           cp target/wasm32-unknown-unknown/release/bg_core.wasm ../wasm/bg_core.wasm
-      - name: WASM conformance (hasil rebuild)
+      - name: WASM conformance (rebuilt)
         run: node ports/wasm/run.mjs

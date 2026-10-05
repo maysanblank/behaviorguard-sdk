@@ -1,159 +1,160 @@
-# Laporan Selisih Mesin - 2026-09-03, diperbarui 2026-09-04
+# Engine Drift Report - 2026-09-03, updated 2026-09-04
 
-> **PERINGATAN KEBASIAN:** angka D-2 di bawah (“0 dari 16 probe berpindah vonis”,
-> “selisih skor maksimum 1.271”) diukur SEBELUM detektor-2 diganti ke Mahalanobis
-> (2026-09-04). Pengukuran ulang hari ini: **8 dari 16 probe berpindah vonis,
-> selisih skor maksimum 4.201**. Lihat bagian “Pengukuran ulang 2026-09-04”.
+> **STALENESS WARNING:** the D-2 numbers below ("0 of 16 probes change verdict",
+> "maximum score difference 1.271") were measured BEFORE detector 2 was switched to
+> Mahalanobis (2026-09-04). Re-measured today: **8 of 16 probes change verdict,
+> maximum score difference 4.201**. See the section "Re-measurement 2026-09-04".
 
-Repo ini punya **dua salinan mesin yang ditulis tangan terpisah**:
+This repo has **two separately hand-written copies of the engine**:
 
-| | Berkas | Perannya |
+| | File | Role |
 |---|---|---|
-| **A** | `sdk/core/*.js` | mesin yang **benar-benar dipasang** di situs orang |
-| **B** | `tools/reproduce_db.py` | mesin yang **menghasilkan angka headline** di README |
+| **A** | `sdk/core/*.js` | the engine that is **actually installed** on people's sites |
+| **B** | `tools/reproduce_db.py` | the engine that **produces the headline numbers** in the README |
 
-Keduanya tidak pernah diuji saling-silang. Berkas ini melaporkan hasil pengujiannya.
-Reproduksi: `python core/drift_check.py`.
-
----
-
-## Hasil pertama: kabar baik
-
-**`sdk/core/*.js` cocok dengan `core/bg_core.py` sebanyak 115/115 pemeriksaan pada
-toleransi 1e-9.** Mesin yang dikirim ke pengguna sekarang punya pasangan Python yang
-identik sampai digit ke-9, terbukti lewat berkas golden yang sama.
-
-Artinya: dasar untuk "satu otak, banyak bahasa" sudah kokoh. Yang tersisa adalah
-selisih antara mesin yang **dikirim** dan mesin yang **divalidasi**.
+The two were never cross-tested. This file reports the results of doing so.
+Reproduce: `python core/drift_check.py`.
 
 ---
 
-## D-1 · Lantai simpangan baku per-fitur berbeda
+## First result: good news
 
-| | Perilaku |
+**`sdk/core/*.js` matches `core/bg_core.py` on 115/115 checks at tolerance 1e-9.** The
+engine shipped to users now has a Python twin that is identical to the 9th digit, proven
+through the same golden file.
+
+Meaning: the foundation for "one brain, many languages" is solid. What remains is the
+gap between the engine that is **shipped** and the engine that is **validated**.
+
+---
+
+## D-1 · Different per-feature standard deviation floor
+
+| | Behaviour |
 |---|---|
-| A (dikirim) | `sqrt(var) < 1e-9 ? 1.0 : sqrt(var)` |
-| B (validasi) | `sqrt(var) > 1e-6 ? sqrt(var) : 1.0`, lalu `max(std, 1e-3)` |
+| A (shipped) | `sqrt(var) < 1e-9 ? 1.0 : sqrt(var)` |
+| B (validation) | `sqrt(var) > 1e-6 ? sqrt(var) : 1.0`, then `max(std, 1e-3)` |
 
-**Terbukti:** untuk fitur yang nyaris konstan (`std ≈ 1e-7`), A memakai `4.08e-08`
-sementara B memakai `1.0` - beda **tujuh orde besaran**. Fitur nyaris-konstan jadi
-meledak jadi nilai-z raksasa di A, tapi diredam jadi ~0 di B.
+**Proven:** for a nearly constant feature (`std ≈ 1e-7`), A uses `4.08e-08` while B uses
+`1.0` - a difference of **seven orders of magnitude**. A nearly constant feature blows up
+into a huge z-value in A, but is damped to ~0 in B.
 
-**Kapan menggigit:** akun yang salah satu fiturnya konstan - misalnya `cart_action_count`
-selalu 0 karena pengguna tak pernah checkout. Persis kondisi normal, bukan kasus aneh.
+**When it bites:** accounts where one feature is constant - for example
+`cart_action_count` is always 0 because the user never checks out. That is an ordinary
+situation, not an odd one.
 
-**Saran:** adopsi perilaku B (`max(std, 1e-3)`) di kedua sisi. Lebih aman dan tidak
-mengubah angka pada data yang variasinya wajar. **Butuh generate ulang golden** dan
-jalan ulang `reproduce_db.py` untuk melihat pergeseran angkanya.
+**Recommendation:** adopt behaviour B (`max(std, 1e-3)`) on both sides. It is safer and does
+not change the numbers on data with normal variation. **Requires regenerating the golden
+file** and re-running `reproduce_db.py` to see how the numbers shift.
 
 ---
 
-## D-2 · A meng-clamp nilai ekstrem, B tidak
+## D-2 · A clamps extreme values, B does not
 
-| | `score_stats` std | nilai-z |
+| | `score_stats` std | z-value |
 |---|---|---|
-| A (dikirim) | dijepit ke `[1e-3, 10]` | dijepit ke `[−6, +6]` |
-| B (validasi) | dilantai `1e-6`, **tanpa batas atas** | **tanpa jepitan** |
+| A (shipped) | clamped to `[1e-3, 10]` | clamped to `[−6, +6]` |
+| B (validation) | floored at `1e-6`, **no upper bound** | **no clamp** |
 
-**Terbukti:**
+**Proven:**
 
-- untuk kumpulan skor yang sama, `std` A = `10.000` vs B = `25.369`
-- untuk skor ekstrem, z A = `6.000` vs B = `39.418`
+- for the same set of scores, `std` A = `10.000` vs B = `25.369`
+- for an extreme score, z A = `6.000` vs B = `39.418`
 
-**Dampak terukur:** pada 3 kasus golden dengan mesin OC-SVM yang disamakan,
-**selisih skor maksimum 1.271**. Untuk perbandingan, ambang di kasus-kasus itu berada
-di sekitar −1.1 sampai −1.8 - jadi selisihnya **sebesar jarak antar pita risiko.**
+**Measured impact:** on 3 golden cases with the OC-SVM engine made identical, the
+**maximum score difference is 1.271**. For comparison, the thresholds in those cases sit
+around −1.1 to −1.8 - so the difference is **as large as the gap between risk bands.**
 
-Yang menarik: **ambangnya sendiri identik (selisih 0.000)** dan **0 dari 16 probe
-berpindah vonis**. Sebabnya masuk akal: ambang dikalibrasi dari skor baseline yang
-kalem, sedangkan jepitan ±6 baru bekerja pada sesi pencilan. Jadi selisih ini
-**tidak terlihat di data biasa dan hanya muncul justru pada sesi paling mencurigakan** -
-tepat sesi yang paling penting untuk dinilai benar.
+What is interesting: **the thresholds themselves are identical (difference 0.000)** and
+**0 of 16 probes change verdict**. The reason makes sense: thresholds are calibrated from
+calm baseline scores, while the ±6 clamp only kicks in on outlier sessions. So this
+difference is **invisible on ordinary data and only appears on the most suspicious
+sessions** - exactly the sessions that matter most to judge correctly.
 
-**Saran:** adopsi perilaku A (jepitan) di kedua sisi. Jepitan itu benar - tanpa itu satu
-fitur pencilan bisa mendominasi seluruh skor.
-
----
-
-## D-3 · Ringkasan pengaman
-
-Ketiga pengaman berperilaku beda; semuanya hanya aktif di kasus ekstrem, bukan di
-data biasa. Itu sebabnya selisih ini bisa lolos bertahun-tahun tanpa ketahuan.
+**Recommendation:** adopt behaviour A (the clamp) on both sides. The clamp is correct -
+without it a single outlier feature can dominate the whole score.
 
 ---
 
-## D-4 · Angka skripsi memakai rumus SVM yang berbeda
+## D-3 · Summary of the safeguards
 
-Bagian SVM punya dua versi rumus:
+All three safeguards behave differently; all of them only act in extreme cases, not on
+ordinary data. That is why this kind of drift can go unnoticed for years.
 
-| | Versi rumus SVM |
+---
+
+## D-4 · The thesis numbers use a different SVM formula
+
+The SVM part has two versions of the formula:
+
+| | SVM formula version |
 |---|---|
-| A (dikirim) | aproksimasi centroid-RBF - `sdk/core/ocsvm.js`, 36 baris, jalan di browser |
-| B (pengukuran skripsi) | `OneClassSVM` scikit-learn - `tools/reproduce_db.py` |
+| A (shipped) | centroid-RBF approximation - `sdk/core/ocsvm.js`, 36 lines, runs in the browser |
+| B (thesis measurement) | scikit-learn `OneClassSVM` - `tools/reproduce_db.py` |
 
-**Terbukti:** dari 16 probe golden, **3 berpindah vonis** hanya karena tukar versi rumus.
+**Proven:** of 16 golden probes, **3 change verdict** just by swapping the formula version.
 
-Ini **bukan temuan baru** - README sudah mencatatnya jujur (FAR 0.9% dengan versi
-scikit-learn vs 36.2% dengan versi ringan). Yang berubah cuma statusnya: dari catatan
-kaki jadi selisih yang terukur dan teruji otomatis.
+This is **not a new finding** - the README already records it honestly (FAR 0.9% with the
+scikit-learn version vs 36.2% with the light version). Only its status changed: from a
+footnote to a measured, automatically tested difference.
 
-**Keputusan 2026-09-03:** pustaka ini memakai **versi ringan saja**. Versi scikit-learn
-tidak ikut dikirim, karena melatihnya butuh scikit-learn yang tidak jalan di browser.
-`core/` sekarang cuma punya satu rumus; tidak ada lagi pilihan yang membingungkan.
+**Decision 2026-09-03:** this library uses **the light version only**. The scikit-learn
+version is not shipped, because training it needs scikit-learn, which does not run in a
+browser. `core/` now has a single formula; there is no longer a confusing choice.
 
-`tools/reproduce_db.py` **sengaja tidak disentuh** - di situlah angka skripsi
-direproduksi, dan itu harus tetap bisa dijalankan apa adanya.
+`tools/reproduce_db.py` is **deliberately left untouched** - that is where the thesis
+numbers are reproduced, and it must keep running as is.
 
-Yang tersisa untuk dikerjakan (ditunda, bukan dilupakan):
+Still to do (deferred, not forgotten):
 
-- **Beri label pada angka di README** - setiap angka menyebut versi rumus mana yang
-  memakainya, supaya `FAR 0.9%` tidak terbaca sebagai janji pustaka ini.
-- **Ukur ulang di versi ringan** - termasuk memeriksa ulang pilihan fitur, karena README
-  mencatat urutannya terbalik di versi ringan (F4 terburuk 36.2% vs F3 20.6%).
-- **Perbaiki rumusnya**, bukan cuma mencatat angkanya. Versi sekarang menggepengkan
-  seluruh kolam baseline jadi satu titik rerata. Alternatif yang bisa dilatih di browser
-  (mis. jarak ke sesi baseline terdekat) mempertahankan variasi itu.
-
----
-
-## F-1 · Ekstraksi fitur: waktu lokal -> UTC (SUDAH diperbaiki)
-
-Selisih ini bukan A-vs-B seperti D-1..D-4, melainkan **A-vs-dirinya-sendiri di mesin
-berbeda**. Fitur `temporal_time_of_day_score` dulu memakai `Date.getHours()` -
-**waktu lokal** - sehingga event yang persis sama menghasilkan vektor berbeda tergantung
-zona waktu komputer. Itu membuat ekstraksi fitur **tidak deterministik lintas mesin**,
-racun bagi klaim "universal".
-
-**Keputusan 2026-09-03 (v1.1.0):** hitung fitur itu **UTC** (`getUTCHours` /
-`getUTCMinutes`) di `sdk/core/features.js`, `extension/core/features.js`, dan
-`bg_core.py:extract_features`. Ini perbaikan portabilitas, **bukan** penyetelan akurasi -
-maknanya tetap "jam berapa sesi mulai", cuma di garis waktu yang sama untuk semua orang.
-
-**Status:** selesai & terbukti. Ekstraksi fitur kini masuk `core/golden.json`
-(`feature_cases`, 4 kasus × 28 = 112 pemeriksaan) dan JS == Python **227/227** di
-`conformance.py` maupun `conformance.html`. Lihat `SPEC.md` §8-§9.
+- **Label the numbers in the README** - every number names the formula version behind
+  it, so `FAR 0.9%` is not read as a promise of this library.
+- **Re-measure on the light version** - including re-checking the feature choice, because
+  the README notes the order flips on the light version (F4 worst 36.2% vs F3 20.6%).
+- **Fix the formula**, not just record its numbers. The current version flattens the whole
+  baseline pool into one mean point. Alternatives that can be trained in the browser
+  (e.g. distance to the nearest baseline session) keep that variation.
 
 ---
 
-## Urutan perbaikan yang disarankan
+## F-1 · Feature extraction: local time -> UTC (ALREADY fixed)
 
-Nomor 1 dan 2 murah dan aman dikerjakan kapan saja. Nomor 3 dan 4 ditunda sampai
-pustakanya rampung - sesuai rencana: bereskan rumahnya dulu, isinya belakangan.
-(F-1 di atas sudah lunas.)
+This difference is not A-vs-B like D-1..D-4, but **A against itself on different
+machines**. The `temporal_time_of_day_score` feature used `Date.getHours()` - **local
+time** - so exactly the same events produced different vectors depending on the computer's
+time zone. That made feature extraction **non-deterministic across machines**, poison for
+the "universal" claim.
 
-1. **D-2 seragamkan jepitan** ke perilaku A - kecil, memperbaiki sesi pencilan
-2. **D-1 seragamkan lantai std** ke perilaku B - perlu generate ulang golden dan jalan
-   ulang `reproduce_db.py`, jadi lakukan saat ada waktu memeriksa pergeseran angkanya
-3. **Label versi rumus di README**
-4. **Ukur ulang + perbaiki rumus SVM**
+**Decision 2026-09-03 (v1.1.0):** compute that feature in **UTC** (`getUTCHours` /
+`getUTCMinutes`) in `sdk/core/features.js`, `extension/core/features.js`, and
+`bg_core.py:extract_features`. This is a portability fix, **not** accuracy tuning - it
+still means "what time the session started", just on the same timeline for everyone.
 
-Setelah tiap perubahan: `python core/conformance.py` dan buka `core/conformance.html`.
-Dua-duanya harus tetap **SESUAI** sebelum dianggap selesai.
+**Status:** done and proven. Feature extraction is now part of `core/golden.json`
+(`feature_cases`, 4 cases × 28 = 112 checks) and JS == Python **227/227** in both
+`conformance.py` and `conformance.html`. See `SPEC.md` §8-§9.
+
+---
+
+## Recommended fix order
+
+Items 1 and 2 are cheap and safe to do at any time. Items 3 and 4 wait until the library
+is finished - as planned: put the house in order first, the contents later.
+(F-1 above is already settled.)
+
+1. **D-2 unify the clamp** to behaviour A - small, fixes outlier sessions
+2. **D-1 unify the std floor** to behaviour B - needs a regenerated golden file and a
+   re-run of `reproduce_db.py`, so do it when there is time to check how the numbers shift
+3. **Formula-version labels in the README**
+4. **Re-measure + fix the SVM formula**
+
+After each change: `python core/conformance.py` and open `core/conformance.html`. Both
+must still say **SESUAI** (conformant) before it counts as done.
 
 
 ---
 
-# Pengukuran ulang 2026-09-04 (setelah Mahalanobis)
+# Re-measurement 2026-09-04 (after Mahalanobis)
 
 `python core/drift_check.py`:
 
@@ -162,182 +163,186 @@ selisih skor maksimum: 4.201e+00   vonis berbeda: 8/16
 KESIMPULAN: primitif BERBEDA
 ```
 
-Naik dari **0/16 -> 8/16** sejak detektor-2 diganti. Arah kesalahannya penting:
-beberapa kasus **validasi=HIGH tetapi SDK=LOW** - sesi yang dianggap penyusup oleh
-pipeline riset justru **diloloskan** oleh pustaka yang benar-benar dipasang.
+Up from **0/16 -> 8/16** since detector 2 was replaced. The direction of the error
+matters: several cases are **validation=HIGH but SDK=LOW** - sessions the research
+pipeline flags as an intruder are **let through** by the library that is actually
+installed.
 
-**Konsekuensi untuk klaim:** angka FRR/FAR headline berasal dari `reproduce_db.py`
-(mesin B). Itu **bukan** angka yang berlaku untuk `sdk/core/*.js` (mesin A). Sampai
-D-1/D-2 diseragamkan, setiap angka yang dikutip **wajib menyebut mesinnya**.
+**Consequence for claims:** the headline FRR/FAR numbers come from `reproduce_db.py`
+(engine B). They are **not** the numbers that apply to `sdk/core/*.js` (engine A). Until
+D-1/D-2 are unified, every number quoted **must name its engine**.
 
-Yang belum berubah: D-1 (lantai simpangan baku) dan D-2 (jepitan) masih berbeda -
-keduanya tetap di antrean perbaikan, dan sekarang dampaknya terukur jauh lebih besar
-dari perkiraan semula.
+Not yet changed: D-1 (std floor) and D-2 (clamp) still differ - both stay in the fix
+queue, and their measured impact is now much larger than first estimated.
 
 ---
 
-# C-1..C-19 · Celah logika lapisan pertahanan (audit 2026-09-04)
+# C-1..C-19 · Logic gaps in the defence layers (audit 2026-09-04)
 
-Selisih D-* di atas soal **angka**. Bagian ini soal **logika kontrol keamanan** -
-ditemukan lewat penelusuran adversarial, semuanya sudah ditambal dan dikunci uji.
+The D-* differences above are about **numbers**. This part is about **security control
+logic** - found through adversarial tracing, all of it patched and locked by tests.
 
-## C-1 · KRITIS - verifikasi ritme gagal-TERBUKA (bypass tempel)
+## C-1 · CRITICAL - rhythm verification fails OPEN (paste bypass)
 
-`challenge.js:verify()` mengiterasi panjang **template**, bukan panjang **sample**:
+`challenge.js:verify()` iterates over the length of the **template**, not of the **sample**:
 
 ```js
 for(let i=0;i<tmpl.dwell.length;i++){
   const d=Math.abs(sample.dwell[i]-tmpl.dwell[i]);  // undefined -> NaN
-  if(d > tmpl.k*tmpl.dwellMad[i]) reasons.push(...) // NaN > x === false -> LOLOS
+  if(d > tmpl.k*tmpl.dwellMad[i]) reasons.push(...) // NaN > x === false -> PASSES
 }
 ```
 
-Sample lebih pendek dari template ⇒ `undefined` ⇒ `NaN` ⇒ perbandingan selalu false
-⇒ **nol pelanggaran** ⇒ `ok:true`. Dua jalur nyata:
+A sample shorter than the template ⇒ `undefined` ⇒ `NaN` ⇒ the comparison is always false
+⇒ **zero violations** ⇒ `ok:true`. Two real paths:
 
-- **klik kanan -> Paste**: nol event ketik -> `dwell=[]` -> lolos penuh.
-- **Ctrl+V**: `'Control'` tersaring, tapi `'v'` lolos filter `key.length===1` ->
-  hanya 1 dwell terekam, sisanya `undefined` -> tetap lolos.
+- **right-click -> Paste**: zero key events -> `dwell=[]` -> passes completely.
+- **Ctrl+V**: `'Control'` is filtered out, but `'v'` passes the `key.length===1` filter ->
+  only 1 dwell is recorded, the rest are `undefined` -> still passes.
 
-Cek teks (`norm(value)===norm(phrase)`) tidak menolong: penyerang tetap harus tahu
-frasanya, tapi begitu tahu, **seluruh lapisan ritme menguap**. Ini jauh di bawah
-batas yang sudah diakui di `mfa.js` (“attacker yang menguasai browser”) - ini tidak
-butuh perkakas apa pun.
+The text check (`norm(value)===norm(phrase)`) does not help: the attacker still has to know
+the phrase, but once they do, **the whole rhythm layer evaporates**. This is far below the
+limit already acknowledged in `mfa.js` ("an attacker who controls the browser") - it needs
+no tooling at all.
 
-**Tambalan:** `verify()` kini gagal-TERTUTUP - panjang & finitness sample wajib cocok
-template; anggaran meleset proporsional (12% dari jumlah pemeriksaan) menggantikan
-angka tetap `<=2`; MAD dijepit lantai+langit-langit; frasa < 8 titik ukur ditolak.
-`mfa.js` memblokir `paste`/`drop`/`cut`, mengabaikan penekanan bermodifier, dan
-menolak sampel yang tidak utuh **sebelum** memanggil `verify()`.
-Dikunci: `core/challenge.test.mjs` (20 uji).
+**Patch:** `verify()` now fails CLOSED - the sample's length and finiteness must match the
+template; a proportional miss budget (12% of the number of checks) replaces the fixed
+`<=2`; MAD is clamped with a floor and a ceiling; phrases with < 8 measurement points are
+rejected. `mfa.js` blocks `paste`/`drop`/`cut`, ignores modified key presses, and rejects
+incomplete samples **before** calling `verify()`.
+Locked by: `core/challenge.test.mjs` (20 tests).
 
-## C-2 · KRITIS - penyusup bisa MENDAFTARKAN template MFA-nya sendiri
+## C-2 · CRITICAL - an intruder could ENROLL their own MFA template
 
-`_maybeMfa()` memanggil `runMfaChallenge({template: this.challengeTemplate})`. Di
-perangkat baru storage kosong ⇒ `challengeTemplate` null ⇒ **mode DAFTAR**. Alurnya:
+`_maybeMfa()` calls `runMfaChallenge({template: this.challengeTemplate})`. On a new device
+storage is empty ⇒ `challengeTemplate` is null ⇒ **ENROLL mode**. The flow:
 
-1. Penyusup buka akun di perangkat baru -> perilaku menyimpang -> vonis HIGH.
-2. Popup muncul dalam mode daftar -> penyusup mengetik frasa 3× dengan ritme **miliknya**.
+1. The intruder opens the account on a new device -> behaviour deviates -> verdict HIGH.
+2. The popup appears in enroll mode -> the intruder types the phrase 3× with **their own**
+   rhythm.
 3. `res.passed===true` -> `action='MFA_PASSED'`, `_highRun=0`, `mfaVerified=true`.
-4. Sesi itu masuk kolam latih -> model belajar perilaku penyusup.
+4. That session goes into the training pool -> the model learns the intruder's behaviour.
 
-Frasa default (`'kunci rahasia saya'`) ada di `config.js` - publik. Ini rantai ATO utuh
-yang justru memakai lapisan pertahanan sebagai jalan masuk.
+The default phrase (`'kunci rahasia saya'`) is in `config.js` - public. This is a complete
+ATO chain that uses the defence layer itself as the way in.
 
-**Tambalan:** pendaftaran tidak pernah terjadi saat sesi dicurigai. Tanpa template,
-`_maybeMfa` gagal-tertutup (`mfa.unavailable`) dan aksi risiko tetap berlaku.
-Pendaftaran dipindah ke `_maybeEnrollMfa()` - hanya pada vonis **LOW** yang layak
-dengan model sudah terbentuk.
+**Patch:** enrollment never happens while the session is suspected. Without a template,
+`_maybeMfa` fails closed (`mfa.unavailable`) and the risk action still applies.
+Enrollment moved to `_maybeEnrollMfa()` - only on an eligible **LOW** verdict with a model
+already built.
 
-## C-3 · Pendaftaran dianggap bukti identitas + lantai lengket tak pernah bersih
+## C-3 · Enrollment counted as proof of identity + a sticky floor that never clears
 
-`res.passed` bernilai true untuk mode daftar **dan** verifikasi. Sekarang hanya
-`res.verified` (verifikasi sungguhan) yang membuktikan identitas. Selain itu, MFA lolos
-dulu mereset `_highRun` tapi **tidak** `lastRisk` - lantai lengket terus memaksa vonis
-HIGH di sesi berikutnya, memunculkan popup berulang tanpa akhir. Kini ikut direset.
+`res.passed` was true for both enroll **and** verify mode. Now only `res.verified` (a real
+verification) proves identity. In addition, a passed MFA used to reset `_highRun` but
+**not** `lastRisk` - the sticky floor kept forcing HIGH verdicts in the next session,
+raising the popup again and again. It is now reset too.
 
-## C-4 · Blokir rate-limit tidak pernah sampai ke integrator
+## C-4 · Rate-limit blocks never reached the integrator
 
-Jalur `checkCollect` gagal me-`return` tanpa memanggil `onRisk`, padahal jalur
-integrity memanggilnya. Integrator tidak pernah tahu sesi diblokir. Kini konsisten.
+The `checkCollect` path failed with a `return` without calling `onRisk`, while the
+integrity path did call it. The integrator never learned the session was blocked. Now
+consistent.
 
-## C-5 · Skor tidak finit gagal-TERBUKA jadi LOW
+## C-5 · A non-finite score fails OPEN to LOW
 
-`toRisk()` memakai `score <= thr`; untuk `NaN` itu **selalu false** ⇒ jatuh ke `LOW`.
-Model/statistik rusak karena itu dibaca sebagai “aman”. Kini `!Number.isFinite(score)`
-ditangani eksplisit sebagai anomali (`degraded:true`), tidak ikut melatih.
+`toRisk()` used `score <= thr`; for `NaN` that is **always false** ⇒ falls through to `LOW`.
+A broken model or statistic was therefore read as "safe". Now `!Number.isFinite(score)`
+is handled explicitly as an anomaly (`degraded:true`) and does not train the model.
 
-## C-6 · Skor dipalsukan agar cocok dengan level yang dipaksa
+## C-6 · Score faked to match the forced level
 
-`score=Math.min(score,-0.9)` menimpa skor asli saat lantai lengket aktif. Karena ambang
-dikalibrasi per-pengguna (`low` bisa −3.5), −0.9 justru sering masuk pita LOW ⇒ `level`
-dan `score` **saling bertentangan**, dan angka palsu itu tersimpan ke sesi serta terkirim
-ke log cloud. Kini skor asli dipertahankan; kenaikan level ditandai `stickyFloor:true`
-dan vonis mentah model ikut dilaporkan (`modelLevel`/`modelScore`).
+`score=Math.min(score,-0.9)` overwrote the real score while the sticky floor was active.
+Because thresholds are calibrated per user (`low` can be −3.5), −0.9 often lands in the LOW
+band ⇒ `level` and `score` **contradict each other**, and the fake number was stored in the
+session and sent to the cloud log. Now the real score is kept; the raised level is marked
+`stickyFloor:true` and the model's raw verdict is reported too
+(`modelLevel`/`modelScore`).
 
-## C-7 · `clear()` membocorkan template antar-pengguna
+## C-7 · `clear()` leaks the template between users
 
-`clear()` tidak mereset `challengeTemplate`, `_highRun`, `_mfaPassedAt`. Template
-pengguna lama tetap dipakai memverifikasi pengguna berikutnya di tab yang sama.
+`clear()` did not reset `challengeTemplate`, `_highRun`, `_mfaPassedAt`. The previous user's
+template was still used to verify the next user in the same tab.
 
-## C-8 · Fallback bobot Ensemble memakai konfigurasi lama
+## C-8 · The Ensemble weight fallback used the old configuration
 
-`new Ensemble(...)` tanpa `weights` memakai `{IF 0.7, SVM 0.3}` - **kebalikan** dari
-`DEFAULTS` (`IF 0.30 / detektor-2 0.70`), yaitu konfigurasi W7 lama yang lebih buruk.
-Kini mengambil `DEFAULTS.weights`.
+`new Ensemble(...)` without `weights` used `{IF 0.7, SVM 0.3}` - the **reverse** of
+`DEFAULTS` (`IF 0.30 / detector 2 0.70`), i.e. the old, worse W7 configuration.
+It now takes `DEFAULTS.weights`.
 
-## C-9 · Orkestrator extension adalah salinan tangan yang basi
+## C-9 · The extension orchestrator was a stale hand copy
 
-`tools/sync_core.ps1` menyinkronkan `sdk/core/*` dan `storage.js`, **tapi tidak**
-`behaviorguard.js`. `extension/behaviorguard.js` terbukti identik dengan versi lama -
-artinya seluruh perbaikan C-1..C-8 tidak akan pernah sampai ke extension. Skrip sync
-kini mencakup orkestrator dan memverifikasinya.
+`tools/sync_core.ps1` synced `sdk/core/*` and `storage.js`, **but not**
+`behaviorguard.js`. `extension/behaviorguard.js` was shown to be identical to the old
+version - meaning none of the fixes C-1..C-8 would ever reach the extension. The sync
+script now covers the orchestrator and verifies it.
 
-## C-10 · `storage.del()` melempar error tak tertangkap
+## C-10 · `storage.del()` throws an uncaught error
 
-Berbeda dari `idbGet`/`idbSet`, `del()` memanggil `db.transaction()` langsung di dalam
-`onsuccess` **tanpa** `onupgradeneeded` dan **tanpa** cek `objectStoreNames.contains`.
-`try/catch` di sekelilingnya bersifat sinkron sehingga tidak bisa menangkap lemparan di
-callback async itu. Akibatnya `NotFoundError: ... object stores was not found` muncul
-sebagai error tak tertangkap saat store belum pernah dibuat (mis. `clear()` di profil
-baru) - melanggar janji "tidak pernah crash" yang ditulis di kepala berkas itu sendiri.
-Ditemukan dari konsol browser saat menguji C-7, bukan dari pembacaan kode.
+Unlike `idbGet`/`idbSet`, `del()` called `db.transaction()` directly inside `onsuccess`
+**without** `onupgradeneeded` and **without** an `objectStoreNames.contains` check. The
+surrounding `try/catch` is synchronous, so it cannot catch a throw in that async callback.
+As a result `NotFoundError: ... object stores was not found` surfaced as an uncaught error
+when the store had never been created (e.g. `clear()` on a fresh profile) - breaking the
+"never crashes" promise written at the top of that very file. Found in the browser console
+while testing C-7, not by reading the code.
 
-**Tambalan:** `idbDel()` dibuat sebentuk dengan `idbGet`/`idbSet` (buat store bila perlu,
-cek keberadaan, resolusi via `tx.oncomplete`/`onerror`, tak pernah melempar).
-Terverifikasi di browser: `del` pada store kosong tidak melempar, dan nol
+**Patch:** `idbDel()` now has the same shape as `idbGet`/`idbSet` (create the store when
+needed, check it exists, resolve via `tx.oncomplete`/`onerror`, never throw).
+Verified in the browser: `del` on an empty store does not throw, and zero
 `unhandledrejection`.
 
-## C-11 · Knob `mfa` didokumentasikan tapi tidak pernah ada
+## C-11 · The `mfa` knob was documented but never existed
 
-`init()` tidak menerima opsi `mfa` sama sekali, dan auto-boot hanya meneruskan
-`['weights','baseline','retrainEvery','features','thresholds']`. Jadi
-`window.BehaviorGuardConfig = { mfa:{ enabled:false } }` **diabaikan diam-diam** -
-integrator yang ingin menangani step-up sendiri tetap mendapat popup bawaan, tanpa
-pesan kesalahan apa pun. Kini `mfa` diterima dan **digabung** (bukan ditimpa) dengan
-default, sehingga konfigurasi parsial tetap mewarisi sisanya. Terverifikasi di browser.
+`init()` did not accept an `mfa` option at all, and auto-boot only forwarded
+`['weights','baseline','retrainEvery','features','thresholds']`. So
+`window.BehaviorGuardConfig = { mfa:{ enabled:false } }` was **silently ignored** - an
+integrator who wanted to handle step-up themselves still got the built-in popup, with no
+error message at all. Now `mfa` is accepted and **merged** (not replaced) with the defaults,
+so a partial configuration still inherits the rest. Verified in the browser.
 
-## C-12 · Attack simulator mati total
+## C-12 · The attack simulator was completely dead
 
-`demo/attack_sim.html` memakai `bg._instance`, padahal ekspor default modul itu
-**sudah** singleton-nya (`_instance` hanya ada di `window.BehaviorGuard`). `init()`
-melempar di tingkat modul, sehingga `window.run` di bawahnya tidak pernah terpasang dan
-keempat tombol serangan diam tanpa jejak di UI. Demo unggulan untuk Arsenal yang tidak
-bisa diklik. Diperbaiki jadi `bg._instance || bg`, plus `mfa:{enabled:false}` supaya
-simulator otomatis tidak memunculkan popup.
+`demo/attack_sim.html` used `bg._instance`, but the module's default export **already is**
+the singleton (`_instance` only exists on `window.BehaviorGuard`). `init()` threw at module
+level, so the `window.run` below it was never installed and all four attack buttons did
+nothing, with no trace in the UI. The flagship Arsenal demo could not be clicked. Fixed to
+`bg._instance || bg`, plus `mfa:{enabled:false}` so the automated simulator does not raise
+the popup.
 
-## C-13 · Data seed pemilik ditolak oleh integrity-nya sendiri
+## C-13 · The owner seed data was rejected by its own integrity check
 
-`seedOwner()` menaruh `FORM_BLUR` (base+1500) sebagai event **terakhir** padahal mouse
-move berjalan sampai base+3570. Integrity menghitung durasi dari `ts[akhir]-ts[0]` = 1,5 s,
-jadi 130 event terbaca **87/s** (di atas ambang 80/s) sekaligus non-monoton. Akibatnya
-**setiap** sesi pemilik ditandai integrity, `eligible=false`, kolam latih tidak pernah
-terisi, model tidak pernah terbentuk - sehingga ketiga vonis HIGH pada simulator
-sebetulnya berasal dari heuristik bot, **bukan dari model perilaku**, dan mimicry jatuh ke
-jalur enrollment lalu dilaporkan LOW. Demo yang tidak pernah menjalankan mesinnya sendiri.
-Diperbaiki: rentang waktu manusiawi (~24 s/sesi), jitter per-event, dan pengurutan
-timestamp wajib. Sekarang 24/24 sesi layak dan model terbentuk.
+`seedOwner()` put `FORM_BLUR` (base+1500) as the **last** event while mouse moves ran up to
+base+3570. Integrity computes duration as `ts[last]-ts[0]` = 1.5 s, so 130 events read as
+**87/s** (above the 80/s threshold) and as non-monotonic. As a result **every** owner
+session was flagged by integrity, `eligible=false`, the training pool never filled and the
+model was never built - so the three HIGH verdicts in the simulator actually came from the
+bot heuristics, **not from the behaviour model**, and mimicry fell into the enrollment path
+and was reported LOW. A demo that never ran its own engine. Fixed: human time spans
+(~24 s/session), per-event jitter, and mandatory timestamp ordering. Now 24/24 sessions are
+eligible and the model is built.
 
-## C-14 · Simulator menyeed tepat di angka yang mematikan detektor utama
+## C-14 · The simulator seeded exactly at the number that disables the main detector
 
-Setelah C-13, seed 10 sesi masih berada **di bawah** `ensembleMinSamples.svm = 20`,
-sehingga detektor-2 (bobot 0.70) tergerbang mati dan mimicry hanya dilawan Isolation
-Forest sendirian. Seed dinaikkan ke 24 dan status gerbang kini dicetak di log demo.
+After C-13, the 10-session seed was still **below** `ensembleMinSamples.svm = 20`, so
+detector 2 (weight 0.70) was gated off and mimicry was fought by Isolation Forest alone.
+The seed was raised to 24 and the gate status is now printed in the demo log.
 
-## C-15 · KRITIS - konvergensi membekukan model SEBELUM gerbang ensemble terbuka
+## C-15 · CRITICAL - convergence froze the model BEFORE the ensemble gate opened
 
-Yang terpenting dari sesi ini, dan ditemukan hanya karena C-12/C-13 diperbaiki lebih dulu.
+The most important finding of this session, and found only because C-12/C-13 were fixed
+first.
 
-`ensembleMinSamples.svm = 20` sedangkan `baseline = 10`. Bobot gerbang dibekukan ke
-`model.n` pada rebuild terakhir. Aturan konvergensi menghentikan retrain begitu ada 6 vonis
-LOW berturut-turut - yang untuk pengguna dengan 10 sesi awal konsisten terjadi **sebelum**
-kolam mencapai 20. Setelah itu `_rebuildModel()` tidak pernah dipanggil lagi, sehingga:
+`ensembleMinSamples.svm = 20` while `baseline = 10`. The gate weights are frozen to
+`model.n` at the last rebuild. The convergence rule stops retraining after 6 consecutive
+LOW verdicts - which, for a user with 10 consistent initial sessions, happens **before**
+the pool reaches 20. After that `_rebuildModel()` is never called again, so:
 
-> **detektor Mahalanobis - yang memikul 70% bobot - tidak pernah aktif seumur hidup
-> pengguna itu.** Sistem berjalan dengan Isolation Forest sendirian, persis konfigurasi
-> yang terukur jauh lebih lemah.
+> **the Mahalanobis detector - which carries 70% of the weight - never switches on for that
+> user's whole lifetime.** The system runs on Isolation Forest alone, exactly the
+> configuration measured to be much weaker.
 
-Terlihat empiris di simulator setelah C-13/C-14:
+Seen empirically in the simulator after C-13/C-14:
 
 ```
 ukuran kolam latih : 24        <- sudah >= 20
@@ -348,1837 +353,1845 @@ skor ensemble akhir    : -2.999  (hanya zIF)
 ambang low             : -3.300
 vonis                  : LOW     <- penyusup lolos
 ```
+(training pool size 24, already >= 20; `model.n` frozen at 10; gated weights IF 1 / svm 0;
+detector 2 raw score -1811, z clamped at -6, an intruder as clear as it gets; final
+ensemble score -2.999, IF only; low threshold -3.300; verdict LOW, the intruder passes.)
 
-**Tambalan:** menyeberangi ambang gerbang adalah perubahan **struktur** model, bukan
-adaptasi ke data baru, jadi konvergensi tidak boleh memblokirnya. `_ingestVector` kini
-me-rebuild ketika `model.n < ensembleMinSamples.svm` sementara kolam sudah `>=` ambang,
-apa pun status konvergensinya, dan menandai `evt.gateReopened`.
+**Patch:** crossing the gate threshold is a **structural** change to the model, not
+adaptation to new data, so convergence must not block it. `_ingestVector` now rebuilds when
+`model.n < ensembleMinSamples.svm` while the pool is already `>=` the threshold, regardless
+of convergence state, and marks `evt.gateReopened`.
 
-**Sesudah:** `model.n = 20`, bobot `{IF 0.30, svm 0.70}`, dan keempat vektor serangan
-divonis HIGH - mimicry lewat `[ensemble]`, bukan lagi lewat heuristik. Bar yang ditulis
-simulator itu sendiri ("SDK harus HIGH untuk semua") akhirnya terpenuhi.
+**After:** `model.n = 20`, weights `{IF 0.30, svm 0.70}`, and all four attack vectors are
+judged HIGH - mimicry through `[ensemble]`, no longer through the heuristics. The bar the
+simulator set for itself ("the SDK must say HIGH for all of them") is finally met.
 
-Dikunci: `core/ensemble.test.mjs` (11 uji) memaku semantik gerbang; perilaku orkestrator
-diuji ujung-ke-ujung lewat `demo/attack_sim.html`.
+Locked by: `core/ensemble.test.mjs` (11 tests) pins the gate semantics; orchestrator
+behaviour is tested end to end through `demo/attack_sim.html`.
 
-**Catatan untuk angka yang dipublikasikan:** evaluasi held-out di `tools/experiment.py`
-membangun ulang model lewat jalurnya sendiri dan tidak melewati `_ingestVector`, sehingga
-FRR 16.1% / FAR 5.4% **tidak terpengaruh** bug ini. Yang terpengaruh adalah pustaka yang
-benar-benar berjalan di perangkat - persis jenis selisih yang menjadi alasan `DRIFT.md` ada.
+**Note on published numbers:** the held-out evaluation in `tools/experiment.py` rebuilds the
+model through its own path and does not go through `_ingestVector`, so FRR 16.1% / FAR 5.4%
+are **not affected** by this bug. What is affected is the library actually running on the
+device - exactly the kind of gap `DRIFT.md` exists for.
 
-## C-16 · KRITIS - sesi manusia diblokir sebagai bot ("velocity konstan")
+## C-16 · CRITICAL - human sessions blocked as bots ("constant velocity")
 
-Ditemukan hanya lewat **uji live sungguhan**. Semua audit sebelumnya memakai
-`scoreExternalEvents` dengan event sintetis, yang **melewati `capture.js` sepenuhnya** -
-jadi seluruh jalur yang benar-benar dipakai di situs orang belum pernah diuji sama sekali.
+Found only through a **real live test**. Every earlier audit used `scoreExternalEvents` with
+synthetic events, which **bypasses `capture.js` entirely** - so the whole path actually used
+on people's sites had never been tested at all.
 
-`capture.js` tidak pernah mengisi field `velocity` pada `MOUSE_MOVE`, tetapi
-`integrity.js` membacanya:
+`capture.js` never filled the `velocity` field on `MOUSE_MOVE`, but `integrity.js` read it:
 
 ```js
-const vels = evs.filter(e=>e.x!=null).map(e=>e.velocity||0);   // selalu 0
-if(vs < 0.01) reasons.push('velocity konstan');                // selalu terpicu
+const vels = evs.filter(e=>e.x!=null).map(e=>e.velocity||0);   // always 0
+if(vs < 0.01) reasons.push('velocity konstan');                // always fires
 ```
 
-Setiap nilai runtuh ke 0 -> simpangan baku 0 -> sesi ditandai bot -> `BLOCK_SESSION`.
-Terpicu pada sesi yang keystroke+klik-nya kurang dari 10, yaitu sesi yang isinya
-kebanyakan **gerak mouse** - persis perilaku pengunjung yang menelusuri halaman tanpa
-banyak mengetik. Pada uji live, **2 dari 4 sesi manusia pertama diblokir**.
+Every value collapsed to 0 -> standard deviation 0 -> session flagged as a bot ->
+`BLOCK_SESSION`. It fired on sessions with fewer than 10 keystrokes+clicks, i.e. sessions
+made mostly of **mouse movement** - exactly how a visitor browses a page without much
+typing. In the live test, **2 of the first 4 human sessions were blocked**.
 
-## C-17 · Satu dari 28 fitur mati di produksi
+## C-17 · One of the 28 features was dead in production
 
-Akar yang sama. `features.js` §8.4 menghitung
-`idle = |{e ∈ MOUSE_MOVE : (e.velocity || 0) < 0.5}|`. Tanpa field itu, **semua** gerakan
-terhitung diam, sehingga `cursor_idle_ratio` terkunci di **1,0** selamanya. Terukur di
-browser: 40 gerakan -> `cursor_idle_ratio = 1`, `yangPunyaFieldVelocity = 0`.
+Same root cause. `features.js` §8.4 computes
+`idle = |{e ∈ MOUSE_MOVE : (e.velocity || 0) < 0.5}|`. Without that field **every** movement
+counted as idle, so `cursor_idle_ratio` was stuck at **1.0** forever. Measured in the
+browser: 40 movements -> `cursor_idle_ratio = 1`, events carrying a velocity field = 0.
 
-Yang membuatnya serius: di basis data riset fitur ini **bervariasi** (server menghitung
-velocity), jadi model dilatih dengan fitur hidup lalu dipakai dengan fitur mati -
-ketidakcocokan latih-vs-pakai yang permanen dan tak terlihat dari angka held-out mana pun.
+What makes it serious: in the research database this feature **varies** (the server computed
+velocity), so the model was trained with a live feature and then used with a dead one - a
+permanent train-vs-serve mismatch that no held-out number would ever show.
 
-**Tambalan C-16+C-17:** `capture.js` menghitung `velocity` (piksel/milidetik) dari pasangan
-gerakan berurutan; `integrity.js` hanya menilai event yang benar-benar membawa velocity.
-Sesudah: velocity terisi 40/40, `cursor_idle_ratio` 1,0 -> **0,875**, dan "velocity konstan"
-tidak muncul lagi. Dikunci: `core/integrity.test.mjs` (10 uji), masuk CI.
+**Patch C-16+C-17:** `capture.js` computes `velocity` (pixels/millisecond) from consecutive
+pairs of movements; `integrity.js` only judges events that actually carry a velocity.
+After: velocity filled 40/40, `cursor_idle_ratio` 1.0 -> **0.875**, and "constant velocity"
+no longer appears. Locked by: `core/integrity.test.mjs` (10 tests), in CI.
 
-## C-18 · KRITIS - popup step-up yang diabaikan mematikan seluruh lapisan MFA
+## C-18 · CRITICAL - an ignored step-up popup disabled the whole MFA layer
 
-`runMfaChallenge` mengembalikan Promise yang **hanya** selesai kalau pengguna menekan
-tombol. Tanpa batas waktu:
+`runMfaChallenge` returned a Promise that **only** settled when the user pressed a button.
+With no time limit:
 
-1. `_ingestVector` menunggunya -> **`endSession()` tidak pernah selesai**. Integrator yang
-   menulis `await bg.endSession()` menggantung tanpa batas.
-2. `finally { this._mfaBusy = false }` tidak pernah dijalankan -> `_mfaBusy` tetap `true`
-   -> **setiap step-up berikutnya di halaman itu dilewati diam-diam**. Satu popup terlantar
-   mematikan MFA untuk sisa hidup halaman.
+1. `_ingestVector` awaited it -> **`endSession()` never finished**. An integrator who wrote
+   `await bg.endSession()` hung forever.
+2. `finally { this._mfaBusy = false }` never ran -> `_mfaBusy` stayed `true` -> **every
+   later step-up on that page was silently skipped**. One abandoned popup disabled MFA for
+   the rest of the page's life.
 
-Terlihat di uji live: popup pendaftaran muncul di sesi 11, panggilan uji timeout di 45 detik,
-dan sesudahnya `mfaBusy:true` dengan popup masih menggantung di DOM.
+Seen in the live test: the enrollment popup appeared in session 11, the test call timed out
+at 45 seconds, and afterwards `mfaBusy:true` with the popup still hanging in the DOM.
 
-**Tambalan:**
-- `runMfaChallenge` menerima `timeoutMs` (default 120 dtk verifikasi / 60 dtk pendaftaran);
-  saat habis, overlay dibuang dan Promise selesai `{cancelled:true, timedOut:true}`.
-- **Pendaftaran template tidak lagi ditunggu** oleh jalur vonis. Itu prompt penyiapan di
-  sesi LOW yang tenang, bukan bagian dari vonis. Verifikasi tetap ditunggu, karena vonisnya
-  memang bergantung pada hasilnya.
+**Patch:**
+- `runMfaChallenge` takes `timeoutMs` (default 120 s for verification / 60 s for
+  enrollment); when it expires the overlay is removed and the Promise settles with
+  `{cancelled:true, timedOut:true}`.
+- **Template enrollment is no longer awaited** by the verdict path. It is a setup prompt on a
+  calm LOW session, not part of the verdict. Verification is still awaited, because the
+  verdict really depends on its result.
 
-Sesudah: sesi 11 memberi vonis nyata dan `endSession()` selesai dalam **3 ms** meskipun
-popup pendaftaran sedang terbuka; popup uji dengan `timeoutMs:1500` menutup sendiri di
-1.935 ms dengan `{timedOut:true}`.
-
----
-
-## Catatan metodologi: kenapa C-16..C-18 lolos dari 15 audit sebelumnya
-
-Semuanya karena satu kebiasaan uji yang salah. C-1..C-15 diverifikasi lewat
-`scoreExternalEvents(events)` - yang menerima event **buatan** dan **melewati `capture.js`**.
-Artinya seluruh jalur produksi (DOM -> capture -> fitur -> vonis -> popup) tidak pernah
-dijalankan sekali pun, dan tiga bug yang hanya hidup di jalur itu tetap tak terlihat
-meskipun conformance 227/227, uji step-up 20/20, dan uji gerbang 11/11 semuanya hijau.
-
-**Aturan baru:** setiap perubahan pada `capture.js`, `mfa.js`, atau orkestrator wajib
-diuji lewat halaman nyata dengan event DOM, bukan lewat `scoreExternalEvents`.
-
-Dua jebakan harness yang sempat menghasilkan temuan palsu dan perlu diingat:
-- **Aksi `type` otomatis memakai `insertText`**, tidak memancarkan `keydown`/`keyup` -
-  sempat terbaca sebagai "0 event KEYSTROKE" padahal penangkapannya baik-baik saja.
-- **Tab tersembunyi men-throttle `setTimeout` ke ~1/detik**, sehingga 12 detik interaksi
-  hanya menghasilkan 18 event dan setiap sesi terlihat gagal gerbang kelayakan. Pakai
-  busy-wait (`performance.now()`) untuk pacing saat mengukur.
-
-## C-19 · Pustaka DIAM TOTAL selama seluruh fase pendaftaran
-
-Ditemukan saat menyiapkan demo alur lengkap: daftar akun -> sistem belajar -> dikenali.
-
-Cabang pendaftaran di `_ingestVector` menyusun `enrollEvt` lalu langsung `return` -
-**tanpa pernah memanggil `this.onRisk(...)`**. Akibatnya, sepanjang 10 sesi pertama:
-tidak ada callback, tidak ada event `behaviorguard:risk`, dan panel bawaan mandek di
-"MENGENALI..." tanpa pernah bergerak. Hanya `endSession()` yang mengembalikan nilainya,
-sehingga integrasi berbasis event - cara yang justru didokumentasikan di README dan
-QUICKSTART - tidak melihat apa pun.
-
-Ini fase yang paling perlu terlihat: pengguna baru mendaftar dan perlu tahu sistemnya
-sedang belajar, bukan menggantung. Integrator yang membangun indikator progres tidak
-punya sumber data sama sekali.
-
-**Tambalan:** cabang pendaftaran kini memanggil `onRisk` dan menyertakan
-`enrollment: { selesai, perlu, siap }` supaya progresnya bisa ditampilkan tanpa
-mengurai teks alasan. Panel bawaan diperbarui: menampilkan "MENGENALI 3/10" dengan bar
-progres, bukan lagi teks statis.
-
-Terverifikasi di browser: tiga sesi berturut menghasilkan panel 1/10 -> 2/10 -> 3/10
-(bar 10% -> 20% -> 30%) dan integrator menerima tiga event.
+After: session 11 gives a real verdict and `endSession()` finishes in **3 ms** even with the
+enrollment popup open; a test popup with `timeoutMs:1500` closes itself at 1,935 ms with
+`{timedOut:true}`.
 
 ---
 
-## C-20 · KRITIS - pemilik asli terkunci dari MFA-nya sendiri (FRR ~64%)
+## Methodology note: why C-16..C-18 slipped past 15 earlier audits
 
-Dilaporkan dari pemakaian nyata: "awal sekali MFA works, lama-lama ritme gue sendiri
-ga pernah lolos, dan sekarang SEMUA sesi kena MFA." Dipicu setelah orang lain (tempo
-lambat) memancing MFA lalu gagal beberapa kali.
+All because of one wrong testing habit. C-1..C-15 were verified through
+`scoreExternalEvents(events)` - which takes **made-up** events and **bypasses `capture.js`**.
+So the entire production path (DOM -> capture -> features -> verdict -> popup) was never run
+even once, and three bugs that only live on that path stayed invisible even though
+conformance 227/227, step-up tests 20/20 and gate tests 11/11 were all green.
 
-Dua cacat yang saling menguatkan:
+**New rule:** every change to `capture.js`, `mfa.js` or the orchestrator must be tested
+through a real page with DOM events, not through `scoreExternalEvents`.
 
-1. **Template ritme kelewat ketat.** `challenge.js` membandingkan dwell/flight ABSOLUT
-   per posisi dengan toleransi `k·MAD`, MAD dilantai `MAD_FLOOR_REL = 0.08` (8% median).
-   Pendaftaran 3-ronde yang konsisten menghasilkan MAD kecil -> toleransi ~2.5·8%·median.
-   Tapi tempo ketik manusia **bergeser serentak antar-sesi** (capek, mood, keyboard lain):
-   variasi 12-20% itu wajar dan langsung menembus anggaran meleset. Terukur (simulasi
-   jitter Gauss realistis, frasa 18 karakter): FRR pemilik **63.6%** - pemilik ditolak
-   pada mayoritas percobaan. FAR tetap 0% (orang lain memang ditolak - itu benar).
+Two harness traps that produced false findings and are worth remembering:
+- **The automated `type` action uses `insertText`** and emits no `keydown`/`keyup` - this was
+  briefly read as "0 KEYSTROKE events" while capture was actually fine.
+- **Hidden tabs throttle `setTimeout` to ~1/second**, so 12 seconds of interaction produced
+  only 18 events and every session appeared to fail the eligibility gate. Use a busy-wait
+  (`performance.now()`) for pacing when measuring.
 
-2. **Efek domino ke lantai lengket (`lastRisk`).** Lantai hanya bersih ke LOW saat MFA
-   `verified`. Karena verify pemilik nyaris tak pernah lolos, lantai tak pernah turun ->
-   tiap sesi berikutnya dipaksa MEDIUM/HIGH -> MFA muncul terus. Satu episode buruk jadi
-   MFA permanen. Makin sering gagal -> pemilik makin kesal -> ritme makin menyimpang ->
-   spiral. Inilah "semua sesinya MFA".
+## C-19 · The library was COMPLETELY SILENT during the whole enrollment phase
 
-**Tambalan** (`core/challenge.js`, disalin ke `extension/`, dibundel ke `dist/`):
+Found while preparing a full-flow demo: sign up -> the system learns -> recognised.
 
-- **Normalisasi tempo global sebelum banding per-posisi.** Yang membedakan ORANG adalah
-  pola RELATIF antar-posisi, bukan kecepatan absolut. Sampel diskalakan dengan rasio
-  `median(template)/median(sampel)`, dijepit `[0.5, 2.0]`. Drift pemilik (±20%) terkoreksi
-  penuh; sampel bertempo ekstrem (robot / tempel-datar 300 ms) tak bisa diskalakan agar
-  cocok sehingga tetap ditolak - pola relatif penyusup tetap kelihatan beda.
-- **`MAD_FLOOR_REL` 0.08 -> 0.12** - 12% = jitter antar-sesi manusia yang wajar.
+The enrollment branch in `_ingestVector` built `enrollEvt` and then returned immediately -
+**without ever calling `this.onRisk(...)`**. So throughout the first 10 sessions: no
+callback, no `behaviorguard:risk` event, and the built-in panel stuck at "MENGENALI..."
+(recognising) without ever moving. Only `endSession()` returned its value, so event-based
+integration - the very approach documented in the README and QUICKSTART - saw nothing.
 
-Terukur setelah tambalan (harness sama): FRR pemilik **63.6% -> ~2%**, FAR (termasuk
-penyusup bertempo lambat 1.6×) tetap **~0.2%**. Vektor uji terkunci lama tetap hijau
-(pemilik sah lolos, penyusup flat 300/600 ditolak, tempel/NaN/Infinity ditolak).
+This is the phase that most needs to be visible: a new user signs up and needs to know the
+system is learning, not hanging. An integrator building a progress indicator had no data
+source at all.
 
-Dikunci: `core/challenge.test.mjs` +3 uji regresi (pemilik ±18-20% drift -> lolos;
-penyusup pola relatif beda -> ditolak).
+**Patch:** the enrollment branch now calls `onRisk` and includes
+`enrollment: { selesai, perlu, siap }` (done, needed, ready) so progress can be shown
+without parsing reason text. The built-in panel was updated: it shows "MENGENALI 3/10" with
+a progress bar instead of static text.
 
-Catatan: verify `challenge.js` murni & tanpa state - template TIDAK ternoda oleh
-kegagalan orang lain. Ini murni ambang, bukan peracunan; pemulihan otomatis begitu
-kode ini terpasang (tak perlu reset). Bila pengguna ingin bersih total setelah pola
-kesal menjejak: `BehaviorGuard._instance.clear()` lalu daftar ulang.
+Verified in the browser: three consecutive sessions produce panel 1/10 -> 2/10 -> 3/10
+(bar 10% -> 20% -> 30%) and the integrator receives three events.
 
 ---
 
-## C-21 · Event hilang saat pindah halaman + pending sub-ambang dibuang tiap init
+## C-20 · CRITICAL - the real owner locked out of their own MFA (FRR ~64%)
 
-Dilaporkan dari pemakaian nyata: "pindah halaman terus-terusan, sesi tak keambil-ambil"
-dan "2 sesi pertama tak pernah naik ke MENGENALI 1/10". Dua kebocoran lifecycle di
-`behaviorguard.js` (bukan MFA / bukan logika plug-and-play):
+Reported from real use: "at the very start MFA worked, over time my own rhythm never passes,
+and now EVERY session gets MFA." Triggered after someone else (slow tempo) set off MFA and
+failed a few times.
 
-1. **`visibilitychange:hidden` men-drain-dan-membuang sebelum `beforeunload` sempat
-   menyimpan.** Handler `hidden` memanggil `endSession()` yang `capture.drain()`;
-   sesi < `minEventsAssess` (30) di-`return null` -> seluruh event dibuang. Saat NAVIGASI
-   halaman penuh, `hidden` jalan LEBIH DULU dari `beforeunload`, jadi `beforeunload`
-   yang bertugas menyimpan ekor ke `bg:pending` menemukan buffer **kosong**. Terukur di
-   browser: 25 event -> setelah `hidden`, buffer 0 dan `bg:pending` kosong = HILANG.
-2. **Init membuang pending yang belum cukup.** Blok pemulihan `bg:pending` memanggil
-   `storage.set('bg:pending', null)` **tanpa syarat** - bahkan saat `chunk` < 30 dan
-   belum di-skor. Jadi ekor dari halaman-halaman pendek tak pernah berakumulasi jadi
-   sesi utuh; tiap init membuangnya. (Bonus: `storage.set` menulis ke IndexedDB, store
-   yang BEDA dari `bg:pending` di localStorage - jadi baris itu memang tak nyambung.)
+Two defects that reinforce each other:
 
-Akibat gabungan: di situs multi-halaman (mis. `demo/toko-klasik`), menelusuri
-halaman-ke-halaman membuang ekor tiap transisi -> sesi tak pernah cukup panjang untuk
-`minEventsTrain` (100) -> pendaftaran mandek di 0/10.
+1. **The rhythm template was far too strict.** `challenge.js` compared ABSOLUTE dwell/flight
+   per position with a `k·MAD` tolerance, MAD floored at `MAD_FLOOR_REL = 0.08` (8% of the
+   median). A consistent 3-round enrollment yields a small MAD -> tolerance ~2.5·8%·median.
+   But human typing tempo **shifts as a whole between sessions** (tiredness, mood, a
+   different keyboard): 12-20% variation is normal and immediately exceeds the miss budget.
+   Measured (realistic Gaussian jitter simulation, 18-character phrase): owner FRR **63.6%**
+   - the owner is rejected on most attempts. FAR stays 0% (other people are indeed rejected
+   - that part is right).
 
-**Tambalan** (`behaviorguard.js`, disalin ke `extension/`, dibundel ke `dist/`):
+2. **Domino effect on the sticky floor (`lastRisk`).** The floor only clears to LOW when MFA
+   is `verified`. Because the owner's verify almost never passed, the floor never dropped ->
+   every later session was forced to MEDIUM/HIGH -> MFA kept appearing. One bad episode
+   became permanent MFA. More failures -> a more annoyed owner -> a more deviant rhythm ->
+   a spiral. That is "every session gets MFA".
 
-- `bg:pending` kini AKUMULATOR ekor lintas-halaman via raw localStorage. Handler
-  `visibilitychange:hidden` **tidak lagi membuang**: kalau ≥30 -> `endSession()`
-  (skor); kalau < 30 -> `_bankTail()` menyimpan ekor lalu drain.
-- `_bankTail()` baru: simpan ≤200 event terakhir ke `bg:pending` (cap 800), lalu drain
-  -> **idempoten**, jadi `pagehide` + `beforeunload` boleh memanggilnya berkali-kali
-  tanpa dobel. `beforeunload`/`pagehide` sekarang bank SINKRON (skor async tak sempat
-  flush saat halaman mati).
-- Init: kalau pending < 30 -> **kembalikan** ke `bg:pending` (tunggu halaman berikut
-  menambah); kalau ≥30 -> skor satu `chunk` (≤200) lalu simpan SISANYA. Baris
-  `storage.set('bg:pending', null)` tanpa syarat dihapus.
+**Patch** (`core/challenge.js`, copied to `extension/`, bundled into `dist/`):
 
-Terverifikasi di browser (import ESM segar): `_bankTail` menyimpan 25 event (bukan buang),
-idempoten, akumulasi 22->44 lintas "halaman"; init menahan pending 20 (dulu dibuang) dan
-mengonsumsi pending 150. Siklus 6-halaman: `bg:pending` berputar 22->44->flush->22 persis
-benar (nol event hilang). Catatan: vonis akhir dgn event SINTETIS ketrigger heuristik
-bot C-16 (timing terlalu teratur) - pendaftaran dgn event ASLI wajib diuji via DOM nyata
-(aturan di bawah). Lihat [[feedback_test_real_path_not_synthetic]].
+- **Normalise global tempo before the per-position comparison.** What tells PEOPLE apart is
+  the RELATIVE pattern between positions, not absolute speed. The sample is scaled by the
+  ratio `median(template)/median(sample)`, clamped to `[0.5, 2.0]`. Owner drift (±20%) is
+  fully corrected; samples with an extreme tempo (a robot / a flat 300 ms paste) cannot be
+  scaled to fit and are still rejected - an intruder's relative pattern still looks
+  different.
+- **`MAD_FLOOR_REL` 0.08 -> 0.12** - 12% = normal between-session human jitter.
 
-Terkait, **misconfig demo `lab-akurasi`**: tombol "Akhiri sesi" kebuka di 30 event
-(`minEventsAssess`) padahal LAYAK butuh 100 (`minEventsTrain`) -> 2 sesi pertama yang
-pendek diakhiri, dinilai "tidak layak", panel diam di 0/10. Diperbaiki: tombol dikunci
-sampai `minEventsTrain`, teks pencacah ikut ambang itu.
+Measured after the patch (same harness): owner FRR **63.6% -> ~2%**, FAR (including an
+intruder with a 1.6× slower tempo) stays **~0.2%**. The previously locked test vectors stay
+green (legitimate owner passes, flat 300/600 intruder rejected, paste/NaN/Infinity
+rejected).
+
+Locked by: `core/challenge.test.mjs` +3 regression tests (owner with ±18-20% drift ->
+passes; intruder with a different relative pattern -> rejected).
+
+Note: `challenge.js` verify is pure and stateless - the template is NOT tainted by other
+people's failures. This is purely a threshold issue, not poisoning; recovery is automatic
+once this code is installed (no reset needed). If a user wants a completely clean slate after
+the annoyed pattern has set in: `BehaviorGuard._instance.clear()` and enroll again.
 
 ---
 
-## C-22 · KRITIS - pemilik divonis MEDIUM SELAMANYA mulai sesi ~20 (FRR 98%)
+## C-21 · Events lost on page navigation + sub-threshold pending data discarded on every init
 
-Dilaporkan penguji (Kepler) dari pemakaian nyata: "1-10 baseline, 10-20 LOW, 20-seterusnya
-MEDIUM" - pemilik sendiri, terus divonis MEDIUM -> MFA tiap sesi -> (C-20) MFA gagal -> macet.
-"Sudah gw variasiin biar toleransi idle lebih besar, tetap MFA." Angka **20** kuncinya:
-`ensembleMinSamples.svm = 20` = gerbang detektor Mahalanobis (bobot 0.70, dominan).
+Reported from real use: "moving between pages all the time, the session never gets
+captured" and "the first 2 sessions never move up to MENGENALI 1/10". Two lifecycle leaks
+in `behaviorguard.js` (not MFA / not the plug-and-play logic):
 
-**Akar (statistik, bukan idle-time):** Mahalanobis nge-fit kovarians **d×d dengan d=28
-fitur**, tapi gerbangnya buka di **n=20 sampel**. **n < d** -> kovarians *under-determined*
-/ overfit: jarak Mahalanobis titik in-sample (data latih) kecil palsu, `svm_stats` (mean/std
-skor) dan ambang dikalibrasi dari skor in-sample yang optimistik. Sesi PEMILIK baru
-(out-of-sample) jaraknya jauh lebih besar -> `zSVM` sangat negatif -> skor ensembel nyemplung
-di bawah ambang -> MEDIUM. Karena `progressiveMaxPool=30` (kolam maks base10+30 = 40 ≈ 1.4d),
-kondisi ini **tak pernah pulih** - FRR mentok ~45% bahkan di kolam penuh.
+1. **`visibilitychange:hidden` drains and discards before `beforeunload` can save.** The
+   `hidden` handler called `endSession()`, which runs `capture.drain()`; a session below
+   `minEventsAssess` (30) returned `null` -> all its events were discarded. On a full PAGE
+   navigation, `hidden` runs BEFORE `beforeunload`, so `beforeunload`, whose job is to save
+   the tail to `bg:pending`, found an **empty** buffer. Measured in the browser: 25 events ->
+   after `hidden`, buffer 0 and `bg:pending` empty = LOST.
+2. **Init discarded pending data that was not yet enough.** The `bg:pending` recovery block
+   called `storage.set('bg:pending', null)` **unconditionally** - even when `chunk` < 30 and
+   not yet scored. So tails from short pages never accumulated into a full session; every
+   init threw them away. (Bonus: `storage.set` writes to IndexedDB, a DIFFERENT store from
+   `bg:pending` in localStorage - so that line never connected anyway.)
 
-Terukur (kode model asli, `_rebuildModel`+`scoreVector`, distribusi pemilik Gauss 28-dim,
-simulasi - bukan data riset): FRR pemilik out-of-sample per ukuran kolam:
+Combined effect: on a multi-page site (e.g. `demo/toko-klasik`), browsing page to page
+discarded the tail on every transition -> sessions were never long enough for
+`minEventsTrain` (100) -> enrollment stuck at 0/10.
 
-| kolam | 15/19 (gerbang tutup) | 20 | 25 | 30 | 40 | 60 | 90/100 |
+**Patch** (`behaviorguard.js`, copied to `extension/`, bundled into `dist/`):
+
+- `bg:pending` is now a cross-page tail ACCUMULATOR via raw localStorage. The
+  `visibilitychange:hidden` handler **no longer discards**: if ≥30 -> `endSession()`
+  (score); if < 30 -> `_bankTail()` saves the tail and then drains.
+- New `_bankTail()`: saves the last ≤200 events to `bg:pending` (cap 800), then drains ->
+  **idempotent**, so `pagehide` + `beforeunload` may call it repeatedly without duplicates.
+  `beforeunload`/`pagehide` now bank SYNCHRONOUSLY (async scoring has no time to flush while
+  the page is dying).
+- Init: if pending < 30 -> **put it back** into `bg:pending` (wait for the next page to add
+  more); if ≥30 -> score one `chunk` (≤200) and save THE REST. The unconditional
+  `storage.set('bg:pending', null)` line was removed.
+
+Verified in the browser (fresh ESM import): `_bankTail` saves 25 events (instead of
+discarding them), is idempotent, and accumulates 22->44 across "pages"; init holds pending 20
+(previously discarded) and consumes pending 150. A 6-page cycle: `bg:pending` rotates
+22->44->flush->22 exactly right (zero events lost). Note: the final verdict with SYNTHETIC
+events triggered the C-16 bot heuristic (timing too regular) - enrollment with REAL events
+must be tested through a real DOM (rule below).
+
+Related, a **misconfiguration in the `lab-akurasi` demo**: the "end session" button unlocked
+at 30 events (`minEventsAssess`) while ELIGIBLE needs 100 (`minEventsTrain`) -> the first 2
+short sessions were ended, judged "not eligible", and the panel stayed at 0/10. Fixed: the
+button stays locked until `minEventsTrain`, and the counter text follows that threshold.
+
+---
+
+## C-22 · CRITICAL - the owner judged MEDIUM FOREVER from session ~20 on (FRR 98%)
+
+Reported by a tester (Kepler) from real use: "1-10 baseline, 10-20 LOW, 20 onwards MEDIUM" -
+the owner themselves, judged MEDIUM over and over -> MFA every session -> (C-20) MFA fails ->
+stuck. "I varied it so the idle tolerance is bigger, still MFA." The number **20** is the
+key: `ensembleMinSamples.svm = 20` = the gate of the Mahalanobis detector (weight 0.70,
+dominant).
+
+**Root cause (statistics, not idle time):** Mahalanobis fits a **d×d covariance with d=28
+features**, but its gate opens at **n=20 samples**. **n < d** -> the covariance is
+*under-determined* / overfit: the Mahalanobis distance of in-sample points (training data)
+is falsely small, and `svm_stats` (score mean/std) and the thresholds are calibrated from
+optimistic in-sample scores. A new OWNER session (out of sample) is much farther away ->
+`zSVM` is very negative -> the ensemble score drops below the threshold -> MEDIUM. Because
+`progressiveMaxPool=30` (max pool base 10+30 = 40 ≈ 1.4d), this **never recovers** - FRR
+stays around 45% even with a full pool.
+
+Measured (the real model code, `_rebuildModel`+`scoreVector`, a 28-dim Gaussian owner
+distribution, simulation - not research data): out-of-sample owner FRR by pool size:
+
+| pool | 15/19 (gate closed) | 20 | 25 | 30 | 40 | 60 | 90/100 |
 |---|---|---|---|---|---|---|---|
-| **sebelum** | 0% | **98.6%** | 92% | 85% | 45% | 14% | 6% |
-| **sesudah** | 0% | **9.0%** | 4.8% | 6.5% | 5.0% | 5.5% | 2.3% |
+| **before** | 0% | **98.6%** | 92% | 85% | 45% | 14% | 6% |
+| **after** | 0% | **9.0%** | 4.8% | 6.5% | 5.0% | 5.5% | 2.3% |
 
-FAR (penyusup jelas-beda ≥1.5σ) tetap ~0% di kedua kasus.
+FAR (a clearly different intruder, ≥1.5σ) stays ~0% in both cases.
 
-Kenapa "10-20 LOW" lalu "20+ MEDIUM": di bawah 20, gerbang Maha TUTUP -> Isolation Forest
-sendirian (lunak, menggeneralisasi) -> LOW. Di 20, gerbang BUKA -> Maha overfit dominan -> MEDIUM.
-Ini kebalikan C-15 (dulu gerbang beku TERTUTUP selamanya); memperbaiki C-15 justru memunculkan
-C-22 karena gerbang akhirnya benar-benar terbuka - di jumlah sampel yang masih < dimensi.
+Why "10-20 LOW" and then "20+ MEDIUM": below 20 the Maha gate is CLOSED -> Isolation Forest
+alone (soft, generalises) -> LOW. At 20 the gate OPENS -> an overfit Maha dominates ->
+MEDIUM. This is the reverse of C-15 (where the gate was frozen CLOSED forever); fixing C-15
+is exactly what surfaced C-22, because the gate finally really opened - at a sample count
+still below the dimension.
 
-**Tambalan** (hanya jalur LIVE `behaviorguard.js._rebuildModel` + `config.js`; **golden/
-conformance TIDAK tersentuh** karena keduanya nge-fit Maha via `cfg.mahalanobis.shrink` tetap
-langsung, bukan lewat orchestrator - dikonfirmasi Python 227/227 & JS 227/227 tetap SESUAI):
+**Patch** (only the LIVE path `behaviorguard.js._rebuildModel` + `config.js`; **golden and
+conformance are NOT touched**, because both fit Maha with a fixed `cfg.mahalanobis.shrink`
+directly, not through the orchestrator - confirmed Python 227/227 and JS 227/227 still
+SESUAI):
 
-- **Shrinkage ADAPTIF** terhadap rasio sampel/dimensi: `shrink = clamp(0.3, 0.9, d/n)`.
-  Saat n<d, shrink berat menarik kovarians ke Euclidean-terstandardisasi (aman, tak overfit);
-  meluruh ke dasar 0.3 saat n≥~3d -> korelasi penuh kelas riset kembali.
-- **`progressiveMaxPool` 30->90** supaya kolam bisa tumbuh, shrink meluruh, dan deteksi
-  penyusup-mirip membaik seiring pemakaian.
+- **ADAPTIVE shrinkage** against the sample/dimension ratio: `shrink = clamp(0.3, 0.9, d/n)`.
+  When n<d, heavy shrinkage pulls the covariance toward standardised Euclidean (safe, no
+  overfit); it decays to the 0.3 base once n≥~3d -> research-grade full correlation returns.
+- **`progressiveMaxPool` 30->90** so the pool can grow, the shrinkage decays, and detection
+  of look-alike intruders improves with use.
 
-**Batas yang WAJIB dijujurkan (threat model):** dengan sampel < ~2d, korelasi antar-fitur
-tak bisa diestimasi, jadi penyusup yang SANGAT mirip pemilik (< ~1σ) belum tertangkap andal
-sampai kolam pemilik cukup besar. Ini inheren pada belajar on-device few-shot; baseline lama
-*pura-pura* bisa (full covariance) dan justru itu yang mengunci pemilik. Deteksi menguat saat
-data pemilik bertambah.
+**A limit that MUST be stated honestly (threat model):** with fewer than ~2d samples the
+correlations between features cannot be estimated, so an intruder who is VERY similar to the
+owner (< ~1σ) is not reliably caught until the owner pool is large enough. This is inherent
+to few-shot on-device learning; the old baseline *pretended* it could (full covariance) and
+that is exactly what locked the owner out. Detection strengthens as owner data grows.
 
-**Kopling tiga bug:** C-22 (pemilik tak lagi keliru MEDIUM) + C-20 (MFA pemilik akhirnya lolos)
-+ sifat lantai-lengket (`lastRisk` hanya bersih saat MFA `verified`) - ketiganya harus benar
-bareng; kalau salah satu bocor, satu episode buruk jadi MFA permanen (spiral yang dilaporkan
-Kepler). C-21 memastikan sesinya kekumpul dari awal supaya kolam tumbuh sehat.
+**Three coupled bugs:** C-22 (the owner is no longer wrongly MEDIUM) + C-20 (the owner's MFA
+finally passes) + the sticky-floor property (`lastRisk` only clears when MFA is `verified`)
+- all three have to be right together; if one leaks, one bad episode becomes permanent MFA
+(the spiral Kepler reported). C-21 makes sure sessions are collected from the start so the
+pool grows healthily.
 
-Diverifikasi 2026-09-07 di browser: end-to-end `_rebuildModel`+`scoreVector` (tabel di atas),
-plus 4 suite hijau (JS conformance 227/227, step-up 23/23, gerbang 11/11, integrity 10/10).
+Verified 2026-09-07 in the browser: end to end `_rebuildModel`+`scoreVector` (table above),
+plus 4 green suites (JS conformance 227/227, step-up 23/23, gate 11/11, integrity 10/10).
 
 ---
 
-## C-23 · Waktu idle ikut terukur sebagai perilaku (+ jendela ambil-alih sesi)
+## C-23 · Idle time measured as if it were behaviour (+ a session takeover window)
 
-**Dilaporkan oleh dosen pembimbing, 2026-09-09.** "Kalau idle-nya kan bisa aja dia buka
-terus ditinggal melakukan sesuatu." Benar, dan akibatnya ada **dua**, bukan satu.
+**Reported by the thesis supervisor, 2026-09-09.** "With idle, someone can just open it and
+then leave it to go do something else." Correct, and the consequences are **two**, not one.
 
-**Akibat 1 - pengukuran (FRR).** Fitur F4 dihitung dari selisih antar-event dan dari
-`duration = ts_akhir − ts_awal`. Jeda mati ikut masuk seolah-olah ia perilaku. Terukur
-(`core/idle.test.mjs`, satu rentetan 40 event, ditinggal 12 menit di tengah):
+**Consequence 1 - measurement (FRR).** The F4 features are computed from the gaps between
+events and from `duration = ts_last − ts_first`. Dead pauses count as if they were
+behaviour. Measured (`core/idle.test.mjs`, one run of 40 events, left alone for 12 minutes
+in the middle):
 
-| Fitur | Melintasi jeda (lama) | Per segmen (baru) | Faktor |
+| Feature | Across the gap (old) | Per segment (new) | Factor |
 |---|---|---|---|
-| `temporal_session_duration` | 731,2 dtk | 5,5 dtk | 133× |
-| `mouse_click_interval_mean` | 48.708 ms | 710 ms | 69× |
-| `keystroke_flight_time_mean` | 34.797 ms | 509 ms | 68× |
-| `keystroke_typing_speed` | 0,030 | 1,998 | 67× |
+| `temporal_session_duration` | 731.2 s | 5.5 s | 133× |
+| `mouse_click_interval_mean` | 48,708 ms | 710 ms | 69× |
+| `keystroke_flight_time_mean` | 34,797 ms | 509 ms | 68× |
+| `keystroke_typing_speed` | 0.030 | 1.998 | 67× |
 
-Empat dari 28 fitur meleset satu-dua orde besaran - dan bukan derau acak, melainkan bias
-searah. Basis data riset berisi sesi berbasis-tugas yang PADAT, jadi ini ketidakcocokan
-**latih-vs-pakai** yang sistematis: kelas cacat yang sama dengan C-16/C-17, hanya sumbernya
-waktu, bukan field yang kosong. Pemilik yang sekadar meninggalkan tab dinilai menyimpang.
+Four of the 28 features miss by one or two orders of magnitude - and not as random noise but
+as a one-directional bias. The research database contains DENSE task-based sessions, so this
+is a systematic **train-vs-serve** mismatch: the same defect class as C-16/C-17, only the
+source is time rather than an empty field. An owner who simply leaves the tab is judged as
+deviating.
 
-**Akibat 2 - keamanan (FAR).** Sisi sebaliknya, dan justru yang lebih berbahaya: selama
-kursi kosong, sesi itu **sudah terautentikasi**. Siapa pun yang duduk sesudahnya mewarisi
-sesi yang sah ("serangan jam makan siang"). Karena penyusupnya tidak melewati login,
-satu-satunya sinyal yang tersedia adalah adanya absen panjang di tengah sesi - persis
-sinyal yang dulu dibuang. Menghapus idle demi FRR saja justru **memperlebar** lubang ini.
+**Consequence 2 - security (FAR).** The opposite side, and actually the more dangerous one:
+while the chair is empty the session is **already authenticated**. Whoever sits down next
+inherits a legitimate session (the "lunch break attack"). Because the intruder never passes
+a login, the only available signal is a long absence in the middle of the session - exactly
+the signal that used to be thrown away. Removing idle time just for FRR's sake would
+**widen** this hole.
 
-**Akibat 3 - diam dibaca aman.** `endSession()` dulu mengembalikan `null` tanpa jejak untuk
-buffer < 30 event. Integrator yang menunggu callback tidak bisa membedakan "sudah diperiksa,
-aman" dari "tak ada bukti sama sekali", dan default diam selalu jatuh ke sisi mempercayai.
+**Consequence 3 - silence read as safe.** `endSession()` used to return `null` without a
+trace for buffers < 30 events. An integrator waiting for a callback could not tell "checked,
+safe" from "no evidence at all", and a silent default always falls on the trusting side.
 
-**Tambalan (tiga lapis, `sdk/core/idle.js` + orkestrator):**
+**Patch (three layers, `sdk/core/idle.js` + orchestrator):**
 
-1. **Segmentasi.** Aliran event dipecah pada tiap jeda ≥ `session.idleGapSec` (30 dtk =
-   satu jendela penilaian). Tiap segmen kontigu dinilai SENDIRI. Rumus fitur di
-   `core/SPEC.md` **tidak disentuh** - yang berubah hanya apa yang disuapkan ke
-   `extractF4`. Karena itu golden dan keempat port tetap 227/227 tanpa diubah.
-2. **Dua ambang, dua akibat.** `idle.awaySec` (5 mnt) = batas "kursi mungkin kosong":
-   streak LOW direset, kepercayaan dari sebelum absen tidak menyeberang.
-   `idle.reverifyAfterSec` (15 mnt, sejajar batas idle-timeout PCI DSS 8.2.8) = LOW
-   dinaikkan jadi MEDIUM supaya step-up jalan sekali. Sengaja dipisah: 5 menit cukup untuk
-   berhenti mengukur melintas, tapi belum cukup untuk mengganggu pengguna.
-3. **ABSTAIN.** Jendela tanpa bukti menerbitkan vonis `UNKNOWN` / aksi `ABSTAIN` **sekali**
-   per rentetan idle (bukan tiap jendela, supaya tab yang ditinggal semalaman tidak
-   membanjiri log). Sistem boleh bilang "saya tidak tahu" alih-alih menebak.
+1. **Segmentation.** The event stream is split at every pause ≥ `session.idleGapSec` (30 s =
+   one assessment window). Each contiguous segment is judged ON ITS OWN. The feature
+   formulas in `core/SPEC.md` are **not touched** - only what is fed into `extractF4`
+   changes. That is why the golden file and all four ports stay at 227/227 unchanged.
+2. **Two thresholds, two consequences.** `idle.awaySec` (5 min) = the "the chair may be
+   empty" limit: the LOW streak is reset, trust from before the absence does not carry over.
+   `idle.reverifyAfterSec` (15 min, aligned with the PCI DSS 8.2.8 idle-timeout limit) = LOW
+   is raised to MEDIUM so step-up runs once. Deliberately separate: 5 minutes is enough to
+   stop measuring across the gap, but not enough to bother the user.
+3. **ABSTAIN.** A window without evidence issues an `UNKNOWN` verdict / `ABSTAIN` action
+   **once** per idle run (not every window, so a tab left open overnight does not flood the
+   log). The system may say "I don't know" instead of guessing.
 
-**Bonus dari lapis 1:** ekor buffer yang masih hidup kini DIKEMBALIKAN ke buffer, bukan
-dibuang tiap 30 detik. Pengguna yang menelusuri pelan-pelan akhirnya terkumpul jadi sesi.
+**Bonus from layer 1:** the live tail of the buffer is now RETURNED to the buffer instead of
+being thrown away every 30 seconds. A user browsing slowly eventually adds up to a session.
 
-**Batas yang wajib dijujurkan.** Segmentasi menghapus jeda dari pengukuran, tapi ia tidak
-bisa membedakan *ditinggal* dari *membaca tanpa menyentuh apa pun* - keduanya sama-sama
-sunyi di lapisan DOM. Itulah kenapa jawabannya bukan menebak, melainkan ABSTAIN + verifikasi
-ulang pada absen panjang. Ambang 30/300/900 dtk adalah pilihan rekayasa, belum dituning
-terhadap data lapangan; ketiganya dibuka sebagai knob `init({session, idle})`.
+**A limit that must be stated honestly.** Segmentation removes pauses from the measurement,
+but it cannot tell *left alone* from *reading without touching anything* - both are equally
+silent at the DOM layer. That is why the answer is not to guess but to ABSTAIN + re-verify
+after a long absence. The 30/300/900 s thresholds are engineering choices, not yet tuned
+against field data; all three are exposed as knobs in `init({session, idle})`.
 
-**Uji:** `core/idle.test.mjs` 33/33 (modul + bukti angka di tabel atas),
-`core/idle.live.test.mjs` 20/20 (jalur penuh orkestrator: dua vonis dari satu batch bergap,
-`resumedAfterAway`, LOW->MEDIUM, ABSTAIN). Usulan lengkap + kasus sejenis:
-`docs/USULAN-KONTEKS-DAN-IDLE.md`.
+**Tests:** `core/idle.test.mjs` 33/33 (module + the evidence for the numbers in the table
+above), `core/idle.live.test.mjs` 20/20 (full orchestrator path: two verdicts from one gapped
+batch, `resumedAfterAway`, LOW->MEDIUM, ABSTAIN). Full proposal + similar cases:
+`docs/CONTEXT-AND-IDLE-PROPOSAL.md`.
 
 ---
 
-## C-24 · Panjang sesi yang berubah terbaca sebagai identitas yang berubah
+## C-24 · A change in session length read as a change in identity
 
-**Ditemukan saat mengukur C-23, bukan dilaporkan.** Ablasi C-23 memakai lengan KONTROL -
-sesi bersih yang dipotong di titik yang sama, tanpa jeda apa pun. Kontrol itu yang
-membongkarnya: |z| fitur-cacah naik **0,96 -> 2,02** hanya karena sesinya lebih pendek.
-Tanpa lengan kontrol, kenaikan itu akan salah dibaca sebagai ongkos segmentasi C-23.
+**Found while measuring C-23, not reported.** The C-23 ablation used a CONTROL arm - clean
+sessions cut at the same point, with no pause at all. That control is what exposed it: the
+|z| of the count features rose **0.96 -> 2.02** just because the session was shorter.
+Without the control arm, that rise would have been misread as the cost of C-23
+segmentation.
 
-**Akar.** Sembilan dari 28 fitur adalah **hitungan mentah** - `mouse_direction_changes`,
+**Root cause.** Nine of the 28 features are **raw counts** - `mouse_direction_changes`,
 `mouse_pause_count`, `keystroke_burst_count`, `temporal_activity_bursts`, `nav_page_count`,
 `nav_step_transition_count`, `form_focus_count`, `form_blur_count`, `cart_action_count` -
-yang ikut membesar bersama panjang sesi. Akibatnya **setiap** perubahan panjang sesi
-terbaca sebagai perubahan identitas. Ini lebih tua dari idle dan menyentuh hampir semua
-kasus di `docs/USULAN-KONTEKS-DAN-IDLE.md` §4 yang mengubah panjang sesi.
+which grow with session length. As a result **every** change in session length is read as a
+change in identity. This predates idle and affects almost every case in
+`docs/CONTEXT-AND-IDLE-PROPOSAL.md` §4 that changes session length.
 
-**Dua jalan, dan kenapa yang kedua dipilih.**
-(a) Ubah rumusnya jadi laju (`cacah / durasi_aktif`) -> SPEC v1.3, regenerasi golden,
-sinkron empat port, dan **semua angka lama kehilangan reprodusibilitasnya**.
-(b) Buat panjangnya KONSTAN, sehingga cacahan otomatis sebanding -> **nol baris rumus
-fitur yang berubah**. Dipilih (b), alasan yang sama dengan C-23: perbaikan ditaruh di
-lapisan sesionisasi, bukan lapisan fitur.
+**Two routes, and why the second was chosen.**
+(a) Turn the formulas into rates (`count / active_duration`) -> SPEC v1.3, regenerate the
+golden file, sync four ports, and **every old number loses its reproducibility**.
+(b) Make the length CONSTANT, so counts become comparable automatically -> **zero lines of
+feature formula change**. (b) was chosen, for the same reason as C-23: the fix belongs in the
+sessionisation layer, not the feature layer.
 
-Di bawah jendela kanonik, cacahan berubah makna jadi **komposisi** ("dari K event, berapa
-yang klik") dan `temporal_session_duration` jadi **kecepatan** ("berapa lama menghasilkan
-K event") - keduanya justru lebih biometrik daripada "sesinya kebetulan sepanjang apa".
-Syarat mutlak: dipakai di **pendaftaran DAN penilaian**, kalau tidak kita cuma menukar
-satu ketidakcocokan latih-vs-pakai dengan yang lain.
+Under a canonical window, counts change meaning into **composition** ("out of K events, how
+many were clicks") and `temporal_session_duration` becomes **speed** ("how long it took to
+produce K events") - both are actually more biometric than "how long the session happened to
+be". Hard requirement: used in **enrollment AND scoring**, otherwise we only trade one
+train-vs-serve mismatch for another.
 
-**Tiga knob, SEMUANYA default mati** (`session.canonicalWindow: 0`, `aggregateWindows: 1`,
-`calibrationHoldout: 0`) sehingga jalur lama tak tersentuh dan angka headline tetap sah.
+**Three knobs, ALL off by default** (`session.canonicalWindow: 0`, `aggregateWindows: 1`,
+`calibrationHoldout: 0`) so the old path is untouched and the headline numbers stay valid.
 
-**Terukur** (`tools/idle_ablation.py --canonical 120`, 19 subjek, 482.203 event mentah;
-rata-rata |z| terhadap baseline pemilik):
+**Measured** (`tools/idle_ablation.py --canonical 120`, 19 subjects, 482,203 raw events;
+mean |z| against the owner baseline):
 
-| Lengan | fitur-WAKTU | fitur-CACAH | fitur-BENTUK |
+| Arm | TIME features | COUNT features | SHAPE features |
 |---|---:|---:|---:|
-| Bersih, sesi utuh | 0,83 | 1,00 | 1,90 |
-| Kontrol: dipotong saja | 0,84 | **1,01** | 1,90 |
-| Bergap, tanpa segmentasi | 8,41 | 1,00 | 1,91 |
-| Bergap + segmentasi (C-23) | 0,84 | **1,00** | 1,89 |
+| Clean, full session | 0.83 | 1.00 | 1.90 |
+| Control: cut only | 0.84 | **1.01** | 1.90 |
+| Gapped, no segmentation | 8.41 | 1.00 | 1.91 |
+| Gapped + segmentation (C-23) | 0.84 | **1.00** | 1.89 |
 
-Bandingkan dengan tabel C-23 (tanpa kanonikalisasi): kolom fitur-CACAH di sana 0,95 vs
-**2,02**. Di sini keempat lengan berhimpit di 1,00 - **invariansi pulih penuh**. Kolom
-fitur-WAKTU membuktikan keduanya diperlukan: kanonikalisasi sendirian tidak menyembuhkan
-idle (8,41), segmentasi sendirian tidak menyembuhkan panjang sesi.
+Compare with the C-23 table (without canonicalisation): the COUNT column there was 0.95 vs
+**2.02**. Here all four arms line up at 1.00 - **invariance fully restored**. The TIME column
+proves both are needed: canonicalisation alone does not cure idle (8.41), and segmentation
+alone does not cure session length.
 
-**Agregasi bukti.** Jendela yang lebih pendek berarti bukti lebih sedikit per vonis.
-Jawabannya bukan melonggarkan ambang - itu memindahkan kesalahan ke sisi FAR - melainkan
-menunda vonis sampai M jendela terkumpul lalu memvonis rata-ratanya. Yang ditukar
-**latensi dengan keyakinan**, bukan FRR dengan FAR:
+**Evidence aggregation.** A shorter window means less evidence per verdict. The answer is not
+to loosen the threshold - that moves the error to the FAR side - but to hold the verdict until
+M windows have been collected and judge their average. What is traded is **latency for
+confidence**, not FRR for FAR:
 
-| M | AUC | FAR | catatan |
+| M | AUC | FAR | note |
 |---:|---:|---:|---|
-| 1 | 0,770 | 25,0% | vonis per jendela |
-| 2 | 0,789 | 16,9% | |
-| 3 | 0,808 | 12,9% | |
-| 5 | 0,829 | 9,4% | |
+| 1 | 0.770 | 25.0% | verdict per window |
+| 2 | 0.789 | 16.9% | |
+| 3 | 0.808 | 12.9% | |
+| 5 | 0.829 | 9.4% | |
 
-Jalan pintas yang menggoda - rapatkan ambang sebesar `std/sqrt(M)` - **salah, dan salahnya
-searah**: jendela berurutan dari sesi yang sama berkorelasi, jadi sebaran nyatanya lebih
-lebar dan ambangnya jadi terlalu rapat. Diuji: koreksi analitik itu meninggalkan FRR di
-46,5%. Yang benar adalah mengagregasi skor LATIH dengan cara yang persis sama lalu
-mengkalibrasi di atasnya, sehingga korelasinya ikut terbawa tanpa perlu diasumsikan.
+The tempting shortcut - tighten the threshold by `std/sqrt(M)` - is **wrong, and wrong in one
+direction**: consecutive windows from the same session are correlated, so the real spread is
+wider and the threshold ends up too tight. Tested: that analytic correction left FRR at
+46.5%. The right way is to aggregate the TRAINING scores in exactly the same way and calibrate
+on top of that, so the correlation is carried along without having to be assumed.
 
-**Kalibrasi ambang di luar sampel.** Ternyata sisa FRR bukan soal korelasi, melainkan
-`_rebuildModel` mengkalibrasi ambang dari skor vektor yang **persis dipakai memfit**
-detektor. Skor in-sample selalu optimistik, ambang jadi terlalu rapat, dan sesi pemilik
-berikutnya jatuh di luarnya - **mekanisme yang sama persis dengan C-22**, satu lapis lebih
-tinggi. Menyisihkan 30% kolam khusus untuk kalibrasi: **FRR 46,5% -> 27,8%, EER 32,9% ->
-28,6%** (AUC tetap, karena kalibrasi menggeser titik operasi, bukan daya pisah).
+**Out-of-sample threshold calibration.** It turned out the remaining FRR was not about
+correlation, but that `_rebuildModel` calibrated the thresholds from the scores of **exactly
+the vectors used to fit** the detector. In-sample scores are always optimistic, the threshold
+ends up too tight, and the owner's next session falls outside it - **exactly the same
+mechanism as C-22**, one layer up. Setting aside 30% of the pool for calibration only:
+**FRR 46.5% -> 27.8%, EER 32.9% -> 28.6%** (AUC unchanged, because calibration moves the
+operating point, not the separating power).
 
-**Yang WAJIB dijujurkan.** Ketiga knob terbukti **arahnya**, bukan **titik operasinya**.
-Pada harness ablasi, EER kanonik (~28-33%) masih jauh di bawah EER 11,9% protokol
-sesi-utuh yang dilaporkan `config.js`. Sebagian karena harness ablasi memang longgar
-(lihat catatan batas di skripnya), sebagian karena jendela 120 event memang membawa bukti
-lebih sedikit daripada sesi ~600 event. **Karena itu ketiganya default mati.** Sebelum
-angkanya dikutip di skripsi, jalankan ulang dengan protokol held-out `reproduce_db.py`.
+**What MUST be stated honestly.** All three knobs are proven in **direction**, not in
+**operating point**. On the ablation harness, the canonical EER (~28-33%) is still far from
+the 11.9% EER of the full-session protocol reported in `config.js`. Partly because the
+ablation harness is loose (see the limits note in its script), partly because a 120-event
+window really carries less evidence than a ~600-event session. **That is why all three are
+off by default.** Before quoting these numbers in the thesis, re-run them with the held-out
+protocol of `reproduce_db.py`.
 
-Pertukaran yang sebenarnya: kanonikalisasi menukar **daya pisah puncak** dengan
-**invariansi**. Perhatikan lengan bersih tanpa kanonikalisasi AUC 0,810, tapi begitu
-panjang sesinya berubah ia jatuh ke 0,636; dengan kanonikalisasi ia bertahan di
-0,742-0,746 di SEMUA lengan. Dan karena di produksi sesi memang berupa jendela 30 detik -
-tidak pernah sesi riset utuh - rezim yang invarian itulah yang cocok dengan penyebaran.
+The real trade-off: canonicalisation trades **peak separating power** for **invariance**. Note
+that the clean arm without canonicalisation has AUC 0.810, but as soon as its session length
+changes it drops to 0.636; with canonicalisation it holds at 0.742-0.746 in ALL arms. And
+because in production sessions really are 30-second windows - never full research sessions -
+the invariant regime is the one that matches deployment.
 
-**Uji:** `core/invariance.test.mjs` 26/26, dengan uji pertama mengunci bahwa default
-tidak mengubah apa pun. Bukti invariansi di sana: pergeseran fitur-cacah akibat masukan
-500 vs 260 event turun dari **117,0 -> 1,0**.
+**Tests:** `core/invariance.test.mjs` 26/26, with the first test locking that the defaults
+change nothing. The invariance evidence there: the count-feature shift caused by 500 vs 260
+events of input drops from **117.0 -> 1.0**.
 
 ---
 
-## Validasi held-out untuk C-23 dan C-24 - VONIS AKHIR (5 belahan)
+## Held-out validation for C-23 and C-24 - FINAL VERDICT (5 splits)
 
-> **Riwayat koreksi.** Versi pertama bagian ini mengklaim C-23 melampaui kontrol
-> (AUC 0,907 -> 0,941). Klaim itu **ditarik**: ia berbalik begitu grid `q` dilebarkan,
-> lalu berbalik lagi begitu kalibrasi dipindah ke luar sampel - tiga konfigurasi
-> protokol, tiga jawaban, untuk perubahan kode yang persis sama. Sebabnya ditelusuri
-> ke tiga cacat protokol (di bawah), ketiganya kini diperbaiki, dan hasilnya diulang
-> atas **5 belahan 8/8** dengan grid `q` yang sama untuk semua lengan. Bagian ini
-> melaporkan hasil yang diperbaiki itu. **Ia negatif untuk C-23.**
+> **Correction history.** The first version of this section claimed C-23 beat the control
+> (AUC 0.907 -> 0.941). That claim is **withdrawn**: it flipped as soon as the `q` grid was
+> widened, then flipped again once calibration moved out of sample - three protocol
+> configurations, three answers, for exactly the same code change. The cause was traced to
+> three protocol defects (below), all three are now fixed, and the results were repeated over
+> **5 splits of 8/8** with the same `q` grid for every arm. This section reports those
+> corrected results. **They are negative for C-23.**
 
-### Cacat protokol yang diperbaiki
+### Protocol defects that were fixed
 
-1. **`q` mentok di pinggir grid.** Di jalankan awal SEMUA kondisi memilih 0,10 - nilai
-   terkecil yang tersedia. Tuner ingin lebih longgar tapi tak diberi pilihan, jadi tiap
-   lengan dinilai pada titik operasi yang bukan pilihannya sendiri. **Inilah sumber FRR
-   50-60% yang bikin panik itu - artefak penempatan ambang, bukan kegagalan sistem.**
-   Grid dilebarkan ke [0,01 .. 0,15]; FRR kontrol turun 35,5% -> 23,0%.
-2. **`q` ikut memilih data latih.** Kolam hanya bertambah dari sesi yang divonis LOW,
-   jadi mengubah `q` mengubah kolam, sehingga mengubah model. Dua nilai `q` bukan dua
-   titik pada satu kurva; itu dua model. Karena itu grid harus **sama untuk semua lengan**.
-3. **Satu belahan tidak punya sebaran.** FOLD-REPORT hanya 8 subjek. Kini 5 belahan
-   (benih 42/7/13/2026/99) dan **[min..maks] dilaporkan**, bukan satu bilangan.
+1. **`q` stuck at the edge of the grid.** In the initial runs ALL conditions chose 0.10 - the
+   smallest value available. The tuner wanted to go looser but was given no option, so every
+   arm was judged at an operating point that was not its own choice. **This is where the
+   alarming 50-60% FRR came from - an artefact of threshold placement, not a system
+   failure.** The grid was widened to [0.01 .. 0.15]; control FRR dropped 35.5% -> 23.0%.
+2. **`q` also selects the training data.** The pool only grows from sessions judged LOW, so
+   changing `q` changes the pool, and so changes the model. Two values of `q` are not two
+   points on one curve; they are two models. So the grid must be **the same for every arm**.
+3. **One split has no spread.** FOLD-REPORT is only 8 subjects. Now 5 splits
+   (seeds 42/7/13/2026/99) and **[min..max] is reported**, not a single number.
 
-### Hasil, 5 belahan, grid `q` bersama
+### Results, 5 splits, shared `q` grid
 
-| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+| Condition | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|
-| 1. utuh, tanpa AFK (kontrol) | 23,0% | 2,0% | **0,946** | **10,4%** | **4,1%** |
-| 2. utuh, dengan AFK | **32,8%** | 1,3% | 0,938 | 10,7% | 5,7% |
-| 3. + segmentasi C-23 @30 dtk, dgn AFK | 35,3% | 2,8% | 0,905 | 16,1% | 17,4% |
-| 4. + segmentasi C-23 @120 dtk, dgn AFK | 39,9% | 2,0% | 0,903 | 15,9% | 17,7% |
-| 5. + segmentasi C-23 @300 dtk, dgn AFK | 42,3% | 2,4% | 0,907 | 13,9% | 12,2% |
+| 1. full, no AFK (control) | 23.0% | 2.0% | **0.946** | **10.4%** | **4.1%** |
+| 2. full, with AFK | **32.8%** | 1.3% | 0.938 | 10.7% | 5.7% |
+| 3. + C-23 segmentation @30 s, with AFK | 35.3% | 2.8% | 0.905 | 16.1% | 17.4% |
+| 4. + C-23 segmentation @120 s, with AFK | 39.9% | 2.0% | 0.903 | 15.9% | 17.7% |
+| 5. + C-23 segmentation @300 s, with AFK | 42.3% | 2.4% | 0.907 | 13.9% | 12.2% |
 
-Rentang EER: kontrol [9..12], AFK [8..13], C-23@30 **[14..19]**, @120 [14..19], @300 [12..16].
+EER ranges: control [9..12], AFK [8..13], C-23@30 **[14..19]**, @120 [14..19], @300 [12..16].
 
-### Tiga temuan
+### Three findings
 
-**(a) Kerusakan idle nyata, tapi muncul di FRR - BUKAN di AUC.** Baris 2 vs 1: FRR
-23,0% -> 32,8% (+9,8 poin), sementara AUC nyaris tak bergerak (0,946 -> 0,938) dan EER
-tetap (~10,5%). Mekanismenya: jeda AFK disuntikkan ke sesi evaluasi **pemilik maupun
-penyusup**, jadi distorsinya searah untuk keduanya - **peringkat lestari, kalibrasi
-bergeser.** AUC adalah metrik peringkat, jadi ia **buta** terhadap mode kegagalan ini.
-Ini sendiri layak masuk skripsi: melaporkan AUC saja akan menyembunyikan keluhan
-pembimbing sepenuhnya. Koreksi: klaim lama "kerusakan idle terkonfirmasi lewat AUC
-0,907 -> 0,874" **tidak bertahan**; yang bertahan adalah kerusakan di FRR.
+**(a) The idle damage is real, but it shows in FRR - NOT in AUC.** Row 2 vs 1: FRR
+23.0% -> 32.8% (+9.8 points), while AUC barely moves (0.946 -> 0.938) and EER stays put
+(~10.5%). The mechanism: AFK pauses are injected into the evaluation sessions of **both owner
+and intruder**, so the distortion points the same way for both - **ranking is preserved,
+calibration shifts.** AUC is a ranking metric, so it is **blind** to this failure mode. That
+alone deserves a place in the thesis: reporting AUC only would completely hide the
+supervisor's concern. Correction: the old claim "idle damage confirmed through AUC
+0.907 -> 0.874" **does not hold**; what holds is the damage in FRR.
 
-**(b) Segmentasi C-23 tidak memperbaikinya, dan merusak daya pisah.** Baris 3 vs 2: FRR
-tidak turun (35,3%), dan EER 10,7% -> 16,1% dengan FAR@FRR15 5,7% -> 17,4%. Rentang EER
-C-23 [14..19] **tidak beririsan** dengan kontrol [9..12] maupun dengan lengan AFK [8..13]
-di kelima belahan. Ini negatif yang konsisten, bukan derau.
+**(b) C-23 segmentation does not fix it, and it hurts separating power.** Row 3 vs 2: FRR does
+not drop (35.3%), and EER goes 10.7% -> 16.1% with FAR@FRR15 5.7% -> 17.4%. The C-23 EER range
+[14..19] **does not overlap** with the control [9..12] or the AFK arm [8..13] in any of the
+five splits. This is a consistent negative, not noise.
 
-**(c) Hipotesis "ambang 30 detik terlalu agresif" DITOLAK.** Dugaannya: memotong tiap
-jeda 30 detik ikut mencincang jeda berpikir biasa, jadi C-23 membayar ongkos "sesi lebih
-pendek" yang sama seperti C-24. Kalau benar, melonggarkan ambang seharusnya menolong.
-Ia **tidak**: 30 -> 120 -> 300 detik justru memperburuk FRR secara monoton
-(35,3% -> 39,9% -> 42,3%) sementara AUC diam di ~0,905. EER membaik sedikit di 300 detik
-(13,9%) tapi tetap di luar rentang kontrol. Jadi kerugiannya **bukan** soal panjang
-segmen, dan melonggarkan ambang bukan jalan keluarnya.
+**(c) The hypothesis "a 30-second threshold is too aggressive" is REJECTED.** The idea: cutting
+at every 30-second pause also chops up ordinary thinking pauses, so C-23 pays the same
+"shorter session" cost as C-24. If so, loosening the threshold should help. It **does not**:
+30 -> 120 -> 300 seconds makes FRR monotonically worse (35.3% -> 39.9% -> 42.3%) while AUC sits
+at ~0.905. EER improves slightly at 300 seconds (13.9%) but stays outside the control range.
+So the loss is **not** about segment length, and loosening the threshold is not the way out.
 
-### Apa yang boleh dan tidak boleh diklaim
+### What may and may not be claimed
 
-**BOLEH** (mekanis, tak bergantung protokol, `core/idle.test.mjs`): jeda 12 menit tidak
-boleh masuk `mouse_click_interval_mean`. Segmentasi memulihkan `temporal_session_duration`
-731,2 -> 5,5 dtk, interval klik 48.708 -> 710 ms, |z| fitur-waktu 12,42 -> 1,14. Itu
-**koreksi kebenaran pengukuran** dan ia berdiri sendiri.
+**MAY** (mechanical, independent of the protocol, `core/idle.test.mjs`): a 12-minute pause
+must not enter `mouse_click_interval_mean`. Segmentation restores `temporal_session_duration`
+731.2 -> 5.5 s, click interval 48,708 -> 710 ms, TIME-feature |z| 12.42 -> 1.14. That is a
+**measurement-correctness fix** and it stands on its own.
 
-**BOLEH**: kerusakan idle nyata di titik operasi yang sah, terlihat di FRR (+9,8 poin).
+**MAY**: the idle damage is real at a valid operating point, visible in FRR (+9.8 points).
 
-**TIDAK BOLEH**: bahwa segmentasi C-23 memperbaiki FRR/FAR. Buktinya sekarang justru
-**sebaliknya**, konsisten di 5 belahan dan 3 ambang jeda. Ini **hasil negatif** dan
-dilaporkan apa adanya.
+**MAY NOT**: that C-23 segmentation improves FRR/FAR. The evidence now says the **opposite**,
+consistently over 5 splits and 3 gap thresholds. This is a **negative result** and is reported
+as such.
 
-**BELUM TERUJI**: lapisan kedua dan ketiga C-23 - pelacakan kehadiran (`awaySec`,
-`reverifyAfterSec`) dan ABSTAIN. Keduanya **mekanisme keamanan**, bukan perubahan
-penilaian, jadi tolok ukur ini secara struktural tidak bisa mengukurnya: korpusnya tidak
-punya skenario ambil-alih-sesi-tak-dijaga. Argumennya kebijakan (PCI DSS 8.2.8), bukan
-empiris, dan harus disajikan begitu.
+**NOT YET TESTED**: the second and third layers of C-23 - presence tracking (`awaySec`,
+`reverifyAfterSec`) and ABSTAIN. Both are **security mechanisms**, not scoring changes, so this
+benchmark structurally cannot measure them: the corpus has no unattended-session-takeover
+scenario. The argument is policy (PCI DSS 8.2.8), not empirical, and must be presented that way.
 
-**BELUM BISA DIKLAIM juga**: bahwa C-24 pasti kalah. Ia kalah di dua konfigurasi (0,820
-dan 0,802 lawan 0,907 dan 0,924) tapi menang di satu (0,863 lawan 0,825). Alasan
-mengirimnya default-mati tetap berlaku - **tidak ada bukti ia menolong** - tapi "terbukti
-merugikan" terlalu jauh.
+**ALSO NOT YET CLAIMABLE**: that C-24 definitely loses. It lost in two configurations (0.820
+and 0.802 against 0.907 and 0.924) but won in one (0.863 against 0.825). The reason to ship it
+off by default still holds - **there is no evidence it helps** - but "proven harmful" goes too
+far.
 
-### Konsekuensi untuk default
+### Consequences for the defaults
 
-Preseden C-24 berlaku sama kerasnya untuk segmentasi C-23: **fitur yang tidak terbukti
-menolong tidak boleh nyala secara default.** Buktinya untuk C-23 bahkan lebih kuat dari
-C-24 - bukan sekadar "tak ada bukti menolong" melainkan bukti konsisten bahwa ia
-merugikan daya pisah. Yang menahan flip otomatis: `idleGapSec` yang sama juga menyalakan
-`idleAccounting` dan ABSTAIN, jadi mematikannya begitu saja ikut mematikan dua mekanisme
-yang tidak sedang diadili. Memisahkan ketiganya jadi knob terpisah adalah langkah
-berikutnya, dan sampai itu dikerjakan angka di tabel ini yang berlaku - **bukan** asumsi
-bahwa C-23 nyala itu lebih baik.
+The C-24 precedent applies just as firmly to C-23 segmentation: **a feature not proven to help
+must not be on by default.** The evidence for C-23 is even stronger than for C-24 - not just
+"no evidence it helps" but consistent evidence that it hurts separating power. What holds back
+an automatic flip: the same `idleGapSec` also switches on `idleAccounting` and ABSTAIN, so
+simply turning it off would also turn off two mechanisms that are not on trial. Splitting the
+three into separate knobs is the next step, and until that is done the numbers in this table
+apply - **not** the assumption that C-23 on is better.
 
-### Pelajaran metodologisnya
+### The methodological lesson
 
-Layak jadi temuan tersendiri di skripsi: **pada protokol few-shot on-device seperti ini,
-evaluasinya sendiri adalah sumber ketidakpastian terbesar.** Kolam latih yang tumbuh dari
-vonisnya sendiri menciptakan umpan balik antara ambang dan data; grid `q` yang mentok di
-pinggir bisa menciptakan FRR 50-60% dari ketiadaan; dan dengan 8 subjek pelapor, satu
-belahan tunggal tidak cukup untuk memeringkat apa pun. Angka apa pun dari protokol ini -
-**termasuk angka headline lama** - sebaiknya dilaporkan dengan sebaran atas beberapa
-belahan, bukan sebagai satu bilangan.
+Worth a finding of its own in the thesis: **in a few-shot on-device protocol like this one, the
+evaluation itself is the largest source of uncertainty.** A training pool that grows from its
+own verdicts creates feedback between threshold and data; a `q` grid stuck at the edge can
+create a 50-60% FRR out of nothing; and with 8 reporting subjects, a single split is not
+enough to rank anything. Any number from this protocol - **including the old headline
+numbers** - should be reported with a spread over several splits, not as a single number.
 
-Reproduksi:
+Reproduce:
 `python tools/canonical_holdout.py --only 1 2 3 --idle-gap-sec 30 120 300 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15`
 
 ---
+## C-25 - Audit: "the instrument changed, not the person"
 
-## C-25 - Audit "yang berubah alat ukurnya, bukan orangnya"
+After C-23 and C-24, this defect class was traced through the whole code base. Twelve
+findings, three of them proven by running the code. Details in
+`docs/MEASUREMENT-VALIDITY-AUDIT.md`; what was patched:
 
-Setelah C-23 dan C-24, kelas cacatnya ditelusuri ke seluruh kode. Dua belas temuan, tiga
-di antaranya dibuktikan dengan menjalankan kodenya. Rincian di
-`docs/AUDIT-VALIDITAS-PENGUKURAN.md`; yang ditambal:
+**A1 - CRITICAL, "just browsing" sessions blocked as bots.** The fallback
+`filtered.length>=10 ? filtered : events` in `integrity.js` DEFEATED the intent of T5: when
+keystrokes+clicks < 10 it fell back to all events, which are mostly `MOUSE_MOVE` from our own
+50 ms throttle. Their intervals are not merely similar but **exactly constant** - measured
+60Hz std 0.00 ms; 100Hz 0.00; 125Hz 0.00; 144Hz 0.50. All < 3 ms -> `BLOCK_SESSION` for a
+human reading an article while moving the mouse. Fragile too: one stray click raises the std
+above the threshold, so the symptom is "sometimes" and almost impossible to trace from user
+reports. **The new rule: never judge interval regularity on a stream we throttle
+ourselves.** If evidence is short, skip the check - do not swap its source.
 
-**A1 - KRITIS, sesi "cuma menelusuri" diblokir sebagai bot.** Fallback
-`filtered.length>=10 ? filtered : events` di `integrity.js` MEMBATALKAN maksud T5: saat
-keystroke+klik < 10, ia jatuh ke seluruh event, yang isinya `MOUSE_MOVE` hasil throttle
-50 ms kita sendiri. Intervalnya bukan mirip-mirip melainkan **persis konstan** - terukur
-60Hz std 0,00 ms; 100Hz 0,00; 125Hz 0,00; 144Hz 0,50. Semuanya < 3 ms ->
-`BLOCK_SESSION` untuk manusia yang membaca artikel sambil menggerakkan mouse. Rapuh
-pula: satu klik nyasar menaikkan std di atas ambang, jadi gejalanya "kadang-kadang" dan
-nyaris mustahil dilacak dari laporan pengguna. **Aturan barunya: jangan pernah menilai
-keteraturan interval pada aliran yang kita throttle sendiri.** Kalau bukti kurang,
-lewati cek itu - jangan ganti sumbernya.
+**A3 - Autofill kills 8 keystroke features at once.** Measured: dwell 80->0, flight 120->0,
+speed 4.81->0, entropy 1.10->0; **8 of 8 features drop to zero**. Two directions: an owner
+who uses a password manager looks deviant at every login, AND an intruder can weaponise it to
+erase the entire block of typing evidence. `paste` is now captured, and "form touched but not
+typed" is marked `partialEvidence:'keystroke'`. The verdict is **not** raised - punishing
+password manager use would be aiming at the wrong target - but that session never trains the
+model and cannot build a LOW streak. Partial evidence may be used to judge, not to **trust**.
 
-**A3 - Autofill mematikan 8 fitur keystroke sekaligus.** Terukur: dwell 80->0, flight
-120->0, speed 4,81->0, entropi 1,10->0; **8 dari 8 fitur jatuh ke nol**. Dua arah:
-pemilik yang memakai password manager terlihat menyimpang tiap login, DAN penyusup bisa
-menyenjatakannya untuk menghapus seluruh blok bukti ketikan. `paste` kini ditangkap, dan
-"form tersentuh tapi tak diketik" ditandai `partialEvidence:'keystroke'`. Vonisnya
-**tidak** dinaikkan - menghukum pemakaian password manager itu salah sasaran - tapi sesi
-itu tak pernah melatih model dan tak bisa membangun streak LOW. Bukti sebagian boleh
-dipakai menilai, tidak boleh dipakai **mempercayai**.
+**A4 - Behaviour tails leak between users.** `bg:pending` was a GLOBAL key, not namespaced
+like sessions. User A closes the page -> their tail is saved -> B logs in on the same browser
+-> A's tail is scored, and can even train, as B. Now `bg:pending:<userId>`; the old key is
+discarded at init because its owner cannot be established.
 
-**A4 - Ekor perilaku bocor antar-pengguna.** `bg:pending` adalah kunci GLOBAL, tidak
-ber-ruang-nama seperti sesi. Pengguna A menutup halaman -> ekornya tersimpan -> B login
-di browser yang sama -> ekor A dinilai, dan bisa ikut melatih, sebagai B. Kini
-`bg:pending:<userId>`; kunci lama dibuang saat init karena pemiliknya tak bisa dipastikan.
+**A5 - `PAGE_STEP` trained on but never captured.** `features.js` reads
+`NAVIGATION | PAGE_STEP`, the research database has 2,672 PAGE_STEP events (all checkout
+flows), and `capture.js` never emitted one - a relative of C-17. The meaning of a "step" is
+the application's business, not the DOM's, so the honest route is an explicit
+`markStep(name)` API, not guessing from submit/pushState and then being silently wrong.
 
-**A5 - `PAGE_STEP` dilatih tapi tak pernah ditangkap.** `features.js` membaca
-`NAVIGATION | PAGE_STEP`, basis data riset punya 2.672 PAGE_STEP (semuanya alur
-checkout), `capture.js` tak pernah menerbitkannya - kerabat C-17. Semantik "langkah" itu
-urusan aplikasi, bukan DOM, jadi jalan yang jujur adalah API eksplisit `markStep(nama)`,
-bukan menebak dari submit/pushState lalu diam-diam salah.
+**B1 - Two tabs measured as one.** Two tabs active at the same time have no pause for idle
+segmentation to cut, so they merge into one "session" that represents nobody. The C-23
+principle again: if two measurements come from different instruments, separate them. Events
+are stamped with `tabId` and `groupByStream` separates them before anything is measured.
+Plus leader election through a localStorage heartbeat so only one tab scores and writes;
+before, the last writer won and the other tab's session silently disappeared.
 
-**B1 - Dua tab diukur menyatu.** Dua tab aktif bersamaan tidak punya jeda untuk dipotong
-segmentasi idle, jadi keduanya menyatu jadi satu "sesi" yang tidak mewakili siapa pun.
-Prinsip C-23 dipakai lagi: kalau dua pengukuran datang dari alat berbeda, pisahkan.
-Event dicap `tabId` dan `groupByStream` memisahkannya sebelum apa pun diukur. Ditambah
-pemilihan pemimpin lewat denyut localStorage supaya hanya satu tab yang menilai dan
-menulis; dulu penulis terakhir menang dan sesi tab lain hilang diam-diam.
+**B2 - Screen resolution taken out of the device fingerprint.** Plugging in an external
+monitor is not changing devices, yet it used to force `lastRisk='MEDIUM'` plus the sticky
+floor. Resolution is context (it shifts the speed scale), not machine identity.
 
-**B2 - Resolusi layar keluar dari sidik perangkat.** Colok monitor eksternal bukan ganti
-perangkat, padahal dulu itu memaksa `lastRisk='MEDIUM'` plus lantai lengket. Resolusi
-adalah konteks (ia menggeser skala kecepatan), bukan identitas mesin.
+**B4 - Touch screens.** `touchmove` is now captured and mapped to `MOUSE_MOVE` (marked
+`touch:true`). Without this, nine mouse features are zero and phone users can never be judged
+at all. Changes nothing on desktop.
 
-**B4 - Layar sentuh.** `touchmove` kini ditangkap dan dipetakan ke `MOUSE_MOVE` (bertanda
-`touch:true`). Tanpa ini sembilan fitur mouse nol dan pengguna ponsel tak pernah bisa
-dinilai sama sekali. Tidak mengubah apa pun di desktop.
+**B7 - Pool cut at 30 without IndexedDB.** localStorage used to truncate to 30 sessions while
+`progressiveMaxPool` = 90; C-22 already showed what a pool that is too small relative to d=28
+does. Now `feat` (only used for explanations) is dropped and 90 vectors are kept.
 
-**B7 - Kolam terpotong di 30 tanpa IndexedDB.** localStorage dulu memotong ke 30 sesi
-padahal `progressiveMaxPool` = 90; C-22 sudah menunjukkan akibat kolam terlalu kecil
-dibanding d=28. Kini `feat` (murni untuk penjelasan) dibuang dan 90 vektor disimpan.
+**Not patched, on purpose.** A2 (px/ms speed depends on screen size - measured 2.00x on a
+monitor twice as large, curvature 0.50x) and B3 (raw pixel `scroll_delta`) are one scale
+normalisation package that **makes old baselines incomparable**, so it needs baseline
+versioning. B5 (time of day as a biometric) and B6 (constant features in the baseline -> large
+z) touch the vector/SPEC. All four are proposed, not shipped.
 
-**Belum ditambal, sengaja.** A2 (kecepatan px/ms bergantung ukuran layar - terukur 2,00x
-pada monitor 2x lebih besar, curvature 0,50x) dan B3 (`scroll_delta` piksel mentah)
-adalah satu paket normalisasi skala yang **membuat baseline lama tidak sebanding**, jadi
-butuh penandaan versi baseline. B5 (waktu-hari sebagai biometrik) dan B6 (fitur konstan
-di baseline -> z besar) menyentuh vektor/SPEC. Keempatnya diusulkan, bukan dikirim.
-
-**Uji:** `core/audit.test.mjs` 32/32, seluruh suite lama tetap hijau (conformance 227/227
-di Python dan JS, idle 33/33, jalur penuh 20/20, invariansi 26/26, step-up 23/23, gerbang
-11/11, integrity 10/10).
+**Tests:** `core/audit.test.mjs` 32/32, all older suites still green (conformance 227/227 in
+Python and JS, idle 33/33, full path 20/20, invariance 26/26, step-up 23/23, gate 11/11,
+integrity 10/10).
 
 ---
 
-## C-26 - FRR 23% dan panjang pendaftaran (DIUKUR DI MESIN YANG SALAH - lihat C-27)
+## C-26 - The 23% FRR and enrollment length (MEASURED ON THE WRONG ENGINE - see C-27)
 
-> **Ditarik 10 Sep 2026.** Seluruh tabel di bagian ini memakai `reproduce_db.py`, yang
-> ternyata memakai sklearn OCSVM dengan bobot IF 0,70 - sedangkan yang DIKIRIM adalah
-> Mahalanobis dengan bobot IF 0,30. Di mesin yang benar, FRR-nya 12,1% (bukan 28,4%)
-> dan keunggulan pendaftaran 16 sesi LARUT ke dalam sebaran. Bagian ini dipertahankan
-> sebagai catatan proses; kesimpulannya hanya berlaku untuk mesin OCSVM. Lihat C-27.
+> **Withdrawn 10 Sep 2026.** Every table in this section used `reproduce_db.py`, which turned
+> out to use sklearn OCSVM with IF weight 0.70 - while what is SHIPPED is Mahalanobis with IF
+> weight 0.30. On the right engine the FRR is 12.1% (not 28.4%) and the advantage of 16-session
+> enrollment DISSOLVES into the spread. This section is kept as a record of the process; its
+> conclusions only apply to the OCSVM engine. See C-27.
 
-### Catatan asli (mesin OCSVM)
+### Original notes (OCSVM engine)
 
 
-FRR 23% pada FAR 2% tidak layak kirim. Bagian ini membongkar dari mana angka itu
-datang. Alatnya `tools/frr_levers.py`, yang **mereproduksi `reproduce_db.py` digit per
-digit** sebelum tuas apa pun dipasang - versi pertamanya tidak, karena menghilangkan
-separuh syarat konvergensi, dan itu sendiri memakan 0,11 AUC. Harness yang tidak diadu
-dulu dengan acuannya tidak bisa dipercaya.
+A 23% FRR at 2% FAR is not shippable. This section takes apart where that number comes from.
+The tool is `tools/frr_levers.py`, which **reproduces `reproduce_db.py` digit for digit** before
+any lever is applied - its first version did not, because it dropped half of the convergence
+condition, and that alone cost 0.11 AUC. A harness that has not first been matched against its
+reference cannot be trusted.
 
-### Dua diagnosis yang menentukan arah
+### Two diagnoses that set the direction
 
-**FRR menyebar rata**, 11% sampai 56% di kedelapan subjek pelapor. Jadi sistemik, bukan
-segelintir subjek berdata kotor.
+**FRR is spread evenly**, 11% to 56% across all eight reporting subjects. So it is systemic,
+not a handful of subjects with dirty data.
 
-**Ambang ORACLE** (dipilih setelah melihat jawabannya) pada FAR<=2% masih memberi FRR
-**20,6%**. Jadi penempatan ambang menyumbang ~13 poin dan itu gratis, tapi 20,6%
-sisanya adalah langit-langit SKOR-nya. Tambahan: oracle satu-ambang-untuk-semua (28,6%)
-tertinggal 8 poin dari oracle per-pengguna (20,6%), murni karena satu penggaris dipaksa
-muat ke skala skor yang berbeda-beda.
+**An ORACLE threshold** (chosen after seeing the answers) at FAR<=2% still gives an FRR of
+**20.6%**. So threshold placement accounts for ~13 points and that part is free, but the
+remaining 20.6% is the ceiling of the SCORE itself. Also: a one-threshold-for-everyone oracle
+(28.6%) trails the per-user oracle (20.6%) by 8 points, purely because one ruler is forced onto
+score scales that differ.
 
-### Empat tuas model - SEMUANYA GAGAL
+### Four model levers - ALL FAILED
 
-Diuji atas 5 belahan 8/8, grid q bersama:
+Tested over 5 splits of 8/8, shared q grid:
 
-| Tuas | FRR | FAR | AUC | EER | Vonis |
+| Lever | FRR | FAR | AUC | EER | Verdict |
 |---|---:|---:|---:|---:|---|
-| (tanpa tuas) | 28,4% | 4,1% | 0,919 | 13,9% | acuan |
-| kalibrasi leave-one-out | 18,3% | 7,8% | 0,923 | 14,0% | **hanya geser titik operasi** |
-| z-norm kohort | 18,5% | 20,7% | 0,826 | 22,2% | ditolak |
-| kurangi dimensi 28->12 | 27,0% | 2,1% | 0,926 | 13,3% | netral |
-| agregasi 2-3 jendela | 13,5% | 28,5% | 0,864 | 21,0% | ditolak |
+| (no lever) | 28.4% | 4.1% | 0.919 | 13.9% | reference |
+| leave-one-out calibration | 18.3% | 7.8% | 0.923 | 14.0% | **only moves the operating point** |
+| cohort z-norm | 18.5% | 20.7% | 0.826 | 22.2% | rejected |
+| reduce dimensions 28->12 | 27.0% | 2.1% | 0.926 | 13.3% | neutral |
+| aggregate 2-3 windows | 13.5% | 28.5% | 0.864 | 21.0% | rejected |
 
-**LOO sempat terlihat menang di satu belahan** (AUC 0,922 -> 0,931) dan ditarik setelah
-5 belahan: AUC 0,923 vs 0,919 dan EER 14,0% vs 13,9% - selisihnya nol. FRR turun, FAR
-naik sepadan. Ini pelajaran yang SAMA dengan koreksi C-23 di atas, dan tetap terulang.
+**LOO briefly looked like a win on one split** (AUC 0.922 -> 0.931) and was withdrawn after 5
+splits: AUC 0.923 vs 0.919 and EER 14.0% vs 13.9% - a difference of zero. FRR went down, FAR
+went up by the same amount. This is the SAME lesson as the C-23 correction above, and it
+happened again anyway.
 
-Mekanisme LOO tetap layak dicatat walau efeknya nol: sesi baru masuk kolam latih hanya
-setelah divonis LOW, jadi ambang yang terlalu ketat memblokir data pemilik masuk ke
-modelnya SENDIRI - kolam kelaparan dan tetap sempit. Umpan balik itu nyata; yang tidak
-terbukti adalah bahwa memperbaikinya menggeser daya pisah.
+The LOO mechanism is still worth noting even though its effect is zero: a new session only
+enters the training pool after being judged LOW, so a threshold that is too tight blocks the
+owner's data from entering their OWN model - the pool starves and stays narrow. That feedback
+is real; what was not proven is that fixing it moves separating power.
 
-**Dua implementasi agregasi lebih dulu SALAH**, dan salahnya di kelas yang sama dengan
-C-16/C-17: (a) ambang dikalibrasi pada skor tunggal tapi vonis diambil dari rerata-k -
-sebaran rerata jauh lebih sempit, FAR meledak ke 35%; (b) skor beberapa penyusup BERBEDA
-dirata-ratakan, yang mengarang "orang rata-rata" yang justru lebih dekat ke pusat model
-pemilik daripada penyusup mana pun. Keduanya diperbaiki; sesudah diperbaiki agregasi
-tetap kalah. Kalau merata-ratakan merusak, daya bedanya tidak terletak di pergeseran
-rata-rata melainkan di sesi-sesi EKSTREM - dan merata-ratakan menghapus yang ekstrem.
-(Hipotesis, konsisten dengan data, belum diuji terpisah.)
+**The first two aggregation implementations were WRONG**, and wrong in the same class as
+C-16/C-17: (a) the threshold was calibrated on single scores but the verdict was taken from a
+k-mean - the spread of a mean is much narrower, and FAR exploded to 35%; (b) the scores of
+several DIFFERENT intruders were averaged, which invents an "average person" who is closer to
+the centre of the owner model than any real intruder. Both were fixed; after the fix,
+aggregation still lost. If averaging hurts, the discriminating power does not lie in a shift of
+the mean but in the EXTREME sessions - and averaging erases the extremes. (A hypothesis,
+consistent with the data, not tested separately.)
 
-**Pembingkaian "cuma diminta verifikasi ulang" juga gugur.** FRR digabung dari MEDIUM
-(step-up, pemilik lanjut) dan HIGH (blokir). Dipisah: dari FRR 28,4%, sebanyak **24,0%
-adalah HIGH**. Mayoritasnya blokir keras, jadi pembingkaian itu tidak sah dan tidak
-dipakai.
+**The "it only asks for re-verification" framing also falls.** FRR combines MEDIUM (step-up,
+the owner continues) and HIGH (block). Split apart: of the 28.4% FRR, **24.0% is HIGH**. Most
+of it is a hard block, so that framing is not valid and is not used.
 
-### Yang berhasil: panjang pendaftaran
+### What worked: enrollment length
 
-`baseline` = 10 sesi pendaftaran untuk d=28 fitur. Dinaikkan ke 16, **dengan himpunan uji
-DIBUAT IDENTIK** lewat `--eval-from` (tanpa itu, menaikkan baseline memindahkan sesi
-10..15 dari 'diuji' ke 'mendaftar', dan sebagian 'perbaikan' hanyalah efek membuang soal
-dari ujian):
+`baseline` = 10 enrollment sessions for d=28 features. Raised to 16, **with the test set MADE
+IDENTICAL** through `--eval-from` (without that, raising the baseline moves sessions 10..15
+from "tested" to "enrolling", and part of the "improvement" is just the effect of removing
+questions from the exam):
 
-| Diuji pada sesi >=16 | FRR | blokir | FAR | AUC | EER | FAR@FRR15 |
+| Tested on sessions >=16 | FRR | block | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|---:|
-| pendaftaran 10 sesi | 32,1% | 27,6% | 4,1% | 0,904 | 16,0% | 16,4% |
-| pendaftaran 16 sesi | **23,6%** | **21,6%** | **0,7%** | **0,930** | **12,9%** | **5,2%** |
+| 10-session enrollment | 32.1% | 27.6% | 4.1% | 0.904 | 16.0% | 16.4% |
+| 16-session enrollment | **23.6%** | **21.6%** | **0.7%** | **0.930** | **12.9%** | **5.2%** |
 
-Rentang EER 5 belahan: [11..23] -> **[12..15]**.
+EER range over 5 splits: [11..23] -> **[12..15]**.
 
-Ini satu-satunya perubahan di sesi ini yang memperbaiki **FRR dan FAR sekaligus**, ikut
-menaikkan metrik bebas-ambang, DAN mempersempit sebarannya. FAR@FRR15 membaik 3x.
+This is the only change in this session that improved **FRR and FAR at the same time**, raised
+the threshold-free metrics too, AND narrowed the spread. FAR@FRR15 improved 3x.
 
-Perhatikan arah confound-nya: pendaftaran 10 justru jadi LEBIH BURUK saat diuji dari sesi
-16 (28,4% -> 32,1%). Model yang didaftar terlalu pendek makin tertinggal seiring waktu -
-konsisten dengan lingkaran umpan balik kolam di atas.
+Note the direction of the confound: 10-session enrollment actually got WORSE when tested from
+session 16 (28.4% -> 32.1%). A model enrolled too briefly falls further behind over time -
+consistent with the pool feedback loop above.
 
-**Manfaatnya jenuh setelah 16.** Diuji pada sesi >=22, 22 lawan 16: AUC 0,911 vs 0,910,
-EER 16,3% vs 15,6%, FAR@FRR15 20,9% vs 16,2% - nol, bahkan sedikit merugikan. Jadi
-klaimnya adalah "10 terlalu pendek", BUKAN "makin panjang makin baik".
+**The benefit saturates after 16.** Tested on sessions >=22, 22 against 16: AUC 0.911 vs
+0.910, EER 16.3% vs 15.6%, FAR@FRR15 20.9% vs 16.2% - zero, even slightly harmful. So the
+claim is "10 is too short", NOT "longer is better".
 
-Kedua perbandingan itu memakai himpunan uji yang berbeda (>=16 dan >=22), jadi angkanya
-TIDAK boleh dirantai. Yang sah: pada uji >=16, 16 mengalahkan 10; pada uji >=22, 22 tidak
-mengalahkan 16.
+The two comparisons use different test sets (>=16 and >=22), so their numbers must NOT be
+chained. What is valid: on the >=16 test, 16 beats 10; on the >=22 test, 22 does not beat 16.
 
-### Konsekuensi untuk default - BELUM diubah, sengaja
+### Consequence for the defaults - NOT changed, on purpose
 
-`config.js: baseline` masih 10. Menaikkannya ke 16 menukar 6 sesi tanpa perlindungan
-dengan FAR@FRR15 3x lebih baik - itu keputusan produk, bukan keputusan metrik, dan ia
-membuat SELURUH angka headline yang sudah ada tidak sebanding lagi. Diusulkan, tidak
-dikirim.
+`config.js: baseline` is still 10. Raising it to 16 trades 6 unprotected sessions for a 3x
+better FAR@FRR15 - that is a product decision, not a metric decision, and it makes ALL the
+existing headline numbers incomparable. Proposed, not shipped.
 
-Reproduksi:
+Reproduce:
 `python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --baseline 16 --eval-from 16`
 
 ---
 
-## C-27 - KRITIS: yang DIUKUR bukan yang DIKIRIM (mesin ensemble)
+## C-27 - CRITICAL: what was MEASURED is not what is SHIPPED (ensemble engine)
 
-Kelas cacat C-16/C-17 - "yang dilatih dan yang dipakai bukan besaran yang sama" -
-ternyata juga ada di **lapisan evaluasinya sendiri**, dan itu membuat sistem ini
-dinilai jauh lebih buruk daripada kemampuan sebenarnya.
+The C-16/C-17 defect class - "what is trained and what is used are not the same quantity" -
+turned out to exist in **the evaluation layer itself**, and it made this system look much
+worse than it really is.
 
-| | detektor-2 | bobot |
+| | detector 2 | weights |
 |---|---|---|
-| `sdk/core/config.js` (**yang dikirim**) | `model2:'mahalanobis'` | IF **0,30** / slot-2 **0,70** |
-| `tools/reproduce_db.py` (**yang mengukur**) | sklearn `RealOCSVM` | IF **0,70** / slot-2 **0,30** |
+| `sdk/core/config.js` (**what ships**) | `model2:'mahalanobis'` | IF **0.30** / slot 2 **0.70** |
+| `tools/reproduce_db.py` (**what measures**) | sklearn `RealOCSVM` | IF **0.70** / slot 2 **0.30** |
 
-Bukan hanya mesinnya berbeda - **bobotnya terbalik.** Jadi seluruh angka yang pernah
-dihasilkan `reproduce_db.py`, termasuk semua tabel C-23..C-26 di atas, mengukur sistem
-yang tidak pernah dijalankan pengguna mana pun.
+Not only is the engine different - **the weights are reversed.** So every number
+`reproduce_db.py` ever produced, including all the C-23..C-26 tables above, measured a system
+no user has ever run.
 
-`core/bg_core.py:Mahalanobis` adalah padanan bit-per-bit `sdk/core/mahalanobis.js`, jadi
-`frr_levers.py --scorer maha` memakai kelas itu LANGSUNG, bukan tiruan. Shrinkage
-adaptif C-22 direplikasi dari `behaviorguard._rebuildModel`: `min(0.9, max(0.3, d/n))`.
+`core/bg_core.py:Mahalanobis` is a bit-for-bit twin of `sdk/core/mahalanobis.js`, so
+`frr_levers.py --scorer maha` uses that class DIRECTLY, not an imitation. The C-22 adaptive
+shrinkage is replicated from `behaviorguard._rebuildModel`: `min(0.9, max(0.3, d/n))`.
 
-### Selisihnya, 5 belahan 8/8, grid q bersama
+### The difference, 5 splits of 8/8, shared q grid
 
-| Mesin | FRR | blokir | FAR | AUC | EER | FAR@FRR15 |
+| Engine | FRR | block | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|---:|
-| OCSVM, IF 0,70 (yang diukur selama ini) | 28,4% | 24,0% | 4,1% | 0,919 | 13,9% | 11,9% |
-| **Mahalanobis, IF 0,30 (yang dikirim)** | **12,1%** | **10,7%** | 12,6% | **0,954** | **10,8%** | **6,9%** |
+| OCSVM, IF 0.70 (what was measured until now) | 28.4% | 24.0% | 4.1% | 0.919 | 13.9% | 11.9% |
+| **Mahalanobis, IF 0.30 (what ships)** | **12.1%** | **10.7%** | 12.6% | **0.954** | **10.8%** | **6.9%** |
 
-Rentang FRR [22..35] -> **[9..15]**; rentang EER [10..20] -> [9..15].
+FRR range [22..35] -> **[9..15]**; EER range [10..20] -> [9..15].
 
-**FRR 23-28% yang memicu seluruh penyelidikan ini tidak pernah nyata.** Ia milik mesin
-yang tidak dikirim. Metrik bebas-ambang ikut membaik semuanya, jadi ini bukan pertukaran
-titik operasi melainkan mesin yang memang lebih baik di korpus ini.
+**The 23-28% FRR that triggered this whole investigation was never real.** It belongs to an
+engine that is not shipped. The threshold-free metrics all improve too, so this is not an
+operating-point trade but an engine that really is better on this corpus.
 
-Yang tetap harus disebut jujur: pada titik operasi hasil tuning, FAR-nya 12,6% lawan
-4,1%. Tunernya memang mencari |FRR-FAR| terkecil sehingga mendarat dekat EER. FAR@FRR15
-= 6,9% adalah angka yang dipakai kalau titik operasinya digeser ke FRR 15%.
+What must still be said honestly: at the tuned operating point, FAR is 12.6% against 4.1%. The
+tuner looks for the smallest |FRR-FAR|, so it lands near the EER. FAR@FRR15 = 6.9% is the
+number to use if the operating point is moved to 15% FRR.
 
-### Akibatnya untuk C-26 - KLAIM PENDAFTARAN DITARIK
+### Consequence for C-26 - THE ENROLLMENT CLAIM IS WITHDRAWN
 
-C-26 menyimpulkan pendaftaran 10 sesi terlalu pendek dan 16 jauh lebih baik. Diulang di
-mesin yang benar, dengan himpunan uji tetap identik (`--eval-from 16`):
+C-26 concluded that 10-session enrollment is too short and 16 is much better. Repeated on the
+right engine, with the test set kept identical (`--eval-from 16`):
 
-| Mahalanobis, uji sesi >=16 | FRR | FAR | AUC | EER | FAR@FRR15 |
+| Mahalanobis, tested on sessions >=16 | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|
-| pendaftaran 10 | 12,4% | 12,9% | 0,948 | 11,6% | 8,4% |
-| pendaftaran 16 | 11,4% | 12,7% | 0,946 | 10,9% | 6,6% |
+| 10-session enrollment | 12.4% | 12.9% | 0.948 | 11.6% | 8.4% |
+| 16-session enrollment | 11.4% | 12.7% | 0.946 | 10.9% | 6.6% |
 
-Selisihnya di dalam sebaran antar-belahan. **Manfaat pendaftaran panjang itu artefak
-mesin yang lemah.** Masuk akal secara mekanis: OCSVM kelaparan sampel, sementara
-Mahalanobis + shrinkage adaptif C-22 memang dirancang untuk n kecil - jadi menambah
-sampel tidak menambah apa-apa. Tabel C-26 dipertahankan sebagai catatan, TAPI
-kesimpulannya hanya berlaku untuk mesin OCSVM dan tidak boleh dikutip.
+The difference is inside the between-split spread. **The benefit of longer enrollment was an
+artefact of a weak engine.** It makes mechanical sense: OCSVM is sample-starved, while
+Mahalanobis + the C-22 adaptive shrinkage is designed for small n - so adding samples adds
+nothing. The C-26 tables are kept as a record, BUT their conclusions only apply to the OCSVM
+engine and must not be quoted.
 
-### Empat tuas C-26 juga tidak sah lagi - dan diuji ulang, semuanya kalah
+### The four C-26 levers are no longer valid either - re-tested, all lose
 
-LOO, z-norm, pengurangan dimensi, dan agregasi semuanya diukur di mesin OCSVM. Diuji
-ulang di mesin yang dikirim, 5 belahan:
+LOO, z-norm, dimension reduction and aggregation were all measured on the OCSVM engine.
+Re-tested on the shipped engine, 5 splits:
 
-| Di atas Mahalanobis + IF 0,30 | FRR | FAR | AUC | EER | FAR@FRR15 |
+| On top of Mahalanobis + IF 0.30 | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|
-| tanpa tuas | 12,1% | 12,6% | **0,954** | **10,8%** | **6,9%** |
-| + kalibrasi LOO | 14,2% | 16,1% | 0,940 | 13,9% | 11,9% |
-| + pembeda kohort | 10,7% | 18,3% | 0,897 | 15,1% | 15,1% |
+| no lever | 12.1% | 12.6% | **0.954** | **10.8%** | **6.9%** |
+| + LOO calibration | 14.2% | 16.1% | 0.940 | 13.9% | 11.9% |
+| + cohort discriminator | 10.7% | 18.3% | 0.897 | 15.1% | 15.1% |
 
-**Konfigurasi terbaik adalah yang SUDAH dikirim.** Tidak ada satu pun tuas yang menambah
-apa-apa di atasnya. LOO yang di mesin OCSVM sempat terlihat menolong justru MERUGIKAN di
-sini - ambang in-sample yang terlalu ketat itu masalah OCSVM, bukan masalah Mahalanobis.
-Pembeda dua kelas juga kalah: dengan 10..30 contoh positif lawan ratusan negatif, ia
-mempelajari batas antar-subjek di korpus ini, bukan identitas pemiliknya.
+**The best configuration is the one ALREADY shipped.** Not one lever adds anything on top of
+it. LOO, which seemed to help on the OCSVM engine, actually HURTS here - the overly tight
+in-sample threshold was an OCSVM problem, not a Mahalanobis problem. The two-class
+discriminator also loses: with 10..30 positive examples against hundreds of negatives, it
+learns the boundaries between subjects in this corpus, not the owner's identity.
 
-Kesimpulan yang bertahan: masalahnya tidak pernah ada di model, di ambang, di jumlah
-fitur, di agregasi, atau di panjang pendaftaran. Masalahnya ada di **alat ukurnya**. Diagnosis yang TETAP berlaku
-karena ia sifat protokol, bukan sifat mesin: FRR menyebar rata antar subjek, dan kolam
-latih hanya tumbuh dari sesi yang divonis LOW sehingga ambang ketat membuat kolam
-kelaparan.
+The conclusion that holds: the problem was never in the model, the threshold, the number of
+features, aggregation or enrollment length. The problem was the **measuring instrument**. The
+diagnoses that STILL apply, because they are properties of the protocol and not of the engine:
+FRR is spread evenly across subjects, and the training pool only grows from sessions judged
+LOW, so a tight threshold starves the pool.
 
-### Yang harus dikerjakan
+### What has to be done
 
-`reproduce_db.py` HARUS diberi mode yang memakai Mahalanobis + bobot SDK, dan angka
-headline skripsi dihitung ulang di sana. Sampai itu selesai, setiap angka dari
-`reproduce_db.py` wajib diberi label mesin yang dipakainya.
+`reproduce_db.py` MUST get a mode that uses Mahalanobis + the SDK weights, and the thesis
+headline numbers must be recomputed there. Until that is done, every number from
+`reproduce_db.py` must be labelled with the engine it used.
 
-Reproduksi:
+Reproduce:
 `python tools/frr_levers.py --levers none --seeds 42 7 13 2026 99 --scorer maha --w-if 0.30`
 
 ---
 
-### Angka setelah `reproduce_db.py` diperbaiki
+### Numbers after `reproduce_db.py` was fixed
 
-Tiga cacat skrip diperbaiki sekaligus, dan ketiganya berdiri sendiri:
+Three defects in the script were fixed together, and each stands on its own:
 
-1. **Mesin** - default kini Mahalanobis + shrink adaptif, bobot IF 0,30 / slot-2 0,70,
-   sama dengan `sdk/core/config.js`. `--legacy-ocsvm` mereproduksi angka lama TAPI
-   mencetak peringatan. Kalau `bg_core.Mahalanobis` gagal diimpor skrip BERHENTI -
-   jatuh diam-diam ke OCSVM justru cacat yang sedang diperbaiki.
-2. **Grid q** - `[0,10..0,20]` selalu memilih 0,10, yaitu nilai TERKECIL yang tersedia.
-   Tuner tidak sedang memilih, ia sedang dibatasi. Dilebarkan ke `[0,01..0,20]`.
-3. **Alarm ujung grid** - kalau q terpilih menyentuh ujung, skrip berteriak. Ia langsung
-   berbunyi lagi di mesin baru (q=0,01, ujung bawah), jadi angka belahan-tunggal pun
-   masih titik operasi yang dipaksakan.
+1. **Engine** - the default is now Mahalanobis + adaptive shrink, IF weight 0.30 / slot 2
+   0.70, the same as `sdk/core/config.js`. `--legacy-ocsvm` reproduces the old numbers BUT
+   prints a warning. If `bg_core.Mahalanobis` fails to import, the script STOPS - silently
+   falling back to OCSVM is exactly the defect being fixed.
+2. **q grid** - `[0.10..0.20]` always picked 0.10, the SMALLEST value available. The tuner was
+   not choosing, it was being boxed in. Widened to `[0.01..0.20]`.
+3. **Grid-edge alarm** - if the chosen q touches an edge, the script shouts. It went off again
+   immediately on the new engine (q=0.01, the lower edge), so even single-split numbers are
+   still a forced operating point.
 
-**Belahan tunggal seed 42 TIDAK memutuskan apa pun.** Mahalanobis unggul AUC (0,931 vs
-0,922) dan FRR (14,5% vs 35,1%) tapi KALAH EER (14,9% vs 12,6%) dan FAR@FRR15 (13,8% vs
-8,5%). Baru di 5 belahan Mahalanobis unggul di semua metrik. Ini penegasan ketiga di
-dokumen ini bahwa **satu belahan 8 subjek tidak cukup untuk memeringkat apa pun.**
+**A single split with seed 42 decides NOTHING.** Mahalanobis wins on AUC (0.931 vs 0.922) and
+FRR (14.5% vs 35.1%) but LOSES on EER (14.9% vs 12.6%) and FAR@FRR15 (13.8% vs 8.5%). Only over
+5 splits does Mahalanobis win on every metric. This is the third confirmation in this document
+that **one split of 8 subjects is not enough to rank anything.**
 
-### Idle diukur ulang di mesin yang dikirim (5 belahan, grid q bersama)
+### Idle re-measured on the shipped engine (5 splits, shared q grid)
 
-| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+| Condition | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|
-| 1. tanpa AFK (kontrol) | **11,0%** | 11,2% | **0,961** | **9,8%** | **5,0%** |
-| 2. dengan AFK, tanpa C-23 | 18,4% | 9,2% | 0,952 | 11,1% | 7,6% |
-| 3. dengan AFK + segmentasi C-23 | 18,8% | 13,9% | 0,927 | 14,3% | 13,6% |
+| 1. no AFK (control) | **11.0%** | 11.2% | **0.961** | **9.8%** | **5.0%** |
+| 2. with AFK, no C-23 | 18.4% | 9.2% | 0.952 | 11.1% | 7.6% |
+| 3. with AFK + C-23 segmentation | 18.8% | 13.9% | 0.927 | 14.3% | 13.6% |
 
-**Kerusakan idle NYATA di mesin yang benar**: FRR 11,0% -> 18,4%, +7,4 poin. Keluhan
-pembimbing valid, dan kali ini terukur pada sistem yang benar-benar dikirim.
+**The idle damage is REAL on the right engine**: FRR 11.0% -> 18.4%, +7.4 points. The
+supervisor's concern is valid, and this time it is measured on the system that actually ships.
 
-**C-23 tetap TIDAK memperbaikinya**: FRR tidak turun (18,8%), dan daya pisah malah rusak
-(AUC 0,952 -> 0,927, EER 11,1% -> 14,3%). Berbeda dengan temuan pendaftaran C-26 yang
-larut begitu mesinnya dibetulkan, kesimpulan C-23 **bertahan lintas mesin**. Itu membuatnya
-jauh lebih kuat sebagai hasil negatif.
+**C-23 still does NOT fix it**: FRR does not drop (18.8%), and separating power actually
+suffers (AUC 0.952 -> 0.927, EER 11.1% -> 14.3%). Unlike the C-26 enrollment finding, which
+dissolved once the engine was corrected, the C-23 conclusion **holds across engines**. That
+makes it a much stronger negative result.
 
-**Angka jujur sistem yang dikirim**, 5 belahan, grid q lebar, tanpa AFK:
-FRR 11,0% - FAR 11,2% - AUC 0,961 - EER 9,8% - FAR@FRR15 5,0%.
+**The honest numbers for the shipped system**, 5 splits, wide q grid, no AFK:
+FRR 11.0% - FAR 11.2% - AUC 0.961 - EER 9.8% - FAR@FRR15 5.0%.
 
-### Apa yang tidak tersentuh oleh perbaikan mesin
+### What the engine fix does not touch
 
-Temuan audit C-25 (A1 sesi menelusuri diblokir sebagai bot, A3 autofill, A4 ekor bocor
-antar-pengguna, B1 dua tab, B4 layar sentuh) **tidak diukur oleh tolok ukur ini dan tidak
-bisa diukur olehnya**: korpusnya tidak punya aliran throttled yang salah divonis, tidak
-punya autofill, tidak punya dua tab, tidak punya sesi sentuh. Semuanya cacat KEBENARAN,
-dibuktikan dengan menjalankan kodenya (`core/audit.test.mjs` 32/32), bukan cacat yang
-muncul sebagai FRR/FAR. Mesin yang lebih baik tidak memperbaiki satu pun: pengguna yang
-diblokir karena A1 tetap diblokir seberapa pun bagusnya Mahalanobis.
+The C-25 audit findings (A1 browsing sessions blocked as bots, A3 autofill, A4 tails leaking
+between users, B1 two tabs, B4 touch screens) **are not measured by this benchmark and cannot
+be**: the corpus has no wrongly judged throttled streams, no autofill, no two tabs, no touch
+sessions. They are all CORRECTNESS defects, proven by running the code
+(`core/audit.test.mjs` 32/32), not defects that show up as FRR/FAR. A better engine fixes none
+of them: a user blocked because of A1 stays blocked however good Mahalanobis is.
 
-Jadi keduanya menjawab pertanyaan berbeda dan tidak saling menggantikan - dan itu sendiri
-adalah alasan kenapa laporan yang HANYA berisi FRR/FAR tidak cukup untuk sistem ini.
+So the two answer different questions and do not replace each other - which is itself the
+reason a report containing ONLY FRR/FAR is not enough for this system.
 
-### Yang MASIH cacat di protokolnya, belum disentuh
+### What is STILL wrong with the protocol, not yet touched
 
-- **Melapor dari SATU belahan 8 subjek.** Sumber setiap pembalikan di dokumen ini.
-- **Kriteria pemilihan q mengejar FRR ~ FAR**, jadi selalu mendarat dekat EER. Untuk
-  sistem keamanan biasanya FAR ditetapkan lebih dulu, baru FRR dilaporkan. Itulah kenapa
-  FAR di semua tabel di atas berkisar 9-14%.
+- **Reporting from ONE split of 8 subjects.** The source of every reversal in this document.
+- **The q selection criterion chases FRR ~ FAR**, so it always lands near the EER. For a
+  security system FAR is usually fixed first and then FRR reported. That is why FAR in all the
+  tables above is around 9-14%.
 
-Keduanya mengubah DEFINISI angka headline, jadi tidak diubah sepihak.
+Both change the DEFINITION of the headline numbers, so they are not changed unilaterally.
 
 ---
 
-## C-28 - AFK: pendekkan jedanya, jangan pecah sesinya
+## C-28 - AFK: shorten the pause, do not split the session
 
-Di mesin yang dikirim, AFK menaikkan FRR **11,0% -> 18,4%** dan segmentasi C-23 tidak
-menurunkannya (18,8%). Syaratnya satu: FRR harus turun **tanpa** menaikkan FAR.
-Menggeser ambang tidak dihitung sebagai perbaikan.
+On the shipped engine, AFK raises FRR **11.0% -> 18.4%** and C-23 segmentation does not bring
+it down (18.8%). There is one condition: FRR must drop **without** raising FAR. Moving the
+threshold does not count as a fix.
 
-### Delapan tuas yang gagal lebih dulu
+### Eight levers that failed first
 
-Semuanya di atas kondisi 2 (AFK, Mahalanobis + IF 0,30, 5 belahan). Tuas yang
-menggeser titik operasi dibandingkan **pada FAR yang disamakan**. Tanpa itu, penurunan
-FRR yang dibayar dengan FAR tampak seperti perbaikan.
+All on top of condition 2 (AFK, Mahalanobis + IF 0.30, 5 splits). Levers that move the
+operating point are compared **at a matched FAR**. Without that, an FRR drop paid for with FAR
+looks like an improvement.
 
-| Tuas | Hasil | Kenapa gugur |
+| Lever | Result | Why it falls |
 |---|---|---|
-| grid q dilebarkan ke 0,001 | FRR 18,0% pada FAR 9,5% | cuma tukar titik operasi |
-| z-norm skor | AUC 0,707 | merusak daya pisah |
-| kalibrasi LOO | netral sampai lebih buruk | sama dengan C-27 |
-| agregasi 2 / 3 sesi | AUC 0,704 / 0,735 | merusak daya pisah |
-| skor robust (median/MAD) | AUC 0,821 | merusak daya pisah |
-| pembeda kohort | AUC 0,715 | merusak daya pisah |
-| k-sesi-berturut, FAR disamakan | k=1 14,9% / k=2 15,8% / k=3 18,6% | k>1 tidak menolong |
-| ambang parametrik, FAR disamakan | mean-z·sd 17,0%, med-z·MAD 16,3% (vs 14,9%) | lebih buruk dari kuantil |
+| q grid widened to 0.001 | FRR 18.0% at FAR 9.5% | only trades operating point |
+| score z-norm | AUC 0.707 | destroys separating power |
+| LOO calibration | neutral to worse | same as C-27 |
+| aggregate 2 / 3 sessions | AUC 0.704 / 0.735 | destroys separating power |
+| robust score (median/MAD) | AUC 0.821 | destroys separating power |
+| cohort discriminator | AUC 0.715 | destroys separating power |
+| k consecutive sessions, matched FAR | k=1 14.9% / k=2 15.8% / k=3 18.6% | k>1 does not help |
+| parametric threshold, matched FAR | mean-z·sd 17.0%, med-z·MAD 16.3% (vs 14.9%) | worse than quantile |
 
-Oracle ambang per-pengguna masih 5,6 poin di bawah, tapi celah itu tidak bisa dicapai
-oleh aturan apa pun yang tidak melihat jawabannya.
+The per-user threshold oracle is still 5.6 points lower, but that gap cannot be reached by any
+rule that does not look at the answers.
 
-**Pola yang menyatukan kelima kegagalan AUC:** skor penyusup punya ekor ekstrem yang
-panjang (agg1: rerata -22,5, sd 76,6), dan daya bedanya ada di ekor itu. Setiap tuas yang
-**menghaluskan** skor (rata-rata, z-norm, median, kohort) memotong ekornya, sehingga daya
-pisahnya ikut hilang. Ini menguji hipotesis C-26 yang dulu belum diuji, dan hasilnya
-mendukung hipotesis itu.
+**The pattern behind all five AUC failures:** intruder scores have a long extreme tail
+(agg1: mean -22.5, sd 76.6), and the discriminating power lives in that tail. Every lever that
+**smooths** the score (averaging, z-norm, median, cohort) cuts the tail off, so separating
+power goes with it. This tests the C-26 hypothesis that had not been tested before, and the
+result supports it.
 
-### Diagnosis: yang rusak cuma enam fitur, dan semuanya dibagi waktu
+### Diagnosis: only six features break, and all of them are divided by time
 
-Ada 493 pasangan sesi (sama, dengan vs tanpa AFK). Pergeseran diukur dalam satuan sd
-baseline:
+There are 493 session pairs (the same session, with vs without AFK). Shift is measured in units
+of baseline sd:
 
-| Fitur | Geser |
+| Feature | Shift |
 |---|---:|
-| `mouse_click_interval_mean` | 1,31 sd |
-| `keystroke_typing_speed` | 1,24 sd |
-| `form_field_switch_rate` | 1,20 sd |
-| `keystroke_cross_field_cadence` | 0,79 sd |
-| `keystroke_flight_time_mean` | 0,67 sd |
-| `temporal_session_duration` | 0,58 sd |
-| 22 fitur lainnya | ≤ 0,06 sd |
+| `mouse_click_interval_mean` | 1.31 sd |
+| `keystroke_typing_speed` | 1.24 sd |
+| `form_field_switch_rate` | 1.20 sd |
+| `keystroke_cross_field_cadence` | 0.79 sd |
+| `keystroke_flight_time_mean` | 0.67 sd |
+| `temporal_session_duration` | 0.58 sd |
+| the other 22 features | ≤ 0.06 sd |
 
-Perilakunya tidak berubah. Yang rusak adalah **penyebut waktunya**. Karena itu obatnya
-cukup di waktu, dan fitur lain tidak perlu diapa-apakan.
+The behaviour does not change. What breaks is the **time denominator**. So the cure only needs
+to touch time, and nothing else has to be done to the other features.
 
-### Tambalan: kompresi waktu diam
+### Patch: compress idle time
 
-`sdk/core/idle.js:compressIdle` memendekkan setiap jeda ≥ `session.idleCompressSec`
-(15 dtk) menjadi 15 dtk. Tidak ada event yang dibuang, dan sesi tetap dinilai utuh. Ini
-berbeda dari C-23. Segmentasi memendekkan **sesi**, sehingga sembilan fitur-cacah ikut
-mengecil (C-24). Kompresi hanya memendekkan **waktu kosongnya**. Rumus fitur di
-`core/SPEC.md` tidak disentuh, jadi hasilnya tetap 227/227.
+`sdk/core/idle.js:compressIdle` shortens every pause ≥ `session.idleCompressSec` (15 s) to 15 s.
+No event is discarded, and the session is still judged as a whole. This differs from C-23.
+Segmentation shortens the **session**, so the nine count features shrink with it (C-24).
+Compression only shortens the **empty time**. The feature formulas in `core/SPEC.md` are not
+touched, so the result is still 227/227.
 
-Diukur dengan 5 belahan 8/8 dan grid q `[0,01..0,20]` yang sama untuk semua lengan:
+Measured over 5 splits of 8/8 with the same q grid `[0.01..0.20]` for every arm:
 
-| Kondisi | FRR | FAR | AUC | EER | FAR@FRR15 |
+| Condition | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---|---:|---:|---:|---:|---:|
-| 1. tanpa AFK (kontrol) | 11,0% | 11,2% | 0,961 | 9,8% | 5,0% |
-| 2. AFK, tanpa perbaikan | 18,4% | 9,2% | 0,952 | 11,1% | 7,6% |
-| 3. AFK + segmentasi C-23 | 18,8% | 13,9% | 0,927 | 14,3% | 13,6% |
-| **AFK + kompresi 15 dtk** | **9,7%** | **9,3%** | **0,968** | **8,9%** | **5,0%** |
-| AFK + kompresi 30 dtk | 11,9% | 8,4% | 0,967 | 8,6% | 5,3% |
-| AFK + kompresi 60 dtk | 12,7% | 8,9% | 0,963 | 9,6% | 6,4% |
-| tanpa AFK + kompresi 10 dtk | 9,8% | 10,9% | 0,964 | 9,6% | 5,0% |
-| tanpa AFK + kompresi 15 dtk | 10,1% | 11,7% | 0,964 | 10,0% | 5,8% |
-| tanpa AFK + kompresi 20 dtk | 10,5% | 10,7% | 0,964 | 10,1% | 5,1% |
+| 1. no AFK (control) | 11.0% | 11.2% | 0.961 | 9.8% | 5.0% |
+| 2. AFK, no fix | 18.4% | 9.2% | 0.952 | 11.1% | 7.6% |
+| 3. AFK + C-23 segmentation | 18.8% | 13.9% | 0.927 | 14.3% | 13.6% |
+| **AFK + 15 s compression** | **9.7%** | **9.3%** | **0.968** | **8.9%** | **5.0%** |
+| AFK + 30 s compression | 11.9% | 8.4% | 0.967 | 8.6% | 5.3% |
+| AFK + 60 s compression | 12.7% | 8.9% | 0.963 | 9.6% | 6.4% |
+| no AFK + 10 s compression | 9.8% | 10.9% | 0.964 | 9.6% | 5.0% |
+| no AFK + 15 s compression | 10.1% | 11.7% | 0.964 | 10.0% | 5.8% |
+| no AFK + 20 s compression | 10.5% | 10.7% | 0.964 | 10.1% | 5.1% |
 
-FRR turun 8,7 poin sementara FAR tetap (9,2% -> 9,3%). AUC dan EER ikut membaik, jadi
-ini bukan tukar titik operasi. Pada sesi tanpa AFK kompresi netral di semua ambang yang
-diuji: selisihnya masih di dalam sebaran antar-belahan, dan tidak ada ambang yang
-merugikan. Artinya jeda berpikir alami tidak ikut rusak.
+FRR drops 8.7 points while FAR stays put (9.2% -> 9.3%). AUC and EER improve too, so this is
+not an operating-point trade. On sessions without AFK, compression is neutral at every
+threshold tested: the difference stays inside the between-split spread, and no threshold
+hurts. So natural thinking pauses are not damaged.
 
-### Dua varian yang ikut diuji dan DITOLAK
+### Two variants that were also tested and REJECTED
 
-**Pisah di jeda "away".** Menggabungkan sebelum-dan-sesudah absen jadi satu vonis punya
-harga keamanan. Kalau yang kembali ke kursi orang lain, perilakunya tercampur dengan
-perilaku pemilik. Varian yang tetap memecah di jeda panjang lalu mengompresi tiap
-potongannya menghapus manfaatnya:
+**Split at the "away" pause.** Merging before-and-after an absence into one verdict has a
+security cost. If someone else comes back to the chair, their behaviour is mixed with the
+owner's. A variant that still splits at long pauses and then compresses each piece wipes out
+the benefit:
 
 | | FRR | FAR | AUC | EER |
 |---|---:|---:|---:|---:|
-| kompresi, sesi utuh | 9,7% | 9,3% | 0,968 | 8,9% |
-| kompresi + pisah @ 5 mnt | 18,5% | 12,2% | 0,934 | 12,8% |
-| kompresi + pisah @ 15 mnt | 19,3% | 10,8% | 0,933 | 14,4% |
+| compression, whole session | 9.7% | 9.3% | 0.968 | 8.9% |
+| compression + split @ 5 min | 18.5% | 12.2% | 0.934 | 12.8% |
+| compression + split @ 15 min | 19.3% | 10.8% | 0.933 | 14.4% |
 
-Jadi yang merusak adalah **memendekkan sesi**, bukan jedanya. Hasil ini sejalan dengan
-C-23 dan C-24. Sisi keamanannya tetap ditangani, tapi lewat jalur lain: jeda terpanjang
-diukur dari timestamp **asli** sebelum dikompresi, sehingga `resumedAfterAway`, reset
-streak LOW, dan kenaikan LOW->MEDIUM untuk absen ≥ `reverifyAfterSec` tetap jalan
-(`core/idle.live.test.mjs` bagian E).
+So what does the damage is **shortening the session**, not the pause. This agrees with C-23
+and C-24. The security side is still handled, but through a different path: the longest pause
+is measured from the **original** timestamps before compression, so `resumedAfterAway`, the
+LOW streak reset and the LOW->MEDIUM raise for absences ≥ `reverifyAfterSec` still work
+(`core/idle.live.test.mjs` part E).
 
-**Kolam latih lebih besar.** `reproduce_db.py` membatasi kolam di 30 vektor, sedangkan
-SDK mengirim `baseline + progressiveMaxPool` = 10 + 90. Ini selisih "yang diukur ≠ yang
-dikirim" yang sekelas dengan C-27, jadi diukur. Efeknya kecil sekali: tanpa AFK EER 9,8%
--> 9,7%, AUC 0,961 -> 0,962. Dengan AFK + kompresi hasilnya 8,6% / 9,0% / 0,972 / 7,9%,
-juga di dalam sebaran. `run_fold(max_pool=...)` kini tersedia. Default-nya tetap 30
-supaya angka lama bisa direproduksi.
+**A bigger training pool.** `reproduce_db.py` capped the pool at 30 vectors, while the SDK ships
+`baseline + progressiveMaxPool` = 10 + 90. That is a "measured ≠ shipped" gap of the same class
+as C-27, so it was measured. The effect is tiny: without AFK EER 9.8% -> 9.7%, AUC 0.961 ->
+0.962. With AFK + compression the result is 8.6% / 9.0% / 0.972 / 7.9%, also inside the spread.
+`run_fold(max_pool=...)` is now available. The default stays 30 so the old numbers can be
+reproduced.
 
-### Kurva panjang pendaftaran: datar
+### Enrollment length curve: flat
 
-Klaim C-26 ("pendaftaran 10 terlalu pendek") sudah ditarik di C-27. Ia diuji ulang
-lebih lebar di mesin yang dikirim dengan himpunan uji tetap (sesi ≥ 20, `--eval-from 20`):
+The C-26 claim ("10-session enrollment is too short") was already withdrawn in C-27. It was
+re-tested more widely on the shipped engine with a fixed test set (sessions ≥ 20,
+`--eval-from 20`):
 
-| Pendaftaran | FRR | FAR | AUC | EER | FAR@FRR15 |
+| Enrollment | FRR | FAR | AUC | EER | FAR@FRR15 |
 |---:|---:|---:|---:|---:|---:|
-| 5 | 13,6% | 10,7% | 0,940 | 12,5% | 9,2% |
-| 10 | 14,1% | 13,0% | 0,941 | 12,8% | 9,9% |
-| 15 | 14,0% | 12,7% | 0,933 | 12,6% | 9,3% |
-| 20 | 14,0% | 13,1% | 0,935 | 13,4% | 10,7% |
+| 5 | 13.6% | 10.7% | 0.940 | 12.5% | 9.2% |
+| 10 | 14.1% | 13.0% | 0.941 | 12.8% | 9.9% |
+| 15 | 14.0% | 12.7% | 0.933 | 12.6% | 9.3% |
+| 20 | 14.0% | 13.1% | 0.935 | 13.4% | 10.7% |
 
-Datar dari 5 sampai 20. Menambah sesi pendaftaran **tidak** menurunkan FRR dasar ~10-11%.
-Ini konsisten dengan C-22/C-27: Mahalanobis + shrinkage adaptif sudah dirancang untuk n
-kecil.
+Flat from 5 to 20. More enrollment sessions do **not** lower the base FRR of ~10-11%. This is
+consistent with C-22/C-27: Mahalanobis + adaptive shrinkage is already designed for small n.
 
-### Yang WAJIB dijujurkan
+### What MUST be stated honestly
 
-- **AFK-nya sintetis.** Jeda 2-20 menit disuntikkan ke sesi evaluasi di satu titik.
-  Sebagian pemulihan memang sudah pasti terjadi oleh konstruksinya, karena yang disuntik
-  adalah waktu, dan waktu itulah yang dikompresi. Bukti bahwa manfaatnya bukan cuma
-  artefak: (a) pada data asli tanpa suntikan, kompresi netral sampai sedikit membaik;
-  (b) AUC/EER dengan AFK + kompresi **melampaui** kontrol tanpa AFK (0,968 vs 0,961).
-  Data AFK lapangan belum ada.
-- **Satu batch yang melintasi absen menghasilkan satu vonis.** Untuk absen 5-15 menit,
-  satu-satunya penanganan keamanan adalah reset streak. Di jalur live (jendela 30 dtk)
-  ini jarang terjadi karena ekor basi tidak dibawa ke jendela berikutnya. Di
-  `scoreExternalEvents` dengan batch panjang, hal ini bisa terjadi.
-- **FRR dasar ~10-11% pada sesi normal TIDAK tersentuh.** Tuas ambang, tuas agregasi,
-  dan panjang pendaftaran semuanya sudah habis. Yang tersisa harus dicari di
-  representasi (fitur apa yang dipakai), bukan di pengambilan keputusan.
+- **The AFK is synthetic.** Pauses of 2-20 minutes are injected into evaluation sessions at one
+  point. Part of the recovery is guaranteed by construction, because what was injected is time,
+  and time is exactly what gets compressed. Evidence that the benefit is not just an artefact:
+  (a) on the original data without injection, compression is neutral to slightly better;
+  (b) AUC/EER with AFK + compression **beat** the no-AFK control (0.968 vs 0.961). There is no
+  field AFK data yet.
+- **One batch that spans an absence produces one verdict.** For absences of 5-15 minutes, the
+  only security handling is the streak reset. On the live path (30 s windows) this rarely
+  happens because stale tails are not carried into the next window. In `scoreExternalEvents`
+  with long batches, it can.
+- **The base FRR of ~10-11% on normal sessions is NOT touched.** Threshold levers, aggregation
+  levers and enrollment length are all exhausted. What remains has to be found in the
+  representation (which features are used), not in the decision making.
 
-**Uji:** `core/compress.test.mjs` 22/22 (sifat dasar, 5 fitur berpenyebut waktu pulih,
-fitur-bentuk identik, fitur-cacah tidak mengecil). `core/idle.live.test.mjs` 33/33: A-D
-mengunci jalur C-23 lama lewat `idleCompressSec:0`, dan E mengunci jalur baru. Seluruh
-suite lama tetap hijau.
+**Tests:** `core/compress.test.mjs` 22/22 (basic properties, 5 time-denominated features
+restored, shape features identical, count features do not shrink). `core/idle.live.test.mjs`
+33/33: A-D lock the old C-23 path through `idleCompressSec:0`, and E locks the new path. Every
+older suite stays green.
 
-Reproduksi:
+Reproduce:
 `python tools/canonical_holdout.py --only 1 2 7 8 --seeds 42 7 13 2026 99 --q-grid 0.01 0.02 0.03 0.05 0.08 0.10 0.12 0.15 0.18 0.20`
 
-> **Catatan sesudah C-29.** Angka absolut C-28 berasal dari harness Python tiruan,
-> dengan satuan sesi utuh dan data berkembar. Di SDK sungguhan (mode live, C-29) arah
-> hasilnya bertahan. Pada data AFK, kompresi menaikkan AUC per pemilik 0,910 -> 0,927
-> dan menurunkan sesi penyusup yang tak pernah dinilai 10,9% -> 2,8%. Yang dikutip
-> adalah arah ini, bukan 18,4% -> 9,7%.
+> **Note after C-29.** The absolute C-28 numbers come from an imitation Python harness, with
+> whole sessions as the unit and duplicated data. On the real SDK (live mode, C-29) the
+> direction holds. On AFK data, compression raises per-owner AUC 0.910 -> 0.927 and lowers the
+> share of intruder sessions never judged 10.9% -> 2.8%. Quote this direction, not
+> 18.4% -> 9.7%.
 
 ---
 
-## C-29 - KRITIS: tiga harness, tidak satu pun mengukur SDK. Sekarang SDK mengukur dirinya sendiri
+## C-29 - CRITICAL: three harnesses, none of them measured the SDK. Now the SDK measures itself
 
-C-27 membetulkan mesin di `reproduce_db.py`, tetapi harness itu tetap **meniru** SDK di
-Python. Begitu tiruannya diadu dengan SDK sungguhan, ternyata ia masih meleset di tujuh
-tempat:
+C-27 fixed the engine in `reproduce_db.py`, but that harness still **imitated** the SDK in
+Python. Once the imitation was compared against the real SDK, it still missed in seven places:
 
-| | tiruan Python | SDK yang dikirim |
+| | Python imitation | Shipped SDK |
 |---|---|---|
-| ambang | kuantil, **dituning** per belahan | parametrik `k_low` **tetap** |
-| z per detektor | tak di-clamp | clamp [-6, 6] |
-| Mahalanobis (`experiment.py`) | shrink tetap 0,3 | shrink adaptif C-22 |
-| kolam | 30 | 10 + 90 |
-| sesi lolos-MFA | tak pernah melatih | melatih (TRUST-LOOP) |
-| lantai lengket, blokir beruntun | tidak ada | ada |
-| **satuan vonis** | **sesi riset utuh (~700 event)** | **jendela 30 dtk** |
+| threshold | quantile, **tuned** per split | parametric `k_low`, **fixed** |
+| per-detector z | not clamped | clamped [-6, 6] |
+| Mahalanobis (`experiment.py`) | fixed shrink 0.3 | C-22 adaptive shrink |
+| pool | 30 | 10 + 90 |
+| MFA-passed sessions | never train | train (TRUST-LOOP) |
+| sticky floor, consecutive blocks | absent | present |
+| **verdict unit** | **whole research session (~700 events)** | **30 s window** |
 
-**Alat baru: `tools/eval_sdk.mjs`.** Setiap sesi dimasukkan ke `BehaviorGuard` asli.
-Mode `--live` memanggil `endSession()` setiap 30 detik terhadap buffer tiruan, jadi
-kompresi, integritas, ekstraksi fitur JS, ambang, lantai, carry-back ekor, `bg:pending`
-lintas kunjungan, dan `init()` per kunjungan semuanya berjalan dengan kode SDK sendiri.
-Hanya dua hal yang disimulasikan: jam dinding, dan jawaban popup verifikasi (lewat API
-publik `reportStepUp`). Data diekspor oleh `tools/export_sessions.py` ke direktori
-sementara OS, **tidak pernah ke repo**.
+**New tool: `tools/eval_sdk.mjs`.** Every session is fed into the real `BehaviorGuard`. The
+`--live` mode calls `endSession()` every 30 seconds against a simulated buffer, so compression,
+integrity, JS feature extraction, thresholds, the floor, tail carry-back, cross-visit
+`bg:pending` and per-visit `init()` all run on the SDK's own code. Only two things are
+simulated: the wall clock, and the answer to the verification popup (through the public
+`reportStepUp` API). The data is exported by `tools/export_sessions.py` to an OS temp
+directory, **never into the repo**.
 
-**Tujuh artefak alat ukur ditemukan dan dibuang sebelum angkanya dipercaya.** Semuanya
-dari harness ini sendiri, dan semuanya membuat angka tampak lebih buruk atau lebih baik
-tanpa ada yang berubah di SDK:
-1. jam simulasi terlalu rapat sehingga rate-limit terpicu dan menghasilkan BLOCK palsu;
-2. satu instance untuk banyak kunjungan, sehingga jeda antar-hari terbaca sebagai "absen";
-3. `k_low` dipasang sesudah `init()` padahal ambang sudah dihitung;
-4. step-up dijawab di akhir kunjungan, bukan seketika;
-5. jam dinding macet di tanggal lain, sehingga ekor bukti tak pernah basi;
-6. jam belum digeser ke awal kunjungan saat `init()`, sehingga pending lama dianggap segar;
-7. sesi penyusup tanpa vonis tidak dihitung.
+**Seven measurement artefacts were found and removed before the numbers were trusted.** All of
+them came from this harness itself, and all of them made the numbers look worse or better
+without anything changing in the SDK:
+1. the simulated clock was too dense, so the rate limit fired and produced fake BLOCKs;
+2. one instance for many visits, so the gap between days was read as "away";
+3. `k_low` was set after `init()`, when the thresholds had already been computed;
+4. step-up was answered at the end of the visit, not immediately;
+5. the wall clock was stuck on another date, so evidence tails never went stale;
+6. the clock had not been moved to the start of the visit at `init()`, so old pending data
+   looked fresh;
+7. intruder sessions without a verdict were not counted.
 
-Dicatat karena **ketujuhnya sekelas dengan C-27**: harness yang tidak diperiksa terhadap
-mekanisme yang diukurnya menghasilkan angka yang terlihat sah.
+Recorded because **all seven are of the same class as C-27**: a harness that is not checked
+against the mechanism it measures produces numbers that look valid.
 
-### Temuan 1 - data riset berkembar (25-42% event identik)
+### Finding 1 - the research data is duplicated (25-42% identical events)
 
-Setiap jenis event di basis data riset punya kembaran identik sampai milidetik dan
-piksel: KEYSTROKE 36,5%, FORM_FOCUS 41,1%, MOUSE_MOVE 26,2%. Kadarnya tidak merata
-antar-sesi. Akibatnya `checkIntegrity` ("timestamp duplikat > 5") menuduh **458 dari
-653 sesi manusia** sebagai bot. Sesudah kembaran dibuang: **0**. Nilai maksimum ketikan
-berbeda yang kebetulan jatuh di milidetik yang sama pada manusia adalah 4.
+Every event type in the research database has identical twins down to the millisecond and
+pixel: KEYSTROKE 36.5%, FORM_FOCUS 41.1%, MOUSE_MOVE 26.2%. The rate is uneven across sessions.
+As a result `checkIntegrity` ("duplicate timestamps > 5") accused **458 of 653 human sessions**
+of being bots. After removing the twins: **0**. The maximum number of different keystrokes that
+happen to land on the same millisecond for a human is 4.
 
-Tambalan: `idle.js:dropExactDuplicates` dijalankan sebelum apa pun diukur. Kembaran
-tidak membawa informasi perilaku, dan penyebabnya selalu artefak pencatatan (pendengar
-ganda, batch terkirim ulang, pending terbaca dua kali). SDK kini tahan terhadap semuanya.
-Dampaknya pada harness Python ternyata kecil (AUC 0,961 -> 0,959), jadi angka lama tidak
-digelembungkan oleh kembaran. Yang terkena adalah **integritas**.
+Patch: `idle.js:dropExactDuplicates` runs before anything is measured. Twins carry no
+behavioural information, and their cause is always a logging artefact (double listeners,
+resent batches, pending data read twice). The SDK is now robust to all of these. The impact on
+the Python harness turned out to be small (AUC 0.961 -> 0.959), so the old numbers were not
+inflated by the twins. What was affected is **integrity**.
 
-### Temuan 2 - AUC gabungan menipu, AUC per pemilik tidak
+### Finding 2 - pooled AUC misleads, per-owner AUC does not
 
-AUC gabungan SDK (0,928) jauh di bawah tiruan (0,965). Per pemilik, keduanya hampir sama
-(misalnya subjek 7: 0,997 vs 1,000; subjek 11: 1,000 vs 1,000). Clamp z [-6,6] merapatkan
-skala skor antar-orang, jadi AUC **gabungan** turun tanpa daya pisah per orang berubah.
-Ambang SDK dibuat per pemilik, sehingga yang relevan adalah **AUC/EER per pemilik**
-(makro). `eval_sdk` melaporkan keduanya. Membuang clamp hanya menaikkan AUC gabungan
-0,928 -> 0,934, sedangkan FRR/FAR sama persis. Hipotesis clamp sebagai penyebab
-**ditolak**.
+The SDK's pooled AUC (0.928) is far below the imitation's (0.965). Per owner, the two are
+almost the same (e.g. subject 7: 0.997 vs 1.000; subject 11: 1.000 vs 1.000). The z clamp
+[-6,6] compresses the score scale across people, so **pooled** AUC drops without per-person
+separating power changing. SDK thresholds are per owner, so what matters is **per-owner
+AUC/EER** (macro). `eval_sdk` reports both. Removing the clamp only raises pooled AUC
+0.928 -> 0.934, while FRR/FAR stay exactly the same. The clamp-as-cause hypothesis is
+**rejected**.
 
-### Temuan 3 - satuan vonis (penyebab terbesar)
+### Finding 3 - the verdict unit (the biggest cause)
 
-| bukti per vonis (mode live) | 30 | 100 | 150 | 200 | 300 |
+| evidence per verdict (live mode) | 30 | 100 | 150 | 200 | 300 |
 |---|---:|---:|---:|---:|---:|
-| EER per pemilik | 23,8% | 14,2% | 12,3% | 10,7% | 9,0% |
-| sesi penyusup tak pernah dinilai | 0% | 0% | 0,6% | 4,5% | 25% |
+| per-owner EER | 23.8% | 14.2% | 12.3% | 10.7% | 9.0% |
+| intruder sessions never judged | 0% | 0% | 0.6% | 4.5% | 25% |
 
-SDK yang dikirim menilai setiap jendela 30 detik. Jendela sekecil itu sering hanya berisi
-gerak mouse, atau hanya ketikan, sehingga EER-nya **dua kali** angka sesi utuh. Semua
-angka yang pernah dilaporkan (termasuk C-27 dan C-28) memakai sesi utuh.
+The shipped SDK judges every 30-second window. A window that small often contains only mouse
+movement, or only typing, so its EER is **twice** the whole-session number. Every number ever
+reported (including C-27 and C-28) used whole sessions.
 
--> **C-33** (di bawah).
+-> **C-33** (below).
 
-### Temuan 4 - `k_low` 3,3 terlalu longgar
+### Finding 4 - `k_low` 3.3 is too loose
 
-Di SDK sungguhan, `k_low` 3,3 meloloskan 27,6% penyusup pada vonis pertamanya (bukti 150)
-dan 32,1% pada konfigurasi lama. Nilai itu dipilih di atas data berkembar dan satuan sesi
-utuh. -> C-33.
+On the real SDK, `k_low` 3.3 lets 27.6% of intruders through on their first verdict (evidence
+150) and 32.1% on the old configuration. That value was chosen on duplicated data with whole
+sessions as the unit. -> C-33.
 
-Reproduksi:
+Reproduce:
 ```
-python tools/export_sessions.py            # + --afk untuk data AFK
-node tools/eval_sdk.mjs --live             # default yang dikirim
-node tools/eval_sdk.mjs                    # satuan sesi utuh (pembanding riset)
+python tools/export_sessions.py            # + --afk for AFK data
+node tools/eval_sdk.mjs --live             # the shipped defaults
+node tools/eval_sdk.mjs                    # whole-session unit (research comparison)
 ```
 
 ---
 
-## C-30 - KRITIS (privasi): kata sandi tersimpan sebagai teks biasa
+## C-30 - CRITICAL (privacy): passwords stored as plain text
 
-`capture.js` menyimpan `key: e.key`, yaitu **karakter asli**, termasuk di kolom sandi.
-Momen paling berbahaya justru saat login: sandi diketik, Enter ditekan, halaman
-berpindah, lalu `_bankTail()` menyimpan 200 event terakhir sebagai JSON **teks biasa di
-localStorage**. Sandi tertinggal di browser dan terbaca oleh skrip apa pun di origin itu.
+`capture.js` stored `key: e.key`, i.e. the **actual character**, including in password fields.
+The most dangerous moment is exactly the login: the password is typed, Enter is pressed, the
+page navigates, and then `_bankTail()` saves the last 200 events as JSON **plain text in
+localStorage**. The password stays behind in the browser, readable by any script on that
+origin.
 
-Satu-satunya fitur yang memakai identitas tombol adalah `keystroke_transition_entropy`,
-dan fitur itu hanya perlu tahu "sama atau beda". Karena itu setiap karakter diganti token
-urut-kemunculan (`k1`, `k2`, ...) lewat peta yang **hanya hidup di memori halaman**.
-Pemetaannya injektif, jadi entropinya identik sampai bit terakhir (diuji), dan ke-28 fitur
-identik. Nama tombol khusus (Enter, Backspace, Shift) bukan rahasia dan dibiarkan. Yang
-tersisa untuk sandi hanyalah **pola** pengulangannya, bukan isinya.
+The only feature that uses key identity is `keystroke_transition_entropy`, and that feature only
+needs to know "same or different". So every character is replaced by an order-of-appearance
+token (`k1`, `k2`, ...) through a map that **only lives in the page's memory**. The mapping is
+injective, so the entropy is identical down to the last bit (tested), and all 28 features are
+identical. Special key names (Enter, Backspace, Shift) are not secret and are left as they are.
+All that remains of a password is its repetition **pattern**, not its content.
 
-Di berkas yang sama ditemukan tiga cacat lain:
-- Ketikan, klik, fokus, dan tempel di **popup MFA milik BG** ikut terekam sebagai
-  perilaku. Frasa tetap yang diketik berulang itu mencemari fitur ketik jendela
-  berikutnya. Kini diabaikan lewat `[data-bg-mfa]`. Gerak mouse tetap direkam.
-- **Auto-repeat** (tombol ditahan) menimpa waktu tekan, sehingga waktu tahan terukur dari
-  pengulangan terakhir.
-- `keydown` yang hilang (misalnya fokus berpindah) meninggalkan **t0 basi** bermenit-menit
-  untuk `keyup` berikutnya.
+Three more defects were found in the same file:
+- Keystrokes, clicks, focus and paste inside **BG's own MFA popup** were recorded as behaviour.
+  The fixed phrase typed again and again polluted the typing features of the next window. Now
+  ignored through `[data-bg-mfa]`. Mouse movement is still recorded.
+- **Auto-repeat** (a key held down) overwrote the press time, so hold time was measured from
+  the last repeat.
+- A lost `keydown` (e.g. focus moved) left a **stale t0** of several minutes for the next
+  `keyup`.
 
-Uji: `core/privacy.test.mjs` 10/10.
-
----
-
-## C-31 - siklus hidup jangka panjang: baseline teracuni, riwayat tanpa batas, latih ulang mati
-
-- **Pemotongan penyimpanan meracuni baseline.** Tanpa IndexedDB, `storage.js` menyimpan
-  `slice(-90)` dari SEMUA sesi, sehingga blok pendaftaran di depan terbuang. Sesudah
-  reload, 10 sesi apa pun yang kebetulan ada di depan (bisa sesi penyusup) menjadi
-  pendaftaran tanpa syarat. Kini blok pendaftaran (`enrollPrefix`) selalu dipertahankan.
-- **Blok pendaftaran diandaikan `slice(0, baseline)`.** Andaian ini salah begitu ada satu
-  sesi tak-layak di masa pendaftaran: vektor pendaftaran lalu bergulir keluar dari kolam.
-  Kini `_enrollPrefix()` menjadi ujung sesi layak ke-10.
-- **Riwayat tumbuh tanpa batas.** Satu entri ditambahkan setiap vonis, dan seluruh riwayat
-  diserialisasi ulang + di-HMAC setiap vonis. Kini: blok pendaftaran + `historyMax` (240).
-- **Latih ulang mati sesudah ~45 menit.** Jadwalnya `ukuran kolam % 6`. Begitu kolam penuh
-  (90), ukurannya macet: di 90 model dilatih ulang setiap jendela, di 88/89 **tidak pernah
-  lagi**, sehingga adaptasi drift pemilik mati diam-diam. Kini dihitung dari sesi layak
-  baru sejak latih ulang terakhir.
-- **Tujuh salinan `storage.set`**, dua di antaranya tidak menulis `challengeTemplate`:
-  satu tuduhan bot **menghapus template MFA pemilik** dari penyimpanan. Kini satu penulis,
-  `_persist()`. Jalur bot juga membuat memori dan penyimpanan sepakat soal `lastRisk`.
-
-Uji: `core/lifecycle.test.mjs` bagian A, B, C, G.
+Tests: `core/privacy.test.mjs` 10/10.
 
 ---
 
-## C-32 - integrator tidak bisa melaporkan hasil step-up
+## C-31 - long-term lifecycle: a poisoned baseline, unbounded history, dead retraining
 
-Vonis MEDIUM/HIGH menyuruh integrator "minta verifikasi", tetapi hasilnya tidak bisa
-dikembalikan ke pustaka. Bagi siapa pun yang memakai OTP/WebAuthn sendiri, lantai lengket
-tak pernah dibersihkan dan sesi pemilik yang terverifikasi tak pernah melatih model.
-Streak LOW juga tidak disimpan, sehingga kunjungan pendek tidak pernah turun dari MEDIUM.
+- **Storage truncation poisoned the baseline.** Without IndexedDB, `storage.js` kept
+  `slice(-90)` of ALL sessions, so the enrollment block at the front was dropped. After a
+  reload, whatever 10 sessions happened to be at the front (possibly intruder sessions) became
+  the enrollment, unconditionally. Now the enrollment block (`enrollPrefix`) is always kept.
+- **The enrollment block was assumed to be `slice(0, baseline)`.** That assumption breaks as
+  soon as there is one ineligible session during enrollment: enrollment vectors then roll out
+  of the pool. Now `_enrollPrefix()` ends at the 10th eligible session.
+- **History grew without bound.** One entry was added per verdict, and the whole history was
+  reserialised + HMAC'd on every verdict. Now: the enrollment block + `historyMax` (240).
+- **Retraining died after ~45 minutes.** The schedule was `pool size % 6`. Once the pool was
+  full (90), its size got stuck: at 90 the model retrained every window, at 88/89 **never
+  again**, so adaptation to owner drift silently died. Now counted from new eligible sessions
+  since the last retrain.
+- **Seven copies of `storage.set`**, two of which did not write `challengeTemplate`: a single
+  bot accusation **deleted the owner's MFA template** from storage. Now there is one writer,
+  `_persist()`. The bot path also makes memory and storage agree on `lastRisk`.
 
-Diukur (`eval_sdk --live`) pada pemilik tanpa jalur verifikasi: **gesekan 61,3%,
-DIBLOKIR 25,7%**. Dengan jalur verifikasi: 16,4% dan 0%.
-
-Tambalan: `reportStepUp({passed})`, yang efeknya sama persis dengan MFA bawaan yang
-terverifikasi. `lowStreak` kini disimpan.
-
-**Konsekuensi yang wajib didokumentasikan:** BehaviorGuard **membutuhkan** jalur step-up.
-Tanpanya, lantai lengket dan blokir beruntun menjadi hukuman bagi pemilik sendiri.
+Tests: `core/lifecycle.test.mjs` parts A, B, C, G.
 
 ---
 
-## C-33 - vonis menunggu bukti cukup; `k_low` dipilih ulang; `assessNow()`
+## C-32 - the integrator could not report a step-up result
 
-Perubahan default, semuanya dipilih dengan `eval_sdk --live`:
+A MEDIUM/HIGH verdict tells the integrator to "ask for verification", but the result could not
+be handed back to the library. For anyone using their own OTP/WebAuthn, the sticky floor never
+cleared and a verified owner session never trained the model. The LOW streak was not stored
+either, so short visits never came down from MEDIUM.
 
-| knob | lama | baru | alasan |
+Measured (`eval_sdk --live`) on an owner without a verification path: **friction 61.3%,
+BLOCKED 25.7%**. With a verification path: 16.4% and 0%.
+
+Patch: `reportStepUp({passed})`, with exactly the same effect as a verified built-in MFA.
+`lowStreak` is now stored.
+
+**A consequence that must be documented:** BehaviorGuard **requires** a step-up path. Without
+one, the sticky floor and consecutive blocks turn into a punishment for the owner.
+
+---
+
+## C-33 - verdicts wait for enough evidence; `k_low` re-selected; `assessNow()`
+
+Default changes, all chosen with `eval_sdk --live`:
+
+| knob | old | new | reason |
 |---|---|---|---|
-| `session.minEventsAssess` | 30 | **150** | EER per pemilik 23,8% -> 12,3% (tabel C-29) |
-| `session.carryMaxAgeSec` | (= idleGapSec 30) | **900** | bukti yang belum cukup dikumpulkan walau pengguna diam > 30 dtk |
-| `k_low` | 3,3 | **1,75** | median pilihan tuner, 5 belahan (di bawah) |
+| `session.minEventsAssess` | 30 | **150** | per-owner EER 23.8% -> 12.3% (C-29 table) |
+| `session.carryMaxAgeSec` | (= idleGapSec 30) | **900** | insufficient evidence keeps accumulating even if the user is quiet > 30 s |
+| `k_low` | 3.3 | **1.75** | median of the tuner's choices, 5 splits (below) |
 
-Jendela tetap berdetak setiap 30 detik. Yang berubah: vonis baru jatuh setelah 150 event
-terkumpul.
+Windows still tick every 30 seconds. What changed: a verdict only falls once 150 events have
+been collected.
 
-**Pemilihan `k_low` (bukti 150, tuning di 8 subjek, lapor di 8 lainnya, 5 belahan):**
-tuner memilih 1,75 / 1,75 / 1,5 / 2,0 / 1,5. Rata-rata lapor: pemilik diminta verifikasi
-**16,6%** [12..19], penyusup lolos vonis pertama **8,9%** [4..14], ambil-alih tak
-ketahuan dalam 6 sesi 0,2%.
+**Choosing `k_low` (evidence 150, tuned on 8 subjects, reported on the other 8, 5 splits):** the
+tuner picked 1.75 / 1.75 / 1.5 / 2.0 / 1.5. Reported averages: owner asked to verify **16.6%**
+[12..19], intruder passes the first verdict **8.9%** [4..14], takeover undetected within 6
+sessions 0.2%.
 
-**Hasil default yang dikirim (`node tools/eval_sdk.mjs --live`, 16 subjek):**
+**Results with the shipped defaults (`node tools/eval_sdk.mjs --live`, 16 subjects):**
 
-| | lama (30 ev, k 3,3) | **baru** |
+| | old (30 ev, k 3.3) | **new** |
 |---|---:|---:|
-| pemilik diminta verifikasi | 18,6% | **16,4%** |
-| pemilik diblokir | 0% | **0%** |
-| penyusup lolos vonis pertama | 32,1% | **13,5%** |
-| seluruh sesi penyusup lolos tanpa gesekan | 14,0% | **9,5%** |
-| sesi penyusup tak pernah dinilai | 0% | 0,6% |
-| AUC / EER per pemilik | 0,818 / 24,3% | **0,929 / 12,0%** |
-| ambil-alih ketahuan di sesi pertama | 80,8% | **88,8%** |
-| ambil-alih tak ketahuan dalam 6 sesi | 2,9% | **0,0%** |
+| owner asked to verify | 18.6% | **16.4%** |
+| owner blocked | 0% | **0%** |
+| intruder passes first verdict | 32.1% | **13.5%** |
+| whole intruder session passes without friction | 14.0% | **9.5%** |
+| intruder sessions never judged | 0% | 0.6% |
+| per-owner AUC / EER | 0.818 / 24.3% | **0.929 / 12.0%** |
+| takeover detected in the first session | 80.8% | **88.8%** |
+| takeover undetected within 6 sessions | 2.9% | **0.0%** |
 
-**Ekor pending kini punya umur maksimum.** Dulu ekor kemarin bergabung dengan ketikan hari
-ini: vektornya campuran dua hari, dan jeda semalam terbaca sebagai "kembali dari absen"
-yang memicu MEDIUM di awal setiap kunjungan. Sebelum diperbaiki, 149 dari ~500 gesekan
-pemilik berasal dari sini.
+**Pending tails now have a maximum age.** Yesterday's tail used to merge with today's typing:
+the vector was a mix of two days, and the overnight gap was read as "back from an absence",
+which triggered MEDIUM at the start of every visit. Before the fix, 149 of ~500 owner friction
+events came from this.
 
-**Harga penundaan adalah latensi**, dan harga itu dibayar di tempat yang tepat lewat
-`assessNow()`. Penyusup yang masuk lalu mengganti email pemulihan dalam 20 detik bisa
-selesai sebelum vonis rutin pertama. Aksi sensitif harus memanggil `assessNow()`: vonis
-seketika, **tanpa efek samping**, dan **UNKNOWN berarti minta verifikasi** (gagal
-tertutup).
+**The price of waiting is latency**, and that price is paid in the right place through
+`assessNow()`. An intruder who gets in and changes the recovery email within 20 seconds could
+finish before the first routine verdict. Sensitive actions must call `assessNow()`: an
+immediate verdict, **with no side effects**, and **UNKNOWN means ask for verification** (fail
+closed).
 
-`init({calibration:{k_low}})` kini tersedia. Dulu titik operasi hanya bisa digeser
-dengan menyunting `config.js`.
+`init({calibration:{k_low}})` is now available. Before, the operating point could only be moved
+by editing `config.js`.
 
-Konformansi: golden dibuat ulang dengan `k_low` tercatat eksplisit. Hasilnya **227/227
-di kelima runtime** (Python, JS, Rust, Java, WASM).
+Conformance: the golden file was regenerated with `k_low` recorded explicitly. Result
+**227/227 on all five runtimes** (Python, JS, Rust, Java, WASM).
 
-Uji: `core/lifecycle.test.mjs` bagian D, E, F (24/24 bersama C-31).
+Tests: `core/lifecycle.test.mjs` parts D, E, F (24/24 together with C-31).
 
 ---
 
-## C-34 - SPEC 1.3: `direction_changes` berbeda antar-bahasa di sudut tepat pi/4
+## C-34 - SPEC 1.3: `direction_changes` differs across languages at exactly pi/4
 
-Pada sudut **tepat** pi/4, `atan2` berbeda 1-2 ulp antar-implementasi libm, dan itu
-membalik hitungan belok di SATU bahasa saja: 5 dari 192 sesi nyata, padahal semua
-golden lulus (tidak ada golden yang jatuh tepat di tepi). Kini dibandingkan dengan
-`pi/4 + 1e-9` di kelima runtime, dan kasus golden baru `_fc_atan2_pi4_edges` dibangun
-dari pasangan gerakan nyata itu. Golden 227 -> **255** pemeriksaan. Ke-28 fitur identik
-JS vs Python pada 653 sesi.
+At an angle of **exactly** pi/4, `atan2` differs by 1-2 ulp between libm implementations, and
+that flips the turn count in ONE language only: 5 of 192 real sessions, even though every
+golden passed (no golden case landed exactly on the edge). It is now compared against
+`pi/4 + 1e-9` on all five runtimes, and a new golden case `_fc_atan2_pi4_edges` was built from
+those real movement pairs. Golden 227 -> **255** checks. All 28 features identical JS vs Python
+on 653 sessions.
 
-## C-35 - rekam-ulang
+## C-35 - replay
 
-Perilaku korban yang terekam (XSS, ekstensi jahat, malware perekam) lalu diputar dengan
-waktu digeser menghasilkan vektor yang identik dengan sesi lama, dan model menilainya LOW
-karena memang itu perilaku pemiliknya. Manusia tidak pernah mengulang dirinya sedekat itu:
-jarak RMS terstandar ke sesi pemilik terdekat minimum 0,289 di data riset. Sesi dengan
-jarak < `replayEps` 0,05 (tanpa fitur temporal) divonis HIGH dan tidak pernah melatih.
-Uji: `core/lifecycle.test.mjs` H (termasuk jitter waktu +-2 ms).
+A victim's recorded behaviour (XSS, a malicious extension, recording malware) played back with
+shifted timestamps produces a vector identical to the old session, and the model judges it LOW
+because it really is the owner's behaviour. Humans never repeat themselves that closely: the
+minimum standardised RMS distance to the nearest owner session in the research data is 0.289.
+Sessions with a distance < `replayEps` 0.05 (excluding temporal features) are judged HIGH and
+never train. Test: `core/lifecycle.test.mjs` H (including +-2 ms time jitter).
 
-## C-36 - pembaruan browser terbaca sebagai ganti perangkat
+## C-36 - a browser update read as a device change
 
-Sidik perangkat memuat nomor versi UA, jadi pembaruan otomatis Chrome setiap bulan
-menaikkan SEMUA pengguna ke MEDIUM sekali. `normalizeUA` membuang nomor versi; sidik
-versi lama (`fpv` < 2) tidak dibandingkan supaya pembaruan pustaka ini sendiri tidak
-mencurigai semua orang.
+The device fingerprint included the UA version number, so Chrome's monthly auto-update raised
+EVERY user to MEDIUM once. `normalizeUA` drops the version number; old-version fingerprints
+(`fpv` < 2) are not compared, so an update of this library itself does not make everyone look
+suspicious.
 
-## C-37 - popup pendaftaran MFA muncul di tiap vonis LOW
+## C-37 - the MFA enrollment popup appeared on every LOW verdict
 
-Menutup popup pendaftaran kini menundanya 24 jam (`mfa.enrollSnoozeMs`, tersimpan lintas
-muat-halaman). Aturan integritas "event kembar" dibuat relatif: `dup > max(5, 0,05 n)`.
+Closing the enrollment popup now snoozes it for 24 hours (`mfa.enrollSnoozeMs`, persisted across
+page loads). The "duplicate events" integrity rule was made relative: `dup > max(5, 0.05 n)`.
 
-## C-38 - init ulang mewarisi pengguna sebelumnya
+## C-38 - re-init inherited the previous user
 
-Logout A -> login B di tab yang sama (atau SPA ganti rute yang memanggil `init()` lagi):
-bila B belum punya data tersimpan, B dinilai dengan MODEL A, sesinya melatih kolam A, dan
-verifikasinya dicocokkan dengan TEMPLATE RITME A. Kini `_resetUserState()` dipakai `init`
-dan `clear`, capture lama dilepas, dan konfigurasi init sebelumnya tidak terbawa.
+Logout A -> login B in the same tab (or an SPA route change that calls `init()` again): if B had
+no stored data yet, B was judged with A's MODEL, B's sessions trained A's pool, and B's
+verification was matched against A's RHYTHM TEMPLATE. Now `_resetUserState()` is used by `init`
+and `clear`, the old capture is detached, and the previous init configuration does not carry
+over.
 
-## C-39 - server: `pk` di halaman membuka semuanya
+## C-39 - server: the `pk` in the page opened everything
 
-Dulu siapa pun yang membaca `pk` dari kode halaman bisa membaca template perilaku akun
-mana pun, **menimpanya** (peracunan: vektor penyerang dijadikan baseline korban),
-memalsukan vonis, dan lewat `/tenants` tanpa auth mengumpulkan `pk` semua tenant. Kini
-tenant punya `pk` (publik) + `sk` (rahasia). Baseline/log wajib token pengguna
-`b64url(userId).exp.hex(HMAC-SHA256(sk, pk|userId|exp))` yang dicetak server integrator;
-`userId` diambil dari token. API dashboard wajib `sk`; `/tenants` hanya admin
-(`BG_ADMIN_TOKEN`). Vektor NaN/inf ditolak. Klien hanya mengadopsi baseline server di
-perangkat BARU. Uji: `server/test_app.py`.
+Before, anyone who read the `pk` from the page source could read any account's behaviour
+template, **overwrite it** (poisoning: the attacker's vectors become the victim's baseline),
+forge verdicts, and through the unauthenticated `/tenants` collect every tenant's `pk`. Now a
+tenant has a `pk` (public) + an `sk` (secret). Baseline/log require a user token
+`b64url(userId).exp.hex(HMAC-SHA256(sk, pk|userId|exp))` minted by the integrator's server;
+`userId` is taken from the token. The dashboard API requires `sk`; `/tenants` is admin only
+(`BG_ADMIN_TOKEN`). NaN/inf vectors are rejected. The client only adopts the server baseline on
+a NEW device. Test: `server/test_app.py`.
 
-## C-40 - auto-boot menguras buffer sebelum SDK sempat menyimpan ekor
+## C-40 - auto-boot drained the buffer before the SDK could save the tail
 
-`dist/behaviorguard.js` memasang `pagehide -> endSession()` SEBELUM pendengar SDK sendiri
-(init menunggu fingerprint dulu). Penilaian async-nya tak sempat selesai karena halaman
-mati, lalu `_bankTail` milik SDK mendapati buffer kosong: bukti halaman terakhir hilang.
-Pendengar itu dihapus; auto-boot kini meneruskan `session/idle/calibration/userToken`.
+`dist/behaviorguard.js` installed `pagehide -> endSession()` BEFORE the SDK's own listeners (init
+waits for the fingerprint first). Its async scoring could not finish because the page was dying,
+and then the SDK's `_bankTail` found an empty buffer: the last page's evidence was lost. That
+listener was removed; auto-boot now forwards `session/idle/calibration/userToken`.
 
-## C-41 - dashboard: stored XSS; loader; ekstensi
+## C-41 - dashboard: stored XSS; loader; extension
 
-- **Dashboard** menampilkan `userId`, `reasons`, `fp`, `ip` lewat `innerHTML` tanpa escape.
-  Satu token pengguna sah cukup untuk menanam `<img onerror=...>` yang jalan di browser
-  OPERATOR (yang memegang `sk`). Dashboard juga masih login pakai `pk`, jadi tidak jalan
-  dengan server C-39. Kini: operator memasukkan `sk` (disimpan di sessionStorage tab itu,
-  dikirim lewat header, tidak pernah lewat URL); semua nilai di-escape, level dibatasi
-  daftar putih, angka dipaksa `Number`; `/dashboard` dikirim dengan **CSP ber-nonce**
-  sebagai lapisan kedua. Server menyaring `/log` di sumbernya (level daftar putih, action
-  `^[A-Z_]{1,32}$`, reasons 6 x 160, nama fitur `^[a-z0-9_]{1,40}$`, jam klien yang ngawur
-  diganti jam server) dan `X-Forwarded-For` hanya dipercaya dengan `BG_TRUST_PROXY=1`.
-  Juga: `.login{display:grid}` mengalahkan atribut `hidden`, jadi form login tak pernah
-  bisa ditutup (drawer punya cacat yang sama) - kini `[hidden]{display:none!important}`.
-  Uji: `server/test_app.py` 35/35; diverifikasi di browser: payload tampil sebagai teks.
-- **Loader** `loader/bg-loader.js` punya cacat C-40 yang sama (`pagehide`/`beforeunload`
-  -> `endSession`). Dihapus; loader kini meneruskan opsi yang sama dengan auto-boot.
-- **Bundle meminta `/storage.js` milik situs.** `token.js` memuat penyimpanan lewat
-  `import('../storage.js')`; di bundle satu berkas jalur itu relatif ke HALAMAN, jadi tiap
-  muat halaman menghasilkan 404 di tab Network integrator dan rahasia token dibuat acak ulang.
-  Profil tidak terdampak (segelnya memakai kunci lain). Kini `storage` dioper pemanggil;
-  diverifikasi di browser: bundle hanya meminta dirinya sendiri.
-- **Ekstensi** versi lama menyimpan KARAKTER yang diketik di situs mana pun ke
-  `chrome.storage.local` dan memakai mesin salinan-tangan yang basi. Sudah ditulis ulang
-  memakai capture & orkestrator bersama, tapi ekstensi **bukan lagi bagian produk** (yang
-  dikirim adalah pustaka) dan dijadwalkan dihapus dari repo.
+- **The dashboard** rendered `userId`, `reasons`, `fp`, `ip` through `innerHTML` without
+  escaping. One valid user token was enough to plant an `<img onerror=...>` that ran in the
+  OPERATOR's browser (the one holding `sk`). The dashboard also still logged in with `pk`, so it
+  did not work with the C-39 server. Now: the operator enters `sk` (kept in that tab's
+  sessionStorage, sent in a header, never in the URL); every value is escaped, levels are
+  allow-listed, numbers are forced through `Number`; `/dashboard` is served with a **nonce-based
+  CSP** as a second layer. The server filters `/log` at the source (allow-listed levels, action
+  `^[A-Z_]{1,32}$`, reasons 6 x 160, feature names `^[a-z0-9_]{1,40}$`, implausible client clocks
+  replaced by the server clock) and `X-Forwarded-For` is only trusted with `BG_TRUST_PROXY=1`.
+  Also: `.login{display:grid}` beat the `hidden` attribute, so the login form could never be
+  closed (the drawer had the same defect) - now `[hidden]{display:none!important}`.
+  Test: `server/test_app.py` 35/35; verified in the browser: the payload renders as text.
+- **The loader** `loader/bg-loader.js` had the same C-40 defect (`pagehide`/`beforeunload`
+  -> `endSession`). Removed; the loader now forwards the same options as auto-boot.
+- **The bundle requested the site's `/storage.js`.** `token.js` loaded storage through
+  `import('../storage.js')`; in a single-file bundle that path is relative to the PAGE, so every
+  page load produced a 404 in the integrator's Network tab and the token secret was regenerated
+  at random. Profiles were not affected (their seal uses a different key). Now `storage` is
+  passed in by the caller; verified in the browser: the bundle only requests itself.
+- **The extension**'s old version stored the CHARACTERS typed on any site into
+  `chrome.storage.local` and used a stale hand-copied engine. It has been rewritten to use the
+  shared capture and orchestrator, but the extension is **no longer part of the product** (what
+  ships is the library) and is scheduled for removal from the repo.
 
-## C-42 - mencari penurunan FRR & FAR yang berlaku di dunia nyata (sebagian besar NEGATIF)
+## C-42 - looking for FRR & FAR reductions that hold in the real world (mostly NEGATIVE)
 
-Dipasang `eval_sdk --dump-vec` (vektor persis yang dinilai SDK, ke temp OS) untuk menyaring
-ide cepat, lalu setiap kandidat diukur ulang dengan SDK sungguhan (`eval_sdk --live`).
+Added `eval_sdk --dump-vec` (the exact vectors the SDK scores, to an OS temp dir) to screen ideas
+quickly, then every candidate was re-measured with the real SDK (`eval_sdk --live`).
 
-| ide | hasil | keputusan |
+| idea | result | decision |
 |---|---|---|
-| normalisasi kohort (skor = mirip-pemilik dikurangi mirip-populasi), leave-2-out | AUC +0,008..0,012 di tiruan | **ditolak**: butuh statistik populasi; fitur seperti jumlah halaman/klik bergantung pada SITUS, jadi statistik 16 relawan di situs riset tidak berlaku di situs lain |
-| bobot fitur Fisher dari populasi | AUC +0,011 | ditolak, alasan sama |
-| model dua kelas pemilik-vs-populasi (LogReg, LDA) | AUC +0,010 / -0,054 | ditolak, alasan sama + butuh data orang lain di perangkat |
-| perataan skor jendela berurutan dalam satu kunjungan | pemilik 16,4% -> 16,4%, penyusup seluruh-sesi 9,5% -> 10,8% | **ditolak dan kodenya dihapus** |
-| jendela geser `contextEvents` | lihat bawah | **opt-in**, default mati |
+| cohort normalisation (score = owner similarity minus population similarity), leave-2-out | AUC +0.008..0.012 on the imitation | **rejected**: needs population statistics; features such as page/click counts depend on the SITE, so statistics from 16 volunteers on the research site do not apply to other sites |
+| Fisher feature weights from the population | AUC +0.011 | rejected, same reason |
+| two-class owner-vs-population model (LogReg, LDA) | AUC +0.010 / -0.054 | rejected, same reason + needs other people's data on the device |
+| smoothing consecutive window scores within a visit | owner 16.4% -> 16.4%, intruder whole session 9.5% -> 10.8% | **rejected and the code removed** |
+| sliding window `contextEvents` | see below | **opt-in**, off by default |
 
-**Kenapa perataan tidak menolong** - temuan paling berguna dari babak ini: gesekan pemilik
-**rata di semua posisi jendela** dalam kunjungan (model != LOW 15,5% / 13,8% / 14,3% /
-10,4% / 19,6% untuk jendela ke-1..5+). Pemilik tidak ditolak karena satu jendela sial;
-ia ditolak pada HARI ketika perilakunya memang berbeda, dan pada hari itu semua
-jendelanya berbeda. Itu bukan derau yang bisa dirata-rata; itu tugas step-up.
+**Why smoothing does not help** - the most useful finding of this round: owner friction is
+**even across window positions** within a visit (model != LOW 15.5% / 13.8% / 14.3% / 10.4% /
+19.6% for windows 1..5+). The owner is not rejected because of one unlucky window; they are
+rejected on the DAY their behaviour really is different, and on that day all their windows are
+different. That is not noise that can be averaged away; it is step-up's job.
 
-**Jendela geser** (`session.contextEvents` = N): vonis pertama kunjungan tetap jatuh di 150
-event BARU; vonis berikutnya menilai event baru + event yang baru dinilai, sampai N total.
-Konteks hanya di memori tab dan dibuang setelah jeda >= `idle.awaySec`. Dua cacat
-ditemukan dan diperbaiki saat mengukurnya:
-- aturan "bukti ketikan dialihkan" membaca konteks, jadi SATU tempel mencemari 2-3 vonis
-  berikutnya dan subjek pengguna password manager tak pernah selesai mendaftar (subjek 19
-  hilang dari hasil di N >= 375). Kini hanya event baru yang diperiksa;
-- harness menyalin konteks pemilik ke klon penyusup (dibersihkan; penyusup berkredensial
-  curian datang lewat kunjungan baru).
+**Sliding window** (`session.contextEvents` = N): the first verdict of a visit still falls at 150
+NEW events; later verdicts judge the new events + the most recently judged events, up to N in
+total. The context only lives in tab memory and is dropped after a pause >= `idle.awaySec`. Two
+defects were found and fixed while measuring it:
+- the "typing evidence diverted" rule read the context, so ONE paste polluted the next 2-3
+  verdicts and a subject who uses a password manager never finished enrolling (subject 19
+  disappeared from the results at N >= 375). Now only new events are checked;
+- the harness copied the owner's context into the intruder clone (cleaned up; an intruder with
+  stolen credentials arrives through a new visit).
 
-Hasil (dengan masa berlaku C-43 nyala, 16 subjek):
+Results (with the C-43 grace period on, 16 subjects):
 
 | | default | N = 450 |
 |---|---:|---:|
-| pemilik diminta verifikasi | 14,5% | 14,5% |
-| penyusup lolos vonis pertama | 13,3% | **10,1%** |
-| penyusup lolos seluruh sesi | 9,2% | **8,2%** |
-| AUC / EER per pemilik | 0,927 / 12,3% | 0,935 / 10,7% |
-| ambil-alih tak ketahuan dalam 6 sesi | **0 / 240** | 3 / 240 |
+| owner asked to verify | 14.5% | 14.5% |
+| intruder passes first verdict | 13.3% | **10.1%** |
+| intruder passes whole session | 9.2% | **8.2%** |
+| per-owner AUC / EER | 0.927 / 12.3% | 0.935 / 10.7% |
+| takeover undetected within 6 sessions | **0 / 240** | 3 / 240 |
 
-Ketiga pasangan yang tak ketahuan adalah **penyusup yang sama** (subjek 22) di tiga akun:
-gaya orang ini, bila dirata-rata dalam jendela besar, mirip ketiganya; tanpa jendela geser
-sesekali satu jendelanya tertangkap. Sebagian keuntungan AUC juga berasal dari 9 fitur
-hitungan yang membesar bersama panjang jendela (jendela pertama kunjungan jadi "tampak
-aneh" bagi penyusup MAUPUN pemilik). Karena itu N tetap **opt-in** untuk integrator yang
-lebih takut penyusup-sesi-pertama daripada ambil-alih lambat.
+All three undetected pairs are **the same intruder** (subject 22) on three accounts: this
+person's style, averaged over a large window, resembles all three; without the sliding window,
+one of their windows is occasionally caught. Part of the AUC gain also comes from the 9 count
+features that grow with window length (the first window of a visit "looks odd" for intruder AND
+owner). So N stays **opt-in** for integrators who fear the first-session intruder more than a
+slow takeover.
 
-## C-43 - pemilik ditanya ulang 30 detik sesudah lolos OTP
+## C-43 - the owner asked again 30 seconds after passing OTP
 
-Sesudah `reportStepUp({passed:true})` jendela berikutnya bisa langsung MEDIUM lagi, dan
-jalur itu tidak punya jeda sama sekali (popup bawaan hanya 15 detik). Karena gesekan pemilik
-menumpuk per HARI (C-42), pemilik yang sedang "beda" diminta OTP tiap 30 detik.
+After `reportStepUp({passed:true})` the next window could be MEDIUM again straight away, and that
+path had no pause at all (the built-in popup only had 15 seconds). Because owner friction piles up
+per DAY (C-42), an owner who is "off" that day was asked for OTP every 30 seconds.
 
-`mfa.graceSec` (default **900**, sejajar batas idle PCI DSS 8.2.8, pola "sudo mode"):
-selama itu sesudah verifikasi TERBUKTI, MEDIUM tidak meminta verifikasi ulang
-(`level` LOW, `modelLevel` tetap MEDIUM, `stepUpGrace` diisi). Batasnya:
-- hanya verifikasi sungguhan yang membukanya - penyusup berkredensial curian tak punya
-  faktor kedua;
-- HIGH tetap meminta verifikasi; rekam-ulang dan "kembali setelah absen" tidak pernah;
-- absen >= `idle.awaySec` mencabutnya, juga muat-halaman sesudah jeda sepanjang itu, juga
-  ganti sidik perangkat;
-- jendela yang diredam **tidak melatih** model (anti-peracunan).
+`mfa.graceSec` (default **900**, aligned with the PCI DSS 8.2.8 idle limit, the "sudo mode"
+pattern): for that long after a PROVEN verification, MEDIUM does not ask for verification again
+(`level` LOW, `modelLevel` stays MEDIUM, `stepUpGrace` filled in). Its limits:
+- only a real verification opens it - an intruder with stolen credentials has no second factor;
+- HIGH still asks for verification; replay and "back after an absence" never get grace;
+- an absence >= `idle.awaySec` revokes it, as does a page load after a pause that long, as does a
+  change of device fingerprint;
+- damped windows **do not train** the model (anti-poisoning).
 
-| `eval_sdk --live`, 16 subjek | sebelum | **graceSec 900** |
+| `eval_sdk --live`, 16 subjects | before | **graceSec 900** |
 |---|---:|---:|
-| pemilik diminta verifikasi | 16,4% | **14,5%** |
-| belahan tuning / lapor | 15,4% / 17,6% | **13,2% / 16,1%** |
-| penyusup lolos vonis pertama | 13,5% | **13,3%** |
-| penyusup lolos seluruh sesi | 9,5% | **9,2%** |
-| ambil-alih ketahuan di sesi-1 | 88,8% | **89,6%** |
-| ambil-alih tak ketahuan dalam 6 sesi | 0% | **0%** |
-| data AFK: pemilik diminta verifikasi | 23,8% | **22,7%** |
+| owner asked to verify | 16.4% | **14.5%** |
+| tuning / report split | 15.4% / 17.6% | **13.2% / 16.1%** |
+| intruder passes first verdict | 13.5% | **13.3%** |
+| intruder passes whole session | 9.5% | **9.2%** |
+| takeover detected in session 1 | 88.8% | **89.6%** |
+| takeover undetected within 6 sessions | 0% | **0%** |
+| AFK data: owner asked to verify | 23.8% | **22.7%** |
 
-Tidak satu pun angka keamanan memburuk; yang membaik sedikit karena jendela yang diredam
-tidak lagi masuk kolam sebagai "terverifikasi". 300 / 900 / 1800 detik memberi hasil
-hampir sama; 900 dipilih karena sejajar standar. Sisa gesekan di data AFK (22,7% vs model
-16,7%) adalah aturan "kembali setelah absen >= 15 menit -> verifikasi ulang" yang memang
-disengaja. Catatan terbuka yang sudah ada sebelumnya (SDK di HEAD memberi angka sama): di
-data AFK 2,8% sesi penyusup tak pernah dinilai (0,6% tanpa AFK) - aksi sensitif wajib
+Not a single security number got worse; the ones that improved slightly did so because damped
+windows no longer enter the pool as "verified". 300 / 900 / 1800 seconds give almost the same
+result; 900 was chosen because it matches the standard. The remaining friction on AFK data
+(22.7% vs model 16.7%) is the deliberate "back after an absence >= 15 minutes -> re-verify"
+rule. An open note that predates this (the SDK at HEAD gives the same number): on AFK data 2.8%
+of intruder sessions are never judged (0.6% without AFK) - sensitive actions must call
 `assessNow()`.
 
-Uji: `core/lifecycle.test.mjs` J (10 pemeriksaan) dan K (5 pemeriksaan jendela geser).
+Tests: `core/lifecycle.test.mjs` J (10 checks) and K (5 sliding-window checks).
 
 ---
 
-## C-44 - sesi dinilai dalam urutan ACAK; ritme ketik yang tak tercemar jeda
+## C-44 - sessions judged in RANDOM order; a typing rhythm not polluted by pauses
 
-### Temuan: harness menilai sesi dalam urutan acak
+### Finding: the harness judged sessions in random order
 
-`session_id` di basis data riset adalah UUID acak, dan `load_raw` mengurutkan dengan
-`ORDER BY session_id`. Semua harness sampai C-43 karena itu mendaftarkan pemilik dengan 10
-sesi ACAK dari seluruh masa pengambilan data, lalu menilai sisanya juga dalam urutan acak.
-Pengguna nyata tidak begitu: ia mendaftar dengan kunjungan PERTAMANYA lalu terus memakai
-situs. `tools/export_sessions.py --order time` (kini default) mengurutkan sesi per subjek
-berdasarkan timestamp event pertamanya.
+`session_id` in the research database is a random UUID, and `load_raw` sorted with
+`ORDER BY session_id`. Every harness up to C-43 therefore enrolled the owner with 10 RANDOM
+sessions from the whole data-collection period, and then judged the rest in random order too.
+Real users are not like that: they enroll with their FIRST visits and then keep using the site.
+`tools/export_sessions.py --order time` (now the default) sorts sessions per subject by the
+timestamp of their first event.
 
-Di urutan waktu, gesekan pemilik per kuintil masa pakai (mesin C-44): 10,0 / 13,8 / 16,2 /
-10,1 / 7,2% - naik di tengah lalu turun lagi - kebiasaan pemilik bergeser di minggu-minggu awal, dan kolam progresif
-mengejarnya. Tidak ada tren "makin lama makin kacau" yang sistematis; kesan itu datang dari
-tampilan per-sesi yang disusun menurut urutan acak.
+In time order, owner friction by quintile of usage (C-44 engine): 10.0 / 13.8 / 16.2 / 10.1 /
+7.2% - rising in the middle and falling again - the owner's habits shift in the first weeks, and
+the progressive pool catches up. There is no systematic "it gets messier over time" trend; that
+impression came from per-session views laid out in random order.
 
-### Perubahan: 6 fitur ritme ketik (SPEC 1.4.0, 28 -> 34 fitur)
+### Change: 6 typing-rhythm features (SPEC 1.4.0, 28 -> 34 features)
 
-Fitur ketik lama memakai RATA-RATA jeda dan tahan tombol. Rata-rata jeda tercemar oleh
-berhenti-berpikir (satu jeda 900 ms menggeser rata-rata sesi pendek jauh), padahal median
-dan IQR tidak. Enam fitur baru (SPEC §8.10):
+The old typing features used MEANS of gaps and key holds. The mean gap is polluted by thinking
+pauses (one 900 ms pause shifts the mean of a short session a lot), while the median and IQR are
+not. Six new features (SPEC §8.10):
 
-| fitur | arti |
+| feature | meaning |
 |---|---|
-| `keystroke_flight_median` / `_iqr` | ritme jeda antar-tombol, tahan jeda panjang |
-| `keystroke_dwell_median` | lama tahan tombol, tahan outlier |
-| `keystroke_backspace_ratio` | kebiasaan koreksi |
-| `keystroke_shift_ratio` | kebiasaan huruf besar |
-| `keystroke_cross_hand_ratio` | pola tangan kiri/kanan |
+| `keystroke_flight_median` / `_iqr` | rhythm of the gaps between keys, robust to long pauses |
+| `keystroke_dwell_median` | key hold time, robust to outliers |
+| `keystroke_backspace_ratio` | correction habit |
+| `keystroke_shift_ratio` | capitalisation habit |
+| `keystroke_cross_hand_ratio` | left/right hand pattern |
 
-Kelas tangan diambil dari `e.code` (posisi FISIK, tak bergantung tata letak) sebagai
-`kc` = L/R/D/S. Di kolom `input[type=password]` kelasnya **tidak** direkam (urutan kiri/kanan
-sandi mempersempit tebakan); `core/privacy.test.mjs` menguncinya. Data riset tanpa `kc`
-jatuh ke kelas QWERTY dari karakter ASCII-nya.
+The hand class is taken from `e.code` (the PHYSICAL position, independent of layout) as `kc` =
+L/R/D/S. In `input[type=password]` fields the class is **not** recorded (the left/right order of
+a password narrows guessing); `core/privacy.test.mjs` locks this. Research data without `kc`
+falls back to the QWERTY class of its ASCII character.
 
-### Hasil (`eval_sdk --live`, 653 sesi, 16 subjek, urut waktu)
+### Results (`eval_sdk --live`, 653 sessions, 16 subjects, time order)
 
-| | mesin C-43 (28 fitur) | **C-44 (34 fitur)** |
+| | C-43 engine (28 features) | **C-44 (34 features)** |
 |---|---:|---:|
-| pemilik diminta verifikasi | 12,2% | **11,4%** |
-| pemilik diblokir | 0% | **0%** |
-| penyusup lolos vonis pertama | 12,6% | **10,5%** |
-| penyusup lolos seluruh sesi | 8,6% | **7,9%** |
-| penyusup di jam biasa pemilik (`--same-hour`) vonis-1 / seluruh | 16,7% / 11,8% | **14,3% / 10,8%** |
-| AUC per pemilik (makro) | 0,942 | **0,953** |
-| data AFK: pemilik / penyusup vonis-1 / seluruh | 19,9% / 9,6% / 5,8% | **19,1% / 8,5% / 5,6%** |
-| ambil-alih ketahuan di sesi-1 | 96,3% | 95,0% |
-| ambil-alih tak ketahuan dalam 6 sesi | 0,4% (1/240) | 0,4% (1/240) |
+| owner asked to verify | 12.2% | **11.4%** |
+| owner blocked | 0% | **0%** |
+| intruder passes first verdict | 12.6% | **10.5%** |
+| intruder passes whole session | 8.6% | **7.9%** |
+| intruder at the owner's usual hour (`--same-hour`) first / whole | 16.7% / 11.8% | **14.3% / 10.8%** |
+| per-owner AUC (macro) | 0.942 | **0.953** |
+| AFK data: owner / intruder first / whole | 19.9% / 9.6% / 5.8% | **19.1% / 8.5% / 5.6%** |
+| takeover detected in session 1 | 96.3% | 95.0% |
+| takeover undetected within 6 sessions | 0.4% (1/240) | 0.4% (1/240) |
 
-Belahan lapor (8 subjek yang tidak dipakai memilih apa pun): pemilik 14,4% -> 12,7%,
-penyusup vonis-1 11,4% -> 9,2%. Diungkap apa adanya: ambil-alih yang ketahuan di sesi
-PERTAMA turun 96,3% -> 95,0% (3 pasangan dari 240 baru ketahuan di sesi ke-2); yang tak
-pernah ketahuan tetap satu pasangan yang sama di kedua mesin.
+Report split (the 8 subjects not used to choose anything): owner 14.4% -> 12.7%, intruder first
+verdict 11.4% -> 9.2%. Disclosed as is: takeovers detected in the FIRST session fell 96.3% ->
+95.0% (3 pairs out of 240 are only detected in session 2); the one that is never detected is the
+same pair on both engines.
 
-`--same-hour` baru di eval_sdk: penyusup memakai akun pada jam yang biasa dipakai pemilik,
-jadi `temporal_time_of_day_score` tidak lagi memberi bantuan gratis. Itu skenario yang lebih
-jujur untuk penyerang yang tahu kebiasaan korbannya, dan kenaikan dari 10,5% ke 14,3% adalah
-porsi deteksi yang selama ini datang dari jam saja.
+New `--same-hour` in eval_sdk: the intruder uses the account at the hours the owner usually does,
+so `temporal_time_of_day_score` no longer gives free help. That is a more honest scenario for an
+attacker who knows the victim's habits, and the rise from 10.5% to 14.3% is the share of
+detection that until now came from the hour alone.
 
-Tiap fitur baru ikut menyumbang (leave-one-out, pemilik / penyusup vonis-1): tanpa
-backspace 11,8 / 10,6; tanpa cross-hand 12,2 / 10,5; tanpa dwell median 12,0 / 10,7; tanpa
-flight IQR 11,8 / 10,6; tanpa flight median 12,1 / 10,8; tanpa shift 11,3 / 11,1.
+Every new feature contributes (leave-one-out, owner / intruder first verdict): without backspace
+11.8 / 10.6; without cross-hand 12.2 / 10.5; without dwell median 12.0 / 10.7; without flight IQR
+11.8 / 10.6; without flight median 12.1 / 10.8; without shift 11.3 / 11.1.
 
-### Tuas yang diuji dan DITOLAK
+### Levers tested and REJECTED
 
-- membuang fitur jam (temporal) atau fitur tugas (tiga varian): pemilik turun sedikit tapi
-  penyusup lolos vonis-1 naik dari 12,6% ke 16,0-21,9% - melanggar syarat "FAR tidak boleh naik";
-- `retrainEvery` 3: identik dengan 6;
-- `progressiveMaxPool` 45: pemilik 12,7%, penyusup 12,2% - campuran, tidak dipakai;
-- mode ketat `contextEvents` 450 + k_low 2,0: pemilik 11,0%, penyusup vonis-1 8,7%, tak
-  pernah ketahuan 0/240 - tetapi di data AFK penyusup seluruh sesi naik 5,6% -> 6,5%, jadi
-  tetap opt-in (dicatat di README "strict mode").
+- dropping the hour (temporal) features or the task features (three variants): the owner number
+  drops a little but intruders passing the first verdict rise from 12.6% to 16.0-21.9% - breaking
+  the "FAR must not rise" condition;
+- `retrainEvery` 3: identical to 6;
+- `progressiveMaxPool` 45: owner 12.7%, intruder 12.2% - mixed, not used;
+- strict mode `contextEvents` 450 + k_low 2.0: owner 11.0%, intruder first verdict 8.7%, never
+  detected 0/240 - but on AFK data intruder whole session rises 5.6% -> 6.5%, so it stays opt-in
+  (documented in the README as "strict mode").
 
-### Titik operasi (k_low) pada mesin C-44
+### Operating point (k_low) on the C-44 engine
 
-| k_low | pemilik | penyusup vonis-1 | seluruh sesi | tak pernah ketahuan |
+| k_low | owner | intruder first verdict | whole session | never detected |
 |---|---:|---:|---:|---:|
-| 1,25 | 17,0% | 6,5% | 4,8% | 0,4% |
-| 1,5 | 14,8% | 8,6% | 6,5% | 0,4% |
-| **1,75** | **11,4%** | **10,5%** | **7,9%** | **0,4%** |
-| 2,0 | 10,0% | 12,3% | 9,4% | 0,4% |
-| 2,5 | 7,7% | 16,6% | 12,9% | 0,4% |
+| 1.25 | 17.0% | 6.5% | 4.8% | 0.4% |
+| 1.5 | 14.8% | 8.6% | 6.5% | 0.4% |
+| **1.75** | **11.4%** | **10.5%** | **7.9%** | **0.4%** |
+| 2.0 | 10.0% | 12.3% | 9.4% | 0.4% |
+| 2.5 | 7.7% | 16.6% | 12.9% | 0.4% |
 
-### Dua akibat samping yang ditangani
+### Two side effects that were handled
 
-1. **Rekam-ulang.** Median dan IQR jeda adalah statistik urutan yang peka jitter
-   milidetik; rekaman yang diputar dengan jitter +-2 ms menggeser median pemilik
-   yang ritmenya sangat rata cukup jauh untuk melewati `replayEps`. Ambang itu dikalibrasi
-   (C-35) pada 28 fitur lama, jadi jarak rekam-ulang tetap dihitung di ruang itu - keenam
-   fitur baru dikecualikan dari `_nearestPastSession`. `core/lifecycle.test.mjs` H hijau.
-2. **Profil tersimpan lama.** Vektor 28 angka tidak bisa dibandingkan dengan 34; menambal
-   kolom kosong dengan nol akan meracuni model. `init()` membuang profil yang panjang
-   vektornya berbeda (sekali, dengan peringatan konsol) dan pengguna mendaftar ulang.
+1. **Replay.** The median and IQR of gaps are order statistics that are sensitive to millisecond
+   jitter; a recording played back with +-2 ms jitter shifts the median of an owner with a very
+   even rhythm far enough to cross `replayEps`. That threshold was calibrated (C-35) on the old 28
+   features, so the replay distance is still computed in that space - the six new features are
+   excluded from `_nearestPastSession`. `core/lifecycle.test.mjs` H is green.
+2. **Old stored profiles.** A 28-number vector cannot be compared with a 34-number one; padding
+   the empty columns with zeros would poison the model. `init()` discards profiles whose vector
+   length differs (once, with a console warning) and the user enrolls again.
 
-Golden 255 -> **319** pemeriksaan (kasus `fc06_keystroke_rhythm`: kc, huruf besar, Shift,
-Backspace, Delete, karakter non-ASCII, jeda 1500 ms, tahan 0 / 1200 ms), hijau di JS,
-Python, Java, Rust, dan WASM.
-
----
-
-## C-45 - dari pustaka yang benar ke produk yang bisa dipasang orang lain
-
-Audit ini tidak menyentuh model, fitur, atau ambang: `eval_sdk --live` sebelum dan sesudah
-identik (pemilik 11,4%, penyusup vonis-1 10,5%, seluruh sesi 7,9%, AUC 0,953) dan golden
-tetap 319/319. Yang diaudit adalah apa yang terjadi saat pustaka ini dipasang di situs orang
-lain, dipakai orang sungguhan, di perangkat dan kondisi yang tidak ada di data riset.
-Metodenya: memasangnya di situs demo realistis (`demo/arunika/`) lalu menjalankan tiap alur
-di browser sungguhan, termasuk jalur live penuh (event DOM -> jam 30 dtk -> vonis -> dialog
--> OTP -> vonis akhir).
-
-### Dialog verifikasi
-
-| cacat | akibat | kini |
-|---|---|---|
-| gaya inline di halaman integrator, id tetap | CSS situs mengubah dialog; id bisa bertabrakan; CSP `style-src` ketat memblokirnya | Shadow DOM + adoptedStyleSheets, nol atribut style, teks lewat textContent |
-| tanpa role/fokus/Esc | tak terpakai dengan keyboard/pembaca layar | role=dialog, aria-modal, fokus terkunci, Esc, aria-live, fokus dikembalikan |
-| keyboard layar sentuh (`Unidentified`/229) | sampel ponsel TAK PERNAH utuh -> pemilik di ponsel tidak bisa lolos | mode 'soft': jeda antar-karakter dari event `input`; template menyimpan modenya; beda mode ditolak |
-| satu `downAt` untuk semua tombol | rollover (tekan huruf berikut sebelum melepas) merusak pasangan tekan/lepas | pencatatan per tombol |
-| Backspace hanya mengosongkan rekaman | ketikan berikutnya pasti ditolak tanpa penjelasan | kolom ikut dikosongkan, alasannya ditulis |
-| batas waktu sejak dibuka (60 dtk daftar) | pendaftaran 3 putaran oleh pengetik pelan ditutup di tengah | dihitung dari ketidakaktifan; daftar 90 dtk |
-| tanpa jalan keluar | pemilik yang tak bisa mengetik frasa (keyboard lain, cedera) hanya bisa diblokir | `mfa.onFallback` = tombol "Gunakan cara lain" |
-| salin teks "perilakumu berbeda" untuk semua step-up | step-up kebijakan (transfer besar) menuduh pengguna | teks sesuai pemicu (vonis vs aksi integrator) |
-| animasi masuk | di tab yang dirender tertunda dialog bisa tampak transparan | dihapus - dialog keamanan tidak boleh berisiko tak terlihat |
-
-### API integrator
-
-- `stepUp({level, reason})`: dialog/cadangan sesuai permintaan, sebelum aksi sensitif.
-- `status()`: keadaan untuk UI integrator tanpa membeberkan vektor (dulu hanya `getState()`).
-- `stop()` (logout): dulu tak ada cara berhenti - pustaka terus menangkap atas nama akun yang
-  sudah keluar. Kini ekor dibank, penangkap dilepas, jam dihentikan, masa berlaku dicabut.
-- `forget()`: hak hapus data (profil, template, ekor, rahasia token).
-- `enrollMfa()` / `forgetMfa()`: pendaftaran dari halaman pengaturan; menghapus template
-  menuntut verifikasi lolos lebih dulu.
-- `on('risk', fn)`; event DOM `behaviorguard:risk` kini disiarkan inti untuk SEMUA integrasi
-  (dulu hanya auto-boot - integrator yang memanggil init() sendiri tidak pernah menerimanya).
-- `assessNow().verifiedRecently`: kebijakan integrator bisa tidak bertanya dua kali.
-- Vonis yang memunculkan dialog diumumkan SEKETIKA (`stage:'awaiting-mfa'`, `mfa.awaiting`)
-  lalu diumumkan lagi dengan hasilnya (`id` sama). Dulu onRisk menunggu dialog ditutup - bisa
-  2 menit lebih integrator buta. Vonis yang jatuh saat dialog lain terbuka: `mfa.busy`.
-
-### Kondisi nyata yang dulu mematikan atau merusak pustaka
-
-| kondisi | dulu | kini |
-|---|---|---|
-| situs http (bukan konteks aman) | `crypto.subtle` tidak ada -> tiap `_persist` melempar -> TIDAK ADA vonis sama sekali, tanpa pesan | disimpan tanpa tanda tangan + peringatan; data tanpa tanda tangan ditolak di https; sidik perangkat pakai FNV |
-| skrip dimuat dua kali | dua penangkap berjalan | salinan pertama menang |
-| browser tanpa `structuredClone` | melempar saat dimuat | salinan JSON |
-| init() dipanggil bersamaan | dua penangkap terpasang | diantrekan |
-| halaman dipulihkan dari back/forward cache | jam mati, tak ada vonis lagi | `pageshow` menghidupkannya |
-| dialog di tab latar | kedaluwarsa tanpa dilihat -> MFA_FAILED | pemimpin memilih tab yang terlihat; dialog menunggu tab terlihat |
-| satu langkah jam mundur (sinkron NTP) | "timestamp non-monoton" -> BLOCK untuk manusia | perlu >= 3 langkah dan > 1% event |
-| tahan tombol keyboard layar sentuh (~0 ms seragam) | "hold identik" -> pengguna ponsel diblokir sebagai bot | tombol `soft` dikecualikan dari cek tahan |
-| fokus ke `<select>`/centang tanpa mengetik | dibaca "autofill" -> jendela tak layak melatih | `txt:false`; hanya kolom ketik yang dihitung |
-| verifikasi 10 menit sesudah vonis | jendela lama (bisa milik orang lain) ikut dilatih | hanya jendela berumur <= 2 jendela yang dilatih |
-| gagal irama tanpa batas lintas dialog | percobaan menebak tak terhingga | `lockAfterFailures` (3): irama dikunci sampai cadangan lolos |
-| frasa < 8 karakter | template tak pernah terbentuk, diam | peringatan konsol |
-| pendaftaran otomatis saat pengguna mengetik | dialog merebut fokus dari formulir | ditunda ke vonis LOW berikutnya |
-
-Uji: `core/stepup.test.mjs` (61 pemeriksaan: A-M), selain semua suite lama yang tetap hijau.
-Uji browser (bukan otomatis, dicatat di sini): pendaftaran irama 3 putaran, verifikasi irama
-sebelum transfer, cadangan OTP (kode salah lalu benar), rekam-ulang -> HIGH -> sesi
-dihentikan, suntik bot -> BLOCK, jalur live penuh dengan jam 30 dtk, tata letak ponsel.
+Golden 255 -> **319** checks (case `fc06_keystroke_rhythm`: kc, upper case, Shift, Backspace,
+Delete, non-ASCII characters, a 1500 ms pause, holds of 0 / 1200 ms), green in JS, Python, Java,
+Rust and WASM.
 
 ---
 
-## Status verifikasi setelah tambalan
+## C-45 - from a correct library to a product other people can install
 
-| Uji | Perintah | Hasil |
+This audit did not touch the model, the features or the thresholds: `eval_sdk --live` before and
+after is identical (owner 11.4%, intruder first verdict 10.5%, whole session 7.9%, AUC 0.953) and
+the golden file stays at 319/319. What was audited is what happens when this library is installed
+on someone else's site, used by real people, on devices and in conditions that are not in the
+research data. The method: install it on a realistic demo site (`demo/arunika/`) and run every
+flow in a real browser, including the full live path (DOM events -> 30 s clock -> verdict ->
+dialog -> OTP -> final verdict).
+
+### The verification dialog
+
+| defect | effect | now |
 |---|---|---|
-| Mesin Python vs golden | `python core/conformance.py` | 319/319 SESUAI (SPEC 1.4) |
-| Mesin JS vs golden | `node core/conformance.node.mjs` | 319/319 SESUAI |
-| Regresi step-up C-1 + drift tempo C-20 | `core/challenge.test.html` / `.mjs` | 23/23 SESUAI |
-| FRR/FAR MFA sebelum vs sesudah C-20 | simulasi jitter Gauss (frasa 18 char) | FRR 63.6%->~2%, FAR ~0% |
-| Storage C-10 (browser) | `storage.del` pada store kosong | tidak melempar, 0 error |
-| Gerbang detektor C-15/C-8 | `core/ensemble.test.html` / `.mjs` | 11/11 SESUAI |
-| Simulator serangan C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
-| Heuristik integrity C-16 | `core/integrity.test.html` / `.mjs` | 10/10 SESUAI |
-| Jalur live penuh C-16..C-18 | halaman nyata + event DOM | enrollment 10/10, vonis LOW/MEDIUM benar, persisten setelah reload |
-| Sinkron sdk↔extension (ekstensi dijadwalkan dihapus, C-41) | `tools/sync_core.ps1` | identik, exit 0 |
-| Segmentasi idle C-23 | `core/idle.test.mjs` / `.html` | 33/33 SESUAI |
-| Jalur penuh idle C-23 | `core/idle.live.test.mjs` | 20/20 SESUAI |
-| Invariansi panjang sesi C-24 | `core/invariance.test.mjs` / `.html` | 26/26 SESUAI |
-| Audit validitas pengukuran C-25 | `core/audit.test.mjs` | 32/32 SESUAI |
-| Validasi held-out C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIF untuk segmentasi C-23 |
-| Kompresi waktu diam C-28 | `core/compress.test.mjs` | 22/22 SESUAI |
-| Jalur penuh idle C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 SESUAI |
-| Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18,4% -> 9,7%, FAR tetap |
-| Privasi capture C-30, C-44 | `node core/privacy.test.mjs` | 14/14 SESUAI |
-| Siklus hidup C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 SESUAI |
-| Step-up versi produksi, API integrator, kondisi nyata C-45 | `node core/stepup.test.mjs` | 61/61 SESUAI |
-| Masukan buatan skrip, batas waktu cadangan C-46 | `node core/c46.test.mjs` | 25/25 SESUAI |
-| Ritme ketik rentetan pendek (ide C-46 yang ditolak) | `node tools/eval_typing.mjs --sweep` | EER 29-38% -> tidak dikirim |
-| Server auth + sanitasi log C-39, C-41 | `python server/test_app.py` | 35/35 SESUAI |
-| SDK yang dikirim, jendela 30 dtk, urut waktu (C-44) | `node tools/eval_sdk.mjs --live` | pemilik 11,4%, penyusup vonis-1 10,5%, seluruh sesi 7,9%, AUC 0,953 |
-| Kesesuaian Java / Rust / WASM | `npm run conformance:java` / `:rust` / `:wasm` | 319/319 SESUAI |
+| inline styles in the integrator's page, fixed ids | site CSS changes the dialog; ids can collide; a strict CSP `style-src` blocks it | Shadow DOM + adoptedStyleSheets, zero style attributes, text through textContent |
+| no role/focus/Esc | unusable with a keyboard/screen reader | role=dialog, aria-modal, focus trap, Esc, aria-live, focus restored |
+| on-screen keyboards (`Unidentified`/229) | phone samples are NEVER complete -> an owner on a phone can never pass | 'soft' mode: gaps between characters from the `input` event; the template stores its mode; a mode mismatch is rejected |
+| one `downAt` for all keys | rollover (pressing the next letter before releasing) breaks press/release pairs | per-key tracking |
+| Backspace only cleared the recording | the next attempt is always rejected with no explanation | the field is cleared too, with the reason shown |
+| time limit counted from opening (60 s enroll) | a 3-round enrollment by a slow typist is closed halfway | counted from inactivity; enroll 90 s |
+| no way out | an owner who cannot type the phrase (different keyboard, injury) can only be blocked | `mfa.onFallback` = a "use another method" button |
+| the text "your behaviour is different" for every step-up | a policy step-up (a large transfer) accuses the user | text matched to the trigger (verdict vs integrator action) |
+| entry animation | in a tab rendered late the dialog could look transparent | removed - a security dialog must never risk being invisible |
 
-## C-46 - perilaku yang dibuat skrip, dan harness yang diam-diam mengukur konfigurasi lain
+### Integrator API
 
-Tiga hal di satu putaran: satu lubang keamanan yang mendasar, satu bug ALAT UKUR yang
-membuat sebagian tabel titik-operasi tidak bisa dipercaya, dan satu ide yang DIUKUR LALU
-DITOLAK. Vonis default tidak berubah: `eval_sdk --live` sesudah semua ini tetap pemilik
-11,4% / penyusup vonis-1 10,5% / seluruh sesi 7,9% / AUC 0,953 / EER 10,1%.
+- `stepUp({level, reason})`: the dialog/fallback on request, before a sensitive action.
+- `status()`: state for the integrator's UI without exposing vectors (before, only `getState()`).
+- `stop()` (logout): before, there was no way to stop - the library kept capturing on behalf of
+  an account that had logged out. Now the tail is banked, capture is detached, the clock is
+  stopped and the grace period revoked.
+- `forget()`: the right to erasure (profile, template, tail, token secret).
+- `enrollMfa()` / `forgetMfa()`: enrollment from a settings page; deleting the template requires
+  a passed verification first.
+- `on('risk', fn)`; the DOM event `behaviorguard:risk` is now broadcast by the core for ALL
+  integrations (before, only by auto-boot - an integrator calling init() themselves never
+  received it).
+- `assessNow().verifiedRecently`: the integrator's policy can avoid asking twice.
+- A verdict that raises the dialog is announced IMMEDIATELY (`stage:'awaiting-mfa'`,
+  `mfa.awaiting`) and announced again with its result (same `id`). Before, onRisk waited for the
+  dialog to close - the integrator could be blind for 2 minutes or more. A verdict that falls
+  while another dialog is open: `mfa.busy`.
 
-### 1. Event yang dibuat skrip dihitung sebagai perilaku manusia
+### Real-world conditions that used to kill or break the library
 
-Sampai di sini, `capture.js` menerima SETIAP event DOM yang lewat. `isTrusted` tidak pernah
-diperiksa. Konsekuensinya jauh lebih besar daripada "satu vonis bisa ditipu":
+| condition | before | now |
+|---|---|---|
+| http site (not a secure context) | `crypto.subtle` missing -> every `_persist` throws -> NO verdict at all, no message | stored unsigned + a warning; unsigned data is rejected on https; the device fingerprint uses FNV |
+| script loaded twice | two captures running | the first copy wins |
+| browser without `structuredClone` | throws on load | JSON copy |
+| init() called concurrently | two captures installed | queued |
+| page restored from the back/forward cache | clock dead, no more verdicts | `pageshow` revives it |
+| dialog in a background tab | expires unseen -> MFA_FAILED | the leader picks the visible tab; the dialog waits for the tab to be visible |
+| one backwards clock step (NTP sync) | "non-monotonic timestamps" -> BLOCK for a human | needs >= 3 steps and > 1% of events |
+| on-screen keyboard key holds (~0 ms, uniform) | "identical holds" -> phone users blocked as bots | `soft` keys excluded from the hold check |
+| focus on a `<select>`/checkbox without typing | read as "autofill" -> window not eligible to train | `txt:false`; only text fields count |
+| verification 10 minutes after the verdict | old windows (possibly someone else's) trained too | only windows <= 2 windows old train |
+| unlimited rhythm failures across dialogs | unlimited guessing attempts | `lockAfterFailures` (3): rhythm locked until the fallback passes |
+| phrase < 8 characters | the template never forms, silently | console warning |
+| automatic enrollment while the user is typing | the dialog steals focus from the form | deferred to the next LOW verdict |
+
+Tests: `core/stepup.test.mjs` (61 checks: A-M), on top of all the older suites, which stay
+green. Browser tests (not automated, recorded here): 3-round rhythm enrollment, rhythm
+verification before a transfer, OTP fallback (wrong code then right code), replay -> HIGH ->
+session stopped, bot injection -> BLOCK, the full live path with the 30 s clock, phone layout.
+
+---
+
+## Verification status after the patches
+
+| Test | Command | Result |
+|---|---|---|
+| Python engine vs golden | `python core/conformance.py` | 319/319 conformant (SPEC 1.4) |
+| JS engine vs golden | `node core/conformance.node.mjs` | 319/319 conformant |
+| Step-up regression C-1 + tempo drift C-20 | `core/challenge.test.html` / `.mjs` | 23/23 pass |
+| MFA FRR/FAR before vs after C-20 | Gaussian jitter simulation (18-char phrase) | FRR 63.6%->~2%, FAR ~0% |
+| Storage C-10 (browser) | `storage.del` on an empty store | does not throw, 0 errors |
+| Detector gate C-15/C-8 | `core/ensemble.test.html` / `.mjs` | 11/11 pass |
+| Attack simulator C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
+| Integrity heuristics C-16 | `core/integrity.test.html` / `.mjs` | 10/10 pass |
+| Full live path C-16..C-18 | real page + DOM events | enrollment 10/10, correct LOW/MEDIUM verdicts, persistent after reload |
+| sdk↔extension sync (extension scheduled for removal, C-41) | `tools/sync_core.ps1` | identical, exit 0 |
+| Idle segmentation C-23 | `core/idle.test.mjs` / `.html` | 33/33 pass |
+| Full idle path C-23 | `core/idle.live.test.mjs` | 20/20 pass |
+| Session-length invariance C-24 | `core/invariance.test.mjs` / `.html` | 26/26 pass |
+| Measurement validity audit C-25 | `core/audit.test.mjs` | 32/32 pass |
+| Held-out validation C-23/C-24 | `python tools/canonical_holdout.py --seeds 42 7 13 2026 99` | NEGATIVE for C-23 segmentation |
+| Idle compression C-28 | `core/compress.test.mjs` | 22/22 pass |
+| Full idle path C-23 + C-28 | `core/idle.live.test.mjs` | 33/33 pass |
+| Held-out C-28 | `python tools/canonical_holdout.py --only 1 2 7 8 ...` | AFK: FRR 18.4% -> 9.7%, FAR unchanged |
+| Capture privacy C-30, C-44 | `node core/privacy.test.mjs` | 14/14 pass |
+| Lifecycle C-31..C-38, C-42, C-43 | `node core/lifecycle.test.mjs` | 49/49 pass |
+| Production step-up, integrator API, real conditions C-45 | `node core/stepup.test.mjs` | 61/61 pass |
+| Script-made input, fallback time limit C-46 | `node core/c46.test.mjs` | 25/25 pass |
+| Short-burst typing rhythm (rejected C-46 idea) | `node tools/eval_typing.mjs --sweep` | EER 29-38% -> not shipped |
+| Server auth + log sanitising C-39, C-41 | `python server/test_app.py` | 35/35 pass |
+| Shipped SDK, 30 s windows, time order (C-44) | `node tools/eval_sdk.mjs --live` | owner 11.4%, intruder first verdict 10.5%, whole session 7.9%, AUC 0.953 |
+| Java / Rust / WASM conformance | `npm run conformance:java` / `:rust` / `:wasm` | 319/319 conformant |
+
+## C-46 - script-made behaviour, and a harness that silently measured another configuration
+
+Three things in one round: one fundamental security hole, one MEASURING TOOL bug that made part
+of the operating-point tables untrustworthy, and one idea that was MEASURED AND THEN REJECTED.
+The default verdict did not change: `eval_sdk --live` after all of this is still owner 11.4% /
+intruder first verdict 10.5% / whole session 7.9% / AUC 0.953 / EER 10.1%.
+
+### 1. Script-made events counted as human behaviour
+
+Until this point, `capture.js` accepted EVERY DOM event that came by. `isTrusted` was never
+checked. The consequence is much bigger than "one verdict can be fooled":
 
 ```js
-// dulu: cukup ini, dari konsol atau XSS mana pun di origin yang sama
+// before: this was enough, from the console or any XSS on the same origin
 for (let i = 0; i < 400; i++) {
   document.dispatchEvent(new MouseEvent('mousemove', {clientX: x(i), clientY: y(i)}));
   document.dispatchEvent(new KeyboardEvent('keyup', {key: 'a', code: 'KeyA'}));
 }
 ```
 
-Penyerang tidak perlu menebak perilaku pemilik. Ia menyiarkan aliran event bergaya manusia
-(jitter acak, jeda wajar) sampai vonisnya LOW - dan karena jendela LOW yang layak IKUT
-MELATIH, vektor palsu itu masuk kolam baseline. Yang terjadi bukan satu pemeriksaan yang
-terlewat, melainkan **profil pemiliknya tergeser ke arah penyerang**, permanen, dan tiap
-pemuatan halaman berikutnya memperkuatnya. Ini kerabat C-35 (rekam-ulang) lewat pintu yang
-lebih murah: rekam-ulang butuh rekaman pemilik, ini tidak butuh apa-apa.
+The attacker does not need to guess the owner's behaviour. They broadcast a human-looking event
+stream (random jitter, plausible pauses) until the verdict is LOW - and because eligible LOW
+windows ALSO TRAIN, the fake vectors enter the baseline pool. What happens is not one missed
+check but **the owner's profile shifted toward the attacker**, permanently, with every later
+page load reinforcing it. This is a relative of C-35 (replay) through a cheaper door: replay
+needs a recording of the owner, this needs nothing.
 
-Kini event dengan `isTrusted === false` **tidak pernah masuk buffer**. Yang dipakai
-`!== false`, bukan `=== true`, supaya peramban sangat lama tanpa properti itu jatuh ke
-perilaku lama, bukan diam-diam buta.
+Now events with `isTrusted === false` **never enter the buffer**. The test is `!== false`, not
+`=== true`, so very old browsers without that property fall back to the old behaviour instead of
+silently going blind.
 
-Batas saringannya sengaja tidak di semua tipe event:
+The filter deliberately does not cover every event type:
 
-| tipe | disaring? | alasan |
+| type | filtered? | reason |
 |---|---|---|
-| mousemove, click, keydown/keyup, touchmove | ya | inilah biometrik waktu; tidak ada alasan sah ia datang dari skrip |
-| focus / blur | **tidak** | `el.focus()` yang dipanggil situs (autofocus, pindah kolom otomatis sesudah 4 digit) tak-tepercaya tapi normal, dan ikut terhitung saat data riset dikumpulkan. Menyaringnya hanya menciptakan ketidakcocokan latih-vs-pakai pada `form_focus_count` |
-| scroll | **tidak bisa** | `window.scrollTo()` menerbitkan event dengan `isTrusted` TRUE. Jangan mengaku menyaring apa yang tidak tersaring |
+| mousemove, click, keydown/keyup, touchmove | yes | this is the timing biometric; there is no legitimate reason for it to come from a script |
+| focus / blur | **no** | `el.focus()` called by the site (autofocus, auto-advance after 4 digits) is untrusted but normal, and was counted when the research data was collected. Filtering it only creates a train-vs-serve mismatch on `form_focus_count` |
+| scroll | **cannot be** | `window.scrollTo()` emits events with `isTrusted` TRUE. Do not claim to filter what is not filtered |
 
-Yang dijatuhkan tetap DIHITUNG (`capture.synthetic`, kumulatif seumur kunjungan). Selisihnya
-per vonis dipakai orkestrator: bila >= 20 event tiruan DAN >= 10% ukuran bukti, jendelanya
-**tidak boleh melatih** (`eligible:false`) dan alasannya diumumkan (`evt.automation`).
-Sengaja TIDAK memblokir dan TIDAK menaikkan level: beberapa pustaka UI (polyfill geser,
-carousel) menerbitkan event tiruan yang sah, dan memblokir karenanya akan mengunci pemilik
-yang tidak berbuat apa-apa. Pertahanan intinya ada di "tidak melatih", bukan di "memblokir".
+Dropped events are still COUNTED (`capture.synthetic`, cumulative over the visit). The orchestrator
+uses the per-verdict difference: if there are >= 20 fake events AND they are >= 10% of the
+evidence size, the window **may not train** (`eligible:false`) and the reason is announced
+(`evt.automation`). Deliberately NOT a block and NOT a level raise: some UI libraries (swipe
+polyfills, carousels) emit legitimate synthetic events, and blocking on them would lock out an
+owner who did nothing. The core defence is "do not train", not "block".
 
-Jalur kedua yang sama: **dialog verifikasi**. Template irama tersimpan di perangkat, jadi
-skrip yang bisa membacanya tinggal menembakkan keydown/keyup dengan jeda persis median
-template untuk LOLOS tanpa satu jari pun menyentuh keyboard. `createRecorder` kini menolak
-seluruh sampel yang tersentuh event tiruan (`error:'synthetic'`), gagal-tertutup.
+The same second path: **the verification dialog**. The rhythm template is stored on the device,
+so a script that can read it only needs to fire keydown/keyup with gaps exactly at the template
+medians to PASS without a single finger touching the keyboard. `createRecorder` now rejects the
+whole sample if any synthetic event touched it (`error:'synthetic'`), failing closed.
 
-Satu cacat di tambalannya sendiri ikut ditemukan sebelum dikirim: saringan mula-mula
-diletakkan di DALAM `handlers.move`, yaitu SESUDAH throttle 50 ms. Event tiruan tetap lolos
-throttle lebih dulu dan memperbarui `lastMove`, sehingga skrip yang membanjiri `mousemove`
-1000/dtk membuat gerakan mouse SUNGGUHAN selalu jatuh di dalam jendela throttle dan tak pernah
-terekam. Menolak masukan palsu justru jadi cara membungkam yang asli - penyerang tidak perlu
-memalsukan perilaku, cukup menghapusnya. Saringan dipindah ke DEPAN throttle (uji A6).
+One defect in the patch itself was found before shipping: the filter was first placed INSIDE
+`handlers.move`, i.e. AFTER the 50 ms throttle. Fake events still passed the throttle first and
+updated `lastMove`, so a script flooding `mousemove` at 1000/s made REAL mouse movement always land
+inside the throttle window and never get recorded. Rejecting fake input became a way to silence
+the real thing - the attacker does not need to fake behaviour, just erase it. The filter moved
+IN FRONT of the throttle (test A6).
 
-Terverifikasi di browser sungguhan: 120 event tiruan disiarkan -> 0 masuk buffer, 91 tercatat
-sintetis; ketikan sungguhan sesudahnya tetap terekam normal.
+Verified in a real browser: 120 fake events broadcast -> 0 entered the buffer, 91 recorded as
+synthetic; real typing afterwards was still recorded normally.
 
-### 2. `--k-low`, `--cfg`, dan `--compress` tidak berpengaruh apa pun sejak C-45
+### 2. `--k-low`, `--cfg` and `--compress` had no effect at all since C-45
 
-C-45 menambahkan `this.cfg = clone(DEFAULTS)` di `_init()` supaya opsi `init()` sebelumnya
-tidak terbawa ke `init()` berikutnya (C-38, logout A -> login B). Benar untuk SDK-nya. Tetapi
-`tools/eval_sdk.mjs` memasang override-nya ke `g.cfg` **sebelum** `init()`:
+C-45 added `this.cfg = clone(DEFAULTS)` in `_init()` so options from a previous `init()` do not
+carry into the next `init()` (C-38, logout A -> login B). Correct for the SDK. But
+`tools/eval_sdk.mjs` applied its overrides to `g.cfg` **before** `init()`:
 
 ```js
-if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);   // <- dihapus oleh _init()
-deepMerge(g.cfg, CFG);                             // <- dihapus oleh _init()
-g.cfg.session.idleCompressSec = COMPRESS;          // <- dihapus oleh _init()
+if (K_LOW !== null) g.cfg.k_low = Number(K_LOW);   // <- wiped by _init()
+deepMerge(g.cfg, CFG);                             // <- wiped by _init()
+g.cfg.session.idleCompressSec = COMPRESS;          // <- wiped by _init()
 await g.init({ userId: uid, mfa: { enabled: false } });
 ```
 
-Sejak itu setiap sapuan `--k-low` menjalankan DEFAULT berulang-ulang. Gejalanya bukan error
-melainkan **hasil yang identik sampai desimal terakhir** - yang terbaca sebagai "knobnya
-memang tidak berpengaruh", bukan sebagai bug. Baru ketahuan karena k=1,75 dan k=2,0 memberi
-angka yang sama persis di lima metrik sekaligus.
+From then on every `--k-low` sweep ran the DEFAULTS over and over. The symptom was not an error
+but **results identical to the last decimal** - which reads as "the knob really has no effect",
+not as a bug. It was only noticed because k=1.75 and k=2.0 gave exactly the same numbers on five
+metrics at once.
 
-Diperbaiki lewat pintu resmi: apa pun yang dikenali `init()` dikirim sebagai OPSI `init()`
-(`calibration.k_low`, `session.*`, `weights`, `baseline`, ...), yang diterapkan sesudah reset
-dan sebelum `_rebuildModel()`; sisa kunci `--cfg` yang tak punya pintu (progressiveMaxPool,
-replayEps) digabung sesudah init karena hanya dibaca saat penilaian. Diperiksa: k_low
-1,25 / 1,75 / 2,5 kini memberi gesekan pemilik 14,4% / 10,4% / 7,7% (belahan tuning).
+Fixed through the official door: whatever `init()` recognises is passed as an `init()` OPTION
+(`calibration.k_low`, `session.*`, `weights`, `baseline`, ...), applied after the reset and before
+`_rebuildModel()`; the remaining `--cfg` keys that have no door (progressiveMaxPool, replayEps) are
+merged after init because they are only read at scoring time. Checked: k_low 1.25 / 1.75 / 2.5
+now give owner friction 14.4% / 10.4% / 7.7% (tuning split).
 
-**Akibat ke angka yang sudah terbit: TIDAK ADA - tapi itu baru diketahui sesudah diukur
-ulang.** Seluruh tabel titik-operasi (k_low 1,25 / 1,5 / 1,75 / 2,0 / 2,5) dan kedua baris
-mode ketat (`contextEvents: 450`, dengan dan tanpa k_low 2,0) dijalankan ulang dengan harness
-yang sudah benar, 16 subjek, data yang sama. Kesembilan baris **identik sampai desimal
-terakhir** dengan yang sudah terbit - karena semuanya memang diukur SEBELUM C-45 menanam
-bugnya. Bug ini tidak pernah sempat menghasilkan satu angka terbit yang salah; ia hanya
-membuat setiap sapuan SESUDAHNYA sia-sia tanpa memberi tanda.
+**Impact on numbers already published: NONE - but that was only known after re-measuring.** The
+whole operating-point table (k_low 1.25 / 1.5 / 1.75 / 2.0 / 2.5) and both strict-mode rows
+(`contextEvents: 450`, with and without k_low 2.0) were re-run with the fixed harness, 16 subjects,
+the same data. All nine rows are **identical to the last decimal** to what was published - because
+they were all measured BEFORE C-45 planted the bug. This bug never got the chance to produce a
+single wrong published number; it only made every sweep AFTER it useless, without any warning.
 
-Yang tetap harus dicatat: selama jendela itu, "knob ini tidak berpengaruh" adalah kesimpulan
-yang sangat mungkin diambil orang, dan itu kesimpulan yang salah. Karena itu sekarang ada
-pemeriksaan murah yang wajib dilakukan tiap sapuan: kalau dua nilai knob yang berbeda memberi
-hasil yang sama persis di beberapa metrik sekaligus, yang rusak adalah alat ukurnya, bukan
-knob-nya.
+What still has to be recorded: during that window, "this knob has no effect" is a conclusion people
+would very likely draw, and it is the wrong conclusion. So there is now a cheap check that every
+sweep must do: if two different knob values give exactly the same result on several metrics at
+once, what is broken is the measuring tool, not the knob.
 
-### 3. DITOLAK: verifikasi perilaku tanpa template pendaftaran
+### 3. REJECTED: behavioural verification without an enrollment template
 
-Pertanyaannya sah dan sering ditanyakan: kalau pustaka ini mengenali orang dari cara
-mengetik, kenapa verifikasi step-up perlu template frasa yang harus didaftarkan 3 putaran
-lebih dulu? Sebelum template itu ada - yaitu di setiap pemasangan baru - step-up jatuh 100%
-ke jalur cadangan integrator (OTP), tanpa satu bit perilaku pun dinilai.
+The question is fair and often asked: if this library recognises people by how they type, why does
+step-up verification need a phrase template that has to be enrolled in 3 rounds first? Before that
+template exists - i.e. on every new installation - step-up falls 100% to the integrator's fallback
+(OTP), without a single bit of behaviour being judged.
 
-Ide: nilai ritme ketik BEBAS dari satu kolom isian (~20 tombol) terhadap statistik pemilik,
-memakai sub-ruang F4 yang bebas-skala (dwell mean/std/median, flight median/IQR, rasio
-backspace / pindah-tangan / shift). Diukur `tools/eval_typing.mjs`, held-out per pemilik
-(latih dari 10 sesi pertama, uji dari sesi sesudahnya, penyusup = 15 subjek lain):
+The idea: judge the FREE typing rhythm of one input field (~20 keys) against the owner's
+statistics, using the scale-free F4 subspace (dwell mean/std/median, flight median/IQR,
+backspace / cross-hand / shift ratios). Measured by `tools/eval_typing.mjs`, held out per owner
+(trained on the first 10 sessions, tested on later sessions, intruders = the 15 other subjects):
 
-| rentetan | pemilik ditolak (k=2,5) | penyusup lolos | AUC | EER |
+| burst | owner rejected (k=2.5) | intruder passes | AUC | EER |
 |---:|---:|---:|---:|---:|
-| 12 tombol | 3,7% | 86,3% | 0,667 | 37,9% |
-| 20 tombol | 5,6% | 80,5% | 0,711 | 33,8% |
-| 30 tombol | 5,9% | 72,5% | 0,738 | 32,2% |
-| 40 tombol | 7,1% | 64,1% | 0,769 | 29,3% |
+| 12 keys | 3.7% | 86.3% | 0.667 | 37.9% |
+| 20 keys | 5.6% | 80.5% | 0.711 | 33.8% |
+| 30 keys | 5.9% | 72.5% | 0.738 | 32.2% |
+| 40 keys | 7.1% | 64.1% | 0.769 | 29.3% |
 
-EER 29-38%. Itu bukan gerbang keamanan; itu lemparan koin dengan langkah tambahan. Bahkan di
-40 tombol - dua kali panjang frasa - dua dari tiga penyusup lolos pada titik operasi yang
-menolak 7% pemilik. **Tidak dikirim.** Ritme ketik BARU memisahkan orang kalau yang
-dibandingkan adalah teks YANG SAMA di posisi YANG SAMA (template frasa, C-20), atau kalau
-buktinya seukuran jendela penuh (150 event, seluruh 34 fitur).
+EER 29-38%. That is not a security gate; it is a coin toss with extra steps. Even at 40 keys -
+twice the phrase length - two out of three intruders pass at an operating point that rejects 7% of
+owners. **Not shipped.** Typing rhythm only separates people when the comparison is the SAME text
+at the SAME positions (the phrase template, C-20), or when the evidence is a full window (150
+events, all 34 features).
 
-Jawaban yang benar untuk keluhan aslinya karena itu bukan algoritma baru melainkan
-**KAPAN template didaftarkan**: `enrollMfa()` sudah boleh dipanggil sejak pengguna baru
-(belum ada model - kepercayaannya sama dengan baseline itu sendiri, C-2), jadi tempatnya di
-ONBOARDING, bukan menunggu vonis LOW pertama sesudah model jadi. `status().mfa.canEnroll`
-ditambahkan supaya halaman pengaturan tahu kapan tombolnya layak tampil, dan
-`demo/arunika/mulai.html` menunjukkan alurnya.
+So the right answer to the original complaint is not a new algorithm but **WHEN the template is
+enrolled**: `enrollMfa()` may already be called for a new user (no model yet - its trust is the
+same as the baseline itself, C-2), so its place is ONBOARDING, not waiting for the first LOW
+verdict after the model is built. `status().mfa.canEnroll` was added so a settings page knows when
+the button should be shown, and `demo/arunika/mulai.html` shows the flow.
 
-### 4. Dua kunci mati di jalur step-up
+### 4. Two deadlocks in the step-up path
 
-| cacat | akibat | kini |
+| defect | effect | now |
 |---|---|---|
-| `onFallback` milik integrator di-`await` tanpa batas waktu | Promise yang tak pernah selesai (dialog OTP yang lupa resolve, panggilan jaringan tanpa timeout) menyangkutkan `_mfaBusy` SELAMANYA: seluruh lapisan step-up mati untuk sisa umur halaman, tiap vonis pulang `mfa:{busy:true}` | `mfa.fallbackTimeoutMs` (default 300 dtk); habis waktu = tidak terverifikasi |
-| `lockAfterFailures` tanpa `onFallback` | kunci irama hanya dibuka verifikasi yang BERHASIL; tanpa jalur cadangan tidak ada cara berhasil -> pemilik (mis. sedang memakai keyboard lain) terkunci permanen, integrator tidak tahu kenapa | diperingatkan di `init()`, dengan dua jalan keluar yang disebut eksplisit |
+| the integrator's `onFallback` awaited with no time limit | a Promise that never settles (an OTP dialog that forgets to resolve, a network call without a timeout) leaves `_mfaBusy` stuck FOREVER: the whole step-up layer is dead for the rest of the page's life, and every verdict comes back `mfa:{busy:true}` | `mfa.fallbackTimeoutMs` (default 300 s); timing out = not verified |
+| `lockAfterFailures` without `onFallback` | the rhythm lock only opens on a SUCCESSFUL verification; without a fallback there is no way to succeed -> the owner (e.g. on a different keyboard) is locked out permanently, and the integrator does not know why | warned at `init()`, with the two ways out named explicitly |
 
-## C-47 - DITOLAK: fitur mouse yang tahan pencilan (perbaikan yang tidak replikasi)
+## C-47 - REJECTED: outlier-robust mouse features (an improvement that did not replicate)
 
-C-44 memberi kemenangan nyata dengan satu ide sederhana: sembilan fitur ketikan memakai
-mean/std yang gampang ditarik satu pencilan, jadi ditambahkan median/IQR yang membuang jeda
-panjang. Pertanyaan yang wajar: **sembilan fitur MOUSE punya cacat yang persis sama - kenapa
-tidak diperlakukan sama?**
+C-44 gave a real win with one simple idea: nine typing features used means/stds that a single
+outlier can drag, so median/IQR versions that drop long pauses were added. A fair question: **the
+nine MOUSE features have exactly the same defect - why not treat them the same way?**
 
-`mouse_velocity_mean/std/max` ditarik satu lompatan kursor (pindah jendela, tangan
-lepas-pegang). `mouse_direction_changes` dan `mouse_pause_count` adalah CACAHAN MENTAH yang
-membesar bersama panjang sesi, yaitu cacat C-24 yang belum pernah ditambal di jalur mouse.
-`mouse_click_interval_mean` tercemar jeda berpikir yang panjang.
+`mouse_velocity_mean/std/max` get dragged by one cursor jump (switching windows, the hand letting go
+and grabbing again). `mouse_direction_changes` and `mouse_pause_count` are RAW COUNTS that grow with
+session length, i.e. the C-24 defect that was never patched on the mouse path.
+`mouse_click_interval_mean` is polluted by long thinking pauses.
 
-Dua kandidat diukur, keduanya lewat `eval_sdk --live --sdk <salinan>` (SDK ablasi utuh,
-bukan tiruan), data urut waktu yang sama, 16 subjek:
+Two candidates were measured, both through `eval_sdk --live --sdk <copy>` (a complete ablated SDK,
+not an imitation), the same time-ordered data, 16 subjects:
 
-**A - ADITIF (34 -> 42 fitur):** tambahkan `mouse_velocity_median/iqr`, `mouse_step_median`,
+**A - ADDITIVE (34 -> 42 features):** add `mouse_velocity_median/iqr`, `mouse_step_median`,
 `mouse_pause_ratio`, `mouse_direction_change_ratio`, `mouse_curvature_median`,
-`mouse_click_interval_median`, `scroll_delta_median`, semuanya dengan pasangan event berjeda
->= 1 dtk dibuang (trik C-44 dipindah ke mouse).
+`mouse_click_interval_median`, `scroll_delta_median`, all with event pairs separated by >= 1 s
+dropped (the C-44 trick moved to the mouse).
 
-**B - PENGGANTI (tetap 34 fitur):** empat fitur cacah/mean di atas diganti padanan
-median/rasio. Dimensinya tidak bertambah - ini penting, karena kolam latih maksimum 90 vektor
-dan d=42 berarti n≈2,1d (peringatan n-lawan-d C-22).
+**B - REPLACEMENT (still 34 features):** the four count/mean features above replaced by median/ratio
+equivalents. The dimension does not grow - this matters, because the training pool holds at most 90
+vectors and d=42 means n≈2.1d (the C-22 n-versus-d warning).
 
-| varian | pemilik | penyusup vonis-1 | seluruh sesi | AUC | EER |
+| variant | owner | intruder first verdict | whole session | AUC | EER |
 |---|---:|---:|---:|---:|---:|
-| dikirim (34) | 11,4% | 10,5% | 7,9% | 0,953 | 10,1% |
-| A (42, aditif) | 13,2% | 9,9% | 7,8% | 0,949 | 10,2% |
-| B (34, pengganti) | 12,9% | 8,1% | 6,1% | **0,956** | 10,0% |
+| shipped (34) | 11.4% | 10.5% | 7.9% | 0.953 | 10.1% |
+| A (42, additive) | 13.2% | 9.9% | 7.8% | 0.949 | 10.2% |
+| B (34, replacement) | 12.9% | 8.1% | 6.1% | **0.956** | 10.0% |
 
-A kalah telak: gesekan pemilik +1,8 poin untuk penyusup -0,6 poin, dan AUC turun. Persis yang
-diperkirakan C-22 - delapan dimensi tambahan lebih mahal daripada isinya.
+A loses clearly: owner friction +1.8 points for intruders -0.6 points, and AUC drops. Exactly what
+C-22 predicts - eight extra dimensions cost more than they carry.
 
-B terlihat menang. AUC naik 0,953 -> 0,956, penyusup vonis-1 turun 10,5% -> 8,1%. Titik
-operasinya memang bergeser lebih ketat (gesekan pemilik naik), tapi AUC yang naik berarti
-geseran itu bisa dibayar balik dengan `k_low` yang lebih longgar. Disapu di belahan TUNING
-(8 subjek yang sama yang dipakai memilih k_low di C-33):
+B looks like a win. AUC rises 0.953 -> 0.956, intruder first verdict drops 10.5% -> 8.1%. Its
+operating point does shift tighter (owner friction rises), but a higher AUC means that shift can be
+paid back with a looser `k_low`. Swept on the TUNING split (the same 8 subjects used to choose k_low
+in C-33):
 
-| konfigurasi | pemilik | penyusup vonis-1 | seluruh sesi | AUC | EER |
+| configuration | owner | intruder first verdict | whole session | AUC | EER |
 |---|---:|---:|---:|---:|---:|
-| dikirim, k_low 1,5 | 12,7% | 9,0% | 5,8% | 0,955 | 9,4% |
-| **B, k_low 1,75** | **11,4%** | **7,7%** | **4,6%** | **0,963** | **8,9%** |
-| B, k_low 2,0 | 10,0% | 9,9% | 5,9% | 0,963 | 8,8% |
+| shipped, k_low 1.5 | 12.7% | 9.0% | 5.8% | 0.955 | 9.4% |
+| **B, k_low 1.75** | **11.4%** | **7.7%** | **4.6%** | **0.963** | **8.9%** |
+| B, k_low 2.0 | 10.0% | 9.9% | 5.9% | 0.963 | 8.8% |
 
-B mengalahkan konfigurasi yang dikirim di SETIAP kolom. Di titik itu keputusannya tampak
-sudah selesai: ganti empat rumus, bump SPEC ke 1.5, regenerasi golden, sinkron empat port.
+B beats the shipped configuration in EVERY column. At that point the decision looked settled:
+replace four formulas, bump SPEC to 1.5, regenerate the golden file, sync four ports.
 
-### Kenapa akhirnya TIDAK dikirim
+### Why it was NOT shipped in the end
 
-Belahan-lapor (8 subjek yang TIDAK pernah dipakai memilih apa pun), k_low sama-sama 1,75:
+The report split (8 subjects NEVER used to choose anything), k_low 1.75 for both:
 
-| | dikirim | B |
+| | shipped | B |
 |---|---:|---:|
-| pemilik diminta verifikasi | 12,7% | **14,8%** |
-| penyusup lolos vonis-1 | 9,2% | 8,6% |
-| penyusup lolos seluruh sesi | 8,2% | 7,5% |
-| AUC per pemilik | **0,952** | 0,949 |
-| EER per pemilik | **10,7%** | 11,0% |
+| owner asked to verify | 12.7% | **14.8%** |
+| intruder passes first verdict | 9.2% | 8.6% |
+| intruder passes whole session | 8.2% | 7.5% |
+| per-owner AUC | **0.952** | 0.949 |
+| per-owner EER | **10.7%** | 11.0% |
 
-**Dua belahan memberi dua jawaban.** Di belahan tuning, daya pisah B lebih baik (AUC 0,963 vs
-0,955). Di belahan lapor, lebih buruk (0,949 vs 0,952). Angka 16-subjek yang tampak menang
-(0,956 vs 0,953) hanyalah rata-rata yang didominasi belahan tuning - yaitu belahan yang
-seluruh titik operasinya memang sudah dipilih di sana.
+**Two splits give two answers.** On the tuning split, B's separating power is better (AUC 0.963 vs
+0.955). On the report split, it is worse (0.949 vs 0.952). The 16-subject number that looks like a
+win (0.956 vs 0.953) is just an average dominated by the tuning split - the split where the whole
+operating point was chosen in the first place.
 
-Yang tersisa dan konsisten di kedua belahan hanya SATU arah: penyusup lebih jarang lolos,
-pemilik lebih sering ditanya. Itu bukan daya pisah yang membaik, itu **ambang yang bergeser
-lebih ketat** - dan itu sudah tersedia gratis lewat `calibration: { k_low }`, tanpa mengubah
-satu rumus pun, tanpa memecah kompatibilitas profil tersimpan, tanpa menyentuh empat port.
+What remains consistent across both splits is only ONE direction: intruders pass less often, owners
+are asked more often. That is not better separating power, it is **a threshold shifted tighter** -
+and that is already available for free through `calibration: { k_low }`, without changing a single
+formula, without breaking compatibility with stored profiles, without touching four ports.
 
-Ini pola yang sama dengan C-24 (kanonikalisasi: tiga konfigurasi protokol, tiga jawaban) dan
-dengan C-26/C-27 (klaim "pendaftaran 16 lebih baik" yang ditarik). Aturannya tetap: perbaikan
-yang tidak replikasi di belahan yang tidak dipakai memilihnya BUKAN perbaikan. Tetap 34 fitur
-seperti SPEC 1.4.
+This is the same pattern as C-24 (canonicalisation: three protocol configurations, three answers)
+and C-26/C-27 (the withdrawn "16-session enrollment is better" claim). The rule stands: an
+improvement that does not replicate on the split not used to choose it is NOT an improvement. Still
+34 features, as in SPEC 1.4.
 
-Satu catatan per-pengguna yang ikut memperkuat penolakan: dengan B, subjek 19 melonjak dari
-22% ke 37% gesekan. Rata-rata yang membaik sambil satu pengguna memburuk sepertiga bukan
-pertukaran yang layak dikirim tanpa bukti yang jauh lebih kuat.
+One per-user note that strengthens the rejection: with B, subject 19 jumped from 22% to 37% friction.
+An average that improves while one user gets a third worse is not a trade worth shipping without much
+stronger evidence.
 
-Salinan ablasinya bukan bagian repo (ditulis ke temp OS); yang direproduksi adalah caranya:
-salin `sdk/`, ubah rumusnya, lalu `node tools/eval_sdk.mjs --live --sdk <salinan>` dan
-bandingkan **belahan-lapor**, bukan angka 16-subjek.
+The ablation copy is not part of the repo (written to an OS temp dir); what is reproducible is the
+method: copy `sdk/`, change the formulas, then `node tools/eval_sdk.mjs --live --sdk <copy>` and
+compare the **report split**, not the 16-subject number.
 
-## C-48 - penyusup mengirim uang tanpa ditanya selama masa pengenalan; kartu pengenalan jadi milik pustaka
+## C-48 - an intruder sent money without being asked during the learning period; the enrollment card moves into the library
 
-**Temuan (uji penyusup rekaman 14 Sep 2026).** Teman yang duduk di laptop pemilik mengirim
-Rp 10.000 dua kali di Arunika tanpa satu pun verifikasi. Pustaka tidak salah menilai: vonisnya
-`UNKNOWN` (pendaftaran baru 4/10 beberapa menit sebelumnya). Yang meloloskan adalah KEBIJAKAN
-situs di `demo/arunika/assets/bg-integrasi.js`: `UNKNOWN` hanya diverifikasi untuk nominal
->= Rp 1 juta. Batas nominal bukan pengaman - penyusup cukup memecah transfernya. `assessNow()`
-sendiri sudah mendokumentasikan UNKNOWN sebagai "minta verifikasi" (C-33); demonya melanggar itu.
+**Finding (recorded intruder test, 14 Sep 2026).** A friend sitting at the owner's laptop sent
+Rp 10,000 twice in Arunika without a single verification. The library did not misjudge: the verdict
+was `UNKNOWN` (enrollment had only reached 4/10 a few minutes earlier). What let it through was the
+site's POLICY in `demo/arunika/assets/bg-integrasi.js`: `UNKNOWN` was only verified for amounts
+>= Rp 1 million. An amount limit is not a safeguard - the intruder just splits the transfer.
+`assessNow()` itself already documents UNKNOWN as "ask for verification" (C-33); the demo broke that.
 
-Celah kedua yang sejenis: sesudah 10 potong bukti vonis bisa `LOW`, padahal sampai kolam latih
-20 detektor utama (Mahalanobis, 0,70) masih dibungkam dan Isolation Forest menilai sendirian
-(C-46). `LOW` dari mesin setengah jadi dipakai sebagai izin memindahkan uang.
+A second gap of the same kind: after 10 pieces of evidence the verdict can be `LOW`, even though
+until the training pool reaches 20 the main detector (Mahalanobis, 0.70) is still muted and Isolation
+Forest judges alone (C-46). A `LOW` from a half-built engine was used as permission to move money.
 
-**Perbaikan (kebijakan integrator, bukan mesin - FRR/FAR resmi tidak berubah).**
-- `UNKNOWN` -> verifikasi, berapa pun nominalnya.
-- `LOW` dengan `status().model.mainDetector === false` -> verifikasi untuk uang keluar.
-- Masa berlaku verifikasi (15 menit) tetap berlaku, jadi pemilik tidak ditanya tiap transfer.
-Biayanya ditanggung pemilik di masa pengenalan saja (maks. sekali per 15 menit); sesudah
-pemeriksa utama menyala perilakunya sama dengan sebelumnya. `dist/PASANG.md` kini
-merekomendasikan pola yang sama ke integrator lain.
+**Fix (integrator policy, not the engine - the official FRR/FAR do not change).**
+- `UNKNOWN` -> verify, whatever the amount.
+- `LOW` with `status().model.mainDetector === false` -> verify for outgoing money.
+- The verification grace period (15 minutes) still applies, so the owner is not asked on every
+transfer.
+The cost falls on the owner during the learning period only (at most once per 15 minutes); once the
+main detector is on, behaviour is the same as before. `dist/INSTALL.md` now recommends the same
+pattern to other integrators.
 
-**Batas yang tetap ada.** Di demo, kode sekali pakai "dikirim" sebagai notifikasi di layar yang
-sama; penyusup yang menekan "Gunakan cara lain" bisa membacanya. Di produksi kode itu ke ponsel
-pemilik. Untuk uji penyusup, atur irama ketik lebih dulu dan jangan pakai jalur kode.
+**A limit that remains.** In the demo, the one-time code is "sent" as a notification on the same
+screen; an intruder who presses "use another method" can read it. In production that code goes to the
+owner's phone. For intruder testing, set up the typing rhythm first and do not use the code path.
 
-**Kartu pengenalan bawaan.** Kartu "Mengenali perangkat ini" dulu hanya ada di `mulai.html`
-Arunika, ditulis tangan situsnya. Kini `sdk/core/enroll_ui.js`:
-`BehaviorGuard.mountEnrollment(el, opsi)` dan `BehaviorGuard.openEnrollment(opsi)`, plus tombol
-"Lihat detail" di panel `data-panel`. Kartunya menampilkan DUA tahap (profil dasar 10 ->
-pemeriksa utama 20) supaya tidak berkata "selesai" di titik yang justru meloloskan transfer di
-atas. Shadow DOM seperti `mfa.js`; host sengaja tanpa `[data-bg-mfa]` sehingga ketikan latihan
-terhitung sebagai bukti (diperiksa di browser: 9 tombol di textarea kartu -> +10 event, sama
-dengan input biasa). `status().evidence.windowSec` ditambahkan untuk teks "setiap ±30 detik".
-Contoh: `dist/panel-pengenalan.html`. Tes: min_check 7/7, stepup 61/61, c46 25/25, privacy
+**Built-in enrollment card.** The "recognising this device" card used to exist only in Arunika's
+`mulai.html`, hand-written by the site. Now it is `sdk/core/enroll_ui.js`:
+`BehaviorGuard.mountEnrollment(el, options)` and `BehaviorGuard.openEnrollment(options)`, plus a
+"see details" button in the `data-panel` panel. The card shows TWO stages (baseline profile 10 ->
+main detector 20) so it does not say "done" at exactly the point that let the transfer above
+through. Shadow DOM like `mfa.js`; the host deliberately has no `[data-bg-mfa]` so practice typing
+counts as evidence (checked in the browser: 9 keys in the card's textarea -> +10 events, the same as a
+normal input). `status().evidence.windowSec` was added for the "every ±30 seconds" text.
+Example: `dist/panel-pengenalan.html`. Tests: min_check 7/7, stepup 61/61, c46 25/25, privacy
 14/14, lifecycle 49/49, integrity 10/10.
 
-Perubahan C-1..C-19 semuanya di luar cakupan `core/SPEC.md` §1 (challenge, siklus sesi,
-rate-limit, penyimpanan) **kecuali** C-8 yang menyentuh default `ensemble.js`; karena itu
-conformance dijalankan ulang di kedua sisi dan tetap 227/227 (255/255 sejak SPEC 1.3, C-34; 319/319 sejak SPEC 1.4, C-44).
+The C-1..C-19 changes are all outside the scope of `core/SPEC.md` §1 (challenge, session cycle,
+rate limit, storage) **except** C-8, which touches the `ensemble.js` defaults; so conformance was
+re-run on both sides and stays at 227/227 (255/255 since SPEC 1.3, C-34; 319/319 since SPEC 1.4, C-44).
