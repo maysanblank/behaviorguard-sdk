@@ -350,7 +350,7 @@ tak bergantung tata letak dan huruf tak pernah dibutuhkan. Di kolom sandi `kc` *
 ditulis; di sana dua fitur kelas bernilai `0`.
 
 Satu putaran atas `key_ev` (i = 0..):
-- `dw` ← `hold_time` bila ada dan `0 < hold_time < 1000`.
+- `dw` := `hold_time` bila ada dan `0 < hold_time < 1000`.
 - hitungan: `back` (kelas `E`), `shift` (kelas `H`), `letters` (kelas `L`/`R`).
 - untuk i ≥ 1, `dt = key_ev[i].ts − key_ev[i−1].ts`; bila `0 < dt < 1000`: `dt` -> `fl`, dan
   bila kedua kelas `L`/`R`, `dt` -> `same` (kelas sama) atau `cross` (beda).

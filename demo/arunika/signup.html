@@ -39,7 +39,7 @@
         </div>
         <label class="small" style="display:flex;gap:9px;align-items:flex-start;margin:4px 0 16px;color:var(--ink-2)">
           <input type="checkbox" id="setuju" style="margin-top:3px">
-          <span>I agree that Arunika learns <b>how I use this device</b> (typing rhythm, cursor movement, page flow) to protect my account. The data never leaves this browser.</span>
+          <span>I agree that Arunika learns <b>how I use this device</b> (typing rhythm, cursor movement, page flow) to protect my account. Only summary numbers (34 per 30 seconds) are sent to Arunika's server; what I type and my screen are never sent.</span>
         </label>
         <div class="err" id="err" role="alert"></div>
         <button class="btn btn-pri btn-block" type="submit">Open account</button>
@@ -48,7 +48,7 @@
       <p class="small" style="margin-top:18px;text-align:center;color:var(--ink-3)">
         Already have an account? <a href="index.html"><b>Log in</b></a>
       </p>
-      <div class="note"><b>Demo site.</b> No data is sent anywhere; everything stays in this browser and can be deleted at any time from the Security page.</div>
+      <div class="note"><b>Demo site.</b> No real money. The account and its behavior profile are kept on this demo's own server and can be deleted at any time from the Security page.</div>
     </div>
   </div>
   <div class="auth-r" aria-hidden="true">
@@ -68,7 +68,8 @@
 
   const tandai = (el, pesan) => { err.textContent = pesan; el.setAttribute('aria-invalid', 'true'); el.focus(); };
 
-  f.addEventListener('submit', e => {
+  let busy = false;
+  f.addEventListener('submit', async e => {
     e.preventDefault();
     err.textContent = '';
     ['nama', 'email', 'hp', 'sandi', 'sandi2'].forEach(id => $(id).removeAttribute('aria-invalid'));
@@ -76,17 +77,17 @@
     const hp = $('hp').value.replace(/\D/g, ''), s1 = $('sandi').value, s2 = $('sandi2').value;
     if (nama.length < 3 || !nama.includes(' ')) return tandai($('nama'), 'Enter your full name (at least two words).');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return tandai($('email'), 'That email is not valid.');
-    if (A.adaAkun(email)) { err.innerHTML = 'This email already has an account. <a href="index.html">Log in instead</a>.'; $('email').setAttribute('aria-invalid', 'true'); $('email').focus(); return; }
     if (hp.length < 9) return tandai($('hp'), 'The mobile number is incomplete.');
     if (s1.length < 8 || !/\d/.test(s1) || !/[a-z]/i.test(s1)) return tandai($('sandi'), 'Password needs at least 8 characters, letters and numbers.');
     if (s1 !== s2) return tandai($('sandi2'), 'The passwords do not match.');
     if (!$('setuju').checked) return (err.textContent = 'Tick the consent box to continue.');
 
-    const r = A.daftar({ email, nama });
-    if (!r.ok) { err.textContent = 'Could not sign up. Try another email.'; return; }
-    const akun = r.akun;
-    akun.hp = '+62 ' + hp.slice(0, 3) + '-' + hp.slice(3, 7) + '-' + hp.slice(7, 11);
-    A.simpanAkun(akun);
+    if (busy) return;
+    busy = true;
+    const r = await A.daftar({ email, nama, hp, password: s1 });
+    busy = false;
+    if (!r.ok && r.alasan === 'terdaftar') { err.innerHTML = 'This email already has an account. <a href="index.html">Log in instead</a>.'; $('email').setAttribute('aria-invalid', 'true'); $('email').focus(); return; }
+    if (!r.ok) { err.textContent = r.alasan === 'error' ? 'Could not sign up. Try again.' : r.alasan; return; }
     localStorage.setItem('arunika:email-terakhir', email);
     location.href = 'start.html';
   });

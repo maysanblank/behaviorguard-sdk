@@ -34,7 +34,7 @@
   </div>
   <div class="auth-r" aria-hidden="true">
     <p class="q">Passwords get stolen. The way you type, move and navigate is much harder to copy.</p>
-    <p class="who">Arunika accounts are protected by behavior recognition on your device.</p>
+    <p class="who">Arunika accounts are protected by behavior recognition, checked on Arunika's server.</p>
   </div>
 </div>
 <script src="assets/app.js"></script>
@@ -50,31 +50,37 @@
 
   const f = document.getElementById('f'), email = document.getElementById('email'), sandi = document.getElementById('sandi'), err = document.getElementById('err');
   const last = localStorage.getItem('arunika:email-terakhir');
-  if (last && A.adaAkun(last)) { email.value = last; sandi.focus(); } else email.focus();
+  if (last) { email.value = last; sandi.focus(); } else email.focus();
 
   document.getElementById('note').innerHTML =
-    '<b>Demo site.</b> No real money and no server. '
-    + 'Every account has its own behavior profile, built from zero in this browser. '
-    + '<a href="#" id="contoh">Use the sample account</a> if you only want to look around first.';
-  document.getElementById('contoh').onclick = e => {
+    '<b>Demo site.</b> No real money. Accounts live on this demo\'s own server, so the same account opens from another browser or laptop. '
+    + '<a href="#" id="contoh">Use the sample account</a> to look around first '
+    + '(<span class="num">nadia.putri@example.com</span> / <span class="num">arunika123</span>, the password to try from a second laptop).';
+  document.getElementById('contoh').onclick = async e => {
     e.preventDefault();
-    A.akunContoh('nadia.putri@example.com', 'Nadia Putri');
+    if (!(await A.akunContoh())) { err.textContent = 'Arunika could not be reached.'; return; }
     localStorage.setItem('arunika:email-terakhir', 'nadia.putri@example.com');
     location.href = 'home.html';
   };
 
-  f.addEventListener('submit', e => {
+  let busy = false;
+  f.addEventListener('submit', async e => {
     e.preventDefault();
+    if (busy) return;
     err.textContent = '';
     email.removeAttribute('aria-invalid'); sandi.removeAttribute('aria-invalid');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) { err.textContent = 'That email is not valid.'; email.setAttribute('aria-invalid', 'true'); email.focus(); return; }
     if (sandi.value.length < 6) { err.textContent = 'Password must be at least 6 characters.'; sandi.setAttribute('aria-invalid', 'true'); sandi.focus(); return; }
-    const r = A.masuk(email.value);
+    busy = true;
+    const r = await A.masuk(email.value.trim().toLowerCase(), sandi.value);
+    busy = false;
     if (!r.ok) {
-      err.innerHTML = 'No account uses this email. <a href="signup.html">Open an account first</a>.';
-      email.setAttribute('aria-invalid', 'true'); email.focus(); return;
+      if (r.alasan === 'tidak-terdaftar') { err.innerHTML = 'No account uses this email. <a href="signup.html">Open an account first</a>.'; email.setAttribute('aria-invalid', 'true'); email.focus(); }
+      else if (r.alasan === 'sandi') { err.textContent = 'The email or password is not right.'; sandi.setAttribute('aria-invalid', 'true'); sandi.select(); }
+      else err.textContent = r.alasan;
+      return;
     }
-    localStorage.setItem('arunika:email-terakhir', r.akun.email);
+    localStorage.setItem('arunika:email-terakhir', email.value.trim().toLowerCase());
     location.href = 'home.html';
   });
 })();

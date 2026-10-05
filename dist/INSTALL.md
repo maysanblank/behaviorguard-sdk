@@ -1,15 +1,53 @@
-# BehaviorGuard - install on any website (1 tag)
+# BehaviorGuard - install on any website
 
-`dist/behaviorguard.js` = **one classic-script file** (every module bundled into one).
-No `type=module`, no sub-files, no absolute paths. Host it anywhere (CDN, GitHub Pages, your site's
-folder), add one `<script>`. Done.
+What is in `dist/`:
 
-## Regenerate the bundle (after every edit to `sdk/`)
+| File | What |
+| --- | --- |
+| `behaviorguard.js` | **one classic-script file** (every browser module bundled into one). No `type=module`, no sub-files, no absolute paths |
+| `behaviorguard.min.js` | the same, smaller (155 KB, 47 KB gzip), proven to give identical verdicts |
+| `server/` | the server side, flat: `guard.py`, `engine.py`, `rhythm.py`, `bg_core.py` (Python standard library; Flask for the HTTP layer) |
+
+## Regenerate (after every edit to `sdk/` or `server/`)
 ```
 python tools/bundle.py     # or: npm run bundle
 ```
 
-## How to install - pick ONE
+## Recommended: backend mode
+
+The page sends 34 numbers per window to **your** server, which keeps the account's profile and
+makes the decisions. An attacker logging in from another laptop is judged against the owner's
+profile, and your routes decide whether money moves.
+
+**Server (Flask):** copy `dist/server/*.py` next to your app.
+```python
+from guard import Guard, create_blueprint
+guard = Guard('behaviorguard.db', tenant=(BG_PK, BG_SK))          # keys from your environment
+app.register_blueprint(create_blueprint(guard), url_prefix='/bg')
+
+@app.get('/api/bg-token')        # after login: this user, this login session
+def bg_token():
+    return {'token': guard.mint_token(session['user'], session['login_id'], ttl=900)}
+
+# in each sensitive route, before acting:
+c = guard.check(session['user'], session['login_id'], money=True)
+if not c['allowed']: return {'verify': True, 'reason': c['reason']}, 403
+```
+
+**Page:**
+```html
+<script src="https://your-cdn.example/behaviorguard.min.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
+```
+
+Node, PHP, Laravel (with `python server/app.py` as a service): `docs/INTEGRATION.md`. A one-line
+install for Flask plus a plug that handles the "verify, then retry" for you:
+`demo/shop-checkout/` (`bg_backend.py`, `plug-behaviorguard.js`).
+
+## Local mode - one tag, no server
+
+The same engine entirely in the browser. Good for a static page or a prototype; it cannot see an
+attacker on another device (the profile is in this browser), and every decision is made in a page
+the user controls. Pick ONE way:
 
 ### 1. Simplest: data attribute + DOM event
 ```html
@@ -39,6 +77,13 @@ Everything is automatic: mouse/keyboard/scroll/navigation capture, an assessment
 changes, and the built-in typing-rhythm verification popup. Typed characters are never stored.
 
 ## Have your own OTP / WebAuthn?
+
+**Backend mode:** your server checks the code and reports it - `guard.report_verified(None, user,
+login_id, passed)`, or `POST /v1/report` with the `sk`. Keep the built-in dialog and point its "use
+another method" at your OTP dialog with `mfa.onFallback`; the library counts it once the server
+confirms your report. A page that only returns `true` changes nothing.
+
+**Local mode:**
 ```html
 <script>window.BehaviorGuardConfig = { userId:"andi@example.com", mfa:{ enabled:false } };</script>
 <script src="https://your-cdn.example/behaviorguard.js" defer></script>
@@ -55,10 +100,12 @@ After the owner passes, a MEDIUM verdict does not ask again for 15 minutes (HIGH
 
 ## Before a sensitive action (change email/password, transfer, add a device)
 ```js
-const v = BehaviorGuard.assessNow();
+const v = await BehaviorGuard.assessNow();                 // a Promise in backend mode
 const ready = BehaviorGuard.status().model.mainDetector;   // is the main detector on yet?
 if (v.level !== 'LOW' || !ready) askForVerification();
 ```
+In backend mode `guard.check(money=True)` on your server applies exactly these rules; the page
+check is for the user experience, the server's answer is the one that counts.
 - `UNKNOWN` = no baseline yet / not enough evidence on this page yet. **Verify, whatever the
   amount.** An amount limit ("only >= Rp 1 million") is not a safeguard: an intruder just splits the
   transfer.
@@ -97,28 +144,5 @@ window.BehaviorGuardConfig = {
 - **MIME / cross-origin:** a plain classic script; no special CORS needed.
 - **CSP:** allow the host origin in `script-src`; the built-in popup and `data-panel` use inline
   styles (`style-src 'unsafe-inline'`), or turn both off.
-- **Raw data never leaves the device** (IndexedDB -> localStorage -> memory).
-
----
-
-## Server mode (optional) - cross-device baseline
-
-Without a server, the baseline only exists on that device: an attacker on their own laptop starts
-from zero and has nothing to be compared against. With a server, a NEW device pulls the account's
-baseline from the server, so the attacker is compared with the real owner right away.
-
-```html
-<script src="https://your-cdn.example/behaviorguard.js"
-        data-user="andi@example.com"
-        data-pk="pk_xxx"
-        data-endpoint="https://bg.example.com"
-        data-user-token="<minted by your backend after login>" defer></script>
-```
-
-`pk` is public and **opens nothing on its own**. A user token
-(`HMAC-SHA256(sk, pk|userId|exp)`, short-lived) is required, minted by your server with an `sk` that
-never enters the page. Without a token, the library runs purely on the device.
-
-**What leaves the device:** 34 feature numbers per window + the verdict. Raw events and typed
-characters are never sent. Server setup, a token-minting example (Node) and the dashboard:
-`server/README.md`. Step-by-step for Flask, Express, PHP and Laravel: `docs/INTEGRATION.md`.
+- **Raw data never leaves the page.** Backend mode sends 34 numbers per window to your server
+  (`connect-src` must allow it); local mode keeps everything in IndexedDB -> localStorage -> memory.

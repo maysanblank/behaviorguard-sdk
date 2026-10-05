@@ -71,6 +71,7 @@ const TEXT = {
     mismatchText: 'Teks belum sama dengan frasa.',
     again: 'Bagus. Sekali lagi.',
     tryAgain: (i, n) => `Iramanya belum cocok. Coba lagi (${i} dari ${n}).`,
+    checking: 'Memeriksa',
     otherKeyboard: 'Keyboard ini berbeda dari saat kamu mengatur verifikasi.',
     capsLock: 'Caps Lock menyala.',
     verified: 'Terverifikasi',
@@ -83,6 +84,8 @@ const TEXT = {
     enrollFailedSub: 'Coba lagi lain kali di tempat yang nyaman.',
     timeLeft: s => `Sisa waktu ${s} detik`,
     footer: 'Irama ketik dicocokkan di perangkat ini dan tidak dikirim ke mana pun.',
+    enrolledSubServer: 'Irama ketikmu tersimpan di server situs, untuk akun ini.',
+    footerServer: 'Hanya waktu tekan dan jeda antartombol yang dikirim ke server situs untuk dicocokkan, bukan huruf yang kamu ketik.',
   },
   en: {
     verifyTitleMedium: 'Confirm it’s you',
@@ -113,6 +116,7 @@ const TEXT = {
     mismatchText: 'The text does not match the phrase yet.',
     again: 'Good. Once more.',
     tryAgain: (i, n) => `The rhythm did not match. Try again (${i} of ${n}).`,
+    checking: 'Checking',
     otherKeyboard: 'This keyboard differs from the one used during setup.',
     capsLock: 'Caps Lock is on.',
     verified: 'Verified',
@@ -125,6 +129,8 @@ const TEXT = {
     enrollFailedSub: 'Try again later somewhere comfortable.',
     timeLeft: s => `${s} seconds left`,
     footer: 'Typing rhythm is matched on this device and never sent anywhere.',
+    enrolledSubServer: 'Your typing rhythm is kept on the site’s server, for this account.',
+    footerServer: 'Only key hold times and the gaps between keys go to the site’s server to be matched, never the letters you type.',
   },
 };
 
@@ -331,12 +337,14 @@ export function runMfaChallenge(o) {
   const {
     phrase: rawPhrase, template = null, rounds = 3, buildTemplate, verify,
     level = 'MEDIUM', timeoutMs = 120000, lang, texts, accent, brand,
-    allowFallback = false, title, subtitle, theme = 'auto', trigger = 'verdict', reason = null,
+    allowFallback = false, title, subtitle, theme = 'auto', trigger = 'verdict', reason = null, server = false,
   } = o || {};
   if (typeof document === 'undefined' || !document.documentElement) {
     return Promise.resolve({ passed: false, verified: false, cancelled: true, reason: 'no-dom' });
   }
-  const L = { ...TEXT[pickLang(lang)], ...(texts || {}) };
+  const base = TEXT[pickLang(lang)];
+  // backend mode: the rhythm is matched on the server, so the dialog must not say otherwise
+  const L = { ...base, ...(server ? { footer: base.footerServer, enrolledSub: base.enrolledSubServer } : {}), ...(texts || {}) };
   const phrase = String(rawPhrase || '').replace(/\s+/g, ' ').trim();
   const enrollMode = !template;
   const need = enrollMode ? Math.max(2, rounds | 0) : 1;
@@ -498,8 +506,12 @@ export function runMfaChallenge(o) {
       if (autoT) { clearTimeout(autoT); autoT = null; }
       inp.value = ''; rec.reset(); paint();
     };
-    function submit() {
-      if (done) return;
+    // C-49: verify/buildTemplate may be async (backend mode: the server holds the template
+    // and decides). One answer at a time: a second Enter while the server is checking does
+    // nothing, and the field stays locked until the answer arrives.
+    let checking = false;
+    async function submit() {
+      if (done || checking) return;
       if (norm(inp.value) !== norm(phrase)) { say(L.mismatchText, 'err'); inp.focus(); return; }
       const s = rec.sample();
       if (s.error) {
@@ -513,7 +525,11 @@ export function runMfaChallenge(o) {
         if (samples.length < need) {
           say(`${L.again} ${L.enrollRound(samples.length + 1, need)}`, 'good'); inp.focus(); return;
         }
-        const tmpl = buildTemplate(samples);
+        checking = true; inp.disabled = true; say(L.checking || '', '');
+        let tmpl = null;
+        try { tmpl = await buildTemplate(samples); } catch { tmpl = null; }
+        checking = false; inp.disabled = false;
+        if (done) return;
         if (!tmpl) {
           finish({ passed: false, enrolled: false, verified: false, reason: 'template-rejected' },
                  { kind: 'bad', title: L.enrollFailed, sub: L.enrollFailedSub });
@@ -524,7 +540,12 @@ export function runMfaChallenge(o) {
                { kind: 'ok', title: L.enrolled, sub: L.enrolledSub });
         return;
       }
-      const res = verify(s, template);
+      checking = true; inp.disabled = true; say(L.checking || '', '');
+      let res;
+      try { res = await verify(s, template); } catch { res = { ok: false, reasons: ['verification error'] }; }
+      checking = false; inp.disabled = false;
+      if (done) return;
+      res = res || { ok: false, reasons: [] };
       if (res.ok) {
         finish({ passed: true, enrolled: false, verified: true, reasons: res.reasons || [] },
                { kind: 'ok', title: L.verified, sub: L.verifiedSub });
@@ -539,7 +560,8 @@ export function runMfaChallenge(o) {
         return;
       }
       failed++;
-      if (failed >= MAX_ATTEMPTS) {
+      // the server counts attempts too; when it says the dialog is over, it is over
+      if (failed >= MAX_ATTEMPTS || res.attemptsExhausted || res.locked || res.offline) {
         finish({ passed: false, enrolled: false, verified: false, reasons: res.reasons || [], attemptsExhausted: true },
                { kind: 'bad', title: L.failed, sub: L.failedSub });
         return;

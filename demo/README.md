@@ -1,26 +1,35 @@
 # Demos
 
-To protect a website you only need `dist/behaviorguard.min.js`. Everything in this folder is a
-demo site to try it on; none of it is part of the library.
+Everything in this folder is a demo site to try BehaviorGuard on; none of it is part of the
+library.
+
+**Backend mode** (the recommended deployment: the profile and the decisions on the site's own
+server). Each runs its own Flask server:
+
+| Folder | What it shows | Run |
+|---|---|---|
+| [`arunika/`](arunika/) | **Main demo.** A bank with sign-up, transfers, the step-up, a second-laptop takeover and a presenter panel | `python demo/arunika/server.py` |
+| [`shop-checkout/`](shop-checkout/) | A plain shop with its own backend; BehaviorGuard installed with one line in the backend and one in the page (the install GIF) | `python demo/shop-checkout/shop.py` |
+
+**Local mode** (the same engine entirely in the browser, no server; good for trying the library
+on a static page, not for stopping an attacker on another device). Start them from the repo root
+with `python -m http.server 8080`:
 
 | Folder | What it shows | UI language |
 |---|---|---|
-| [`arunika/`](arunika/) | **Main demo.** A bank with sign-up, transfers, the step-up and a presenter panel | English |
-| [`shop-checkout/`](shop-checkout/) | A shop with its own Flask backend; BehaviorGuard plugged in after login (the install GIF) | Indonesian |
 | [`shop-multipage/`](shop-multipage/), [`shop-spa/`](shop-spa/), [`shop-react/`](shop-react/) | The same two pasted lines on three architectures (this guide, below) | Indonesian |
 | [`monitor/`](monitor/) + [`plain-site/`](plain-site/) | A shop with zero BehaviorGuard code, scored from the outside | Indonesian |
 | [`attack_sim.html`](attack_sim.html) | Four automated attacks: paste replay, speed bot, minimal mouse, mimicry | Indonesian |
 | [`accuracy-lab/`](accuracy-lab/) | Label your own sessions as owner or other and export the results as CSV | Indonesian |
 
-Start everything from the repo root with `python -m http.server 8080` (the shop-checkout demo
-runs its own Flask server; see its README).
-
 ---
 
-## Plug-and-play guide - three sites, three architectures
+## Plug-and-play guide - three sites, three architectures (local mode)
 
 Step by step: install BehaviorGuard **live, in front of an audience**, on three sites with
-different architectures.
+different architectures. These shops have no backend, so the library runs in local mode: the
+profile lives in this browser. The point here is that capture works on any front-end
+architecture; for the account-takeover story across devices, use Arunika or shop-checkout.
 
 None of the three sites **contains BehaviorGuard yet** - on purpose. The audience sees a plain site,
 then sees you paste two lines, then sees the system come alive.
@@ -38,7 +47,7 @@ from an account that came from nowhere.
 (The shop UIs are in Indonesian: *Masuk* = log in, *Daftar* = sign up, *Keluar* = log out,
 *Keranjang* = cart, *Bayar* = pay.)
 
-For a site with its own backend and a checkout that gets gated, see
+For a site with its own backend and a checkout gated on the server, see
 [shop-checkout/](shop-checkout/).
 
 ---
@@ -369,4 +378,6 @@ Three architectures, **exactly the same two lines**:
 | Pasar Loka | `shop-spa/index.html` | Ctrl+End (349) |
 | Butik Rasa | `shop-react/index.html` | Ctrl+End (411) |
 
-Zero dependencies, zero build, zero backend, one file of ~250 KB (44 KB gzip minified).
+Zero dependencies, zero build, one file of ~267 KB (47 KB gzip minified). In local mode, zero
+backend too - and so no protection against an attacker on another device; that is what backend
+mode is for.

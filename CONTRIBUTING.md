@@ -4,12 +4,16 @@ Thanks for looking. Issues, ports and attacks on the tool are all welcome.
 
 ## Ground rules
 
-**`sdk/` is the single source of truth.** `dist/` is generated from it. Never edit
+**`sdk/` and `server/` are the sources.** `dist/` is generated from them. Never edit
 `dist/*` by hand.
 
 ```bash
-python tools/bundle.py                  # sdk/ -> dist/
+python tools/bundle.py                  # sdk/ -> dist/, server/ + core/bg_core.py -> dist/server/
 ```
+
+**The server engine follows the library.** `server/engine.py` ports the library's decisions;
+a change to the orchestration in `sdk/behaviorguard.js` needs the same change in `engine.py`,
+and `python server/test_parity.py` must still pass.
 
 **Measure the library, not an imitation of it.** Any change that can move a verdict must be
 measured with `node tools/eval_sdk.mjs --live` (it drives the shipped code over the research
@@ -24,9 +28,12 @@ regenerating `core/golden.json`, and re-running conformance in all five runtimes
 ## Before you open a pull request
 
 ```bash
-python core/conformance.py       # engine vs golden.json    -> 319/319
-node   core/challenge.test.mjs   # step-up regression       -> 20/20
-node   core/ensemble.test.mjs    # detector-gate regression -> 11/11
+python core/conformance.py           # engine vs golden.json              -> 319/319
+node   core/challenge.test.mjs       # step-up regression
+node   core/ensemble.test.mjs        # detector-gate regression
+python server/test_app.py            # server API and gate                -> 58/58
+python server/test_parity.py         # engine.py == the JS library
+python server/test_backend_sdk.py    # the library over HTTP vs a server  -> 21/21
 ```
 
 Without Node, open `core/conformance.html`, `core/challenge.test.html` and

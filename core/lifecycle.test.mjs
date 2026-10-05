@@ -195,7 +195,7 @@ const feedOne = async (g, evs) => { NOW = Math.max(NOW, evs[evs.length - 1].time
   const before = g._trainingVectors().length;
   const r = await feedOne(g, replayed);
   check('H: rekaman yang diputar ulang dengan waktu digeser -> HIGH + alasan rekam-ulang',
-    r && r.level === 'HIGH' && r.replay && r.reasons[0].includes('rekam-ulang'), r && `${r.level} jarak ${r.replay && r.replay.distance}`);
+    r && r.level === 'HIGH' && r.replay && r.reasons[0].includes('replay'), r && `${r.level} jarak ${r.replay && r.replay.distance}`);
   check('H: sesi rekam-ulang tidak pernah melatih model', g._trainingVectors().length === before && r.eligible === false);
   const jit = rec[13].map(e => ({ ...e, timestamp: e.timestamp + shiftMs + 86_400_000 + Math.round((rnd() - .5) * 4) }));
   const r2 = await feedOne(g, jit);

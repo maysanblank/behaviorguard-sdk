@@ -383,7 +383,7 @@ the class does not depend on the layout and the typed character is never needed.
 **not** written in password fields; there these two class features read `0`.
 
 One pass over `key_ev` (i = 0..):
-- `dw` ← `hold_time` when it is present and `0 < hold_time < 1000`.
+- `dw` := `hold_time` when it is present and `0 < hold_time < 1000`.
 - counts: `back` (class `E`), `shift` (class `H`), `letters` (class `L` or `R`).
 - for i ≥ 1, `dt = key_ev[i].ts − key_ev[i−1].ts`; if `0 < dt < 1000`: `dt` -> `fl`, and
   when both classes are `L`/`R`, `dt` -> `same` (equal classes) or `cross` (different).

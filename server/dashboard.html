@@ -1,4 +1,4 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8">
+<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BehaviorGuard Console</title>
 <style>
@@ -139,30 +139,30 @@ tbody tr.sel{background:#132132;box-shadow:inset 2px 0 0 var(--acc)}
   <div class="side-sec">Tenant</div>
   <div class="tname" id="tenantName">-</div>
   <div class="tmeta" id="tmeta"></div>
-  <button class="logout" id="logout" type="button">Keluar</button>
-  <div class="side-sec">Tampilan</div>
+  <button class="logout" id="logout" type="button">Log out</button>
+  <div class="side-sec">View</div>
   <nav id="nav">
-    <a data-view="accounts" class="on"><span class="ic">▤</span> Akun <span class="n" id="nAcc">0</span></a>
-    <a data-view="events"><span class="ic">⌁</span> Kejadian <span class="n" id="nEv">0</span></a>
+    <a data-view="accounts" class="on"><span class="ic">▤</span> Accounts <span class="n" id="nAcc">0</span></a>
+    <a data-view="events"><span class="ic">⌁</span> Events <span class="n" id="nEv">0</span></a>
   </nav>
   <div class="side-foot">
-    On-device · hanya vektor fitur + verdict yang keluar perangkat.<br>
+    Only feature vectors and verdicts reach this server; raw events stay in the page.<br>
     tenant <code id="pkTag">-</code>
   </div>
 </aside>
 
 <main>
   <div class="top">
-    <div class="crumb"><b id="crumbTenant">-</b> <span class="mut">/</span> <span id="crumbView">Akun</span></div>
+    <div class="crumb"><b id="crumbTenant">-</b> <span class="mut">/</span> <span id="crumbView">Accounts</span></div>
     <div class="sp"></div>
-    <div class="search"><span class="k">⌕</span><input id="q" placeholder="cari userId..."></div>
+    <div class="search"><span class="k">⌕</span><input id="q" placeholder="search userId"></div>
     <div class="seg" id="lvlSeg">
-      <button data-lvl="" class="on">Semua</button>
+      <button data-lvl="" class="on">All</button>
       <button data-lvl="HIGH">HIGH</button>
       <button data-lvl="MEDIUM">MED</button>
       <button data-lvl="LOW">LOW</button>
     </div>
-    <button class="btn" id="colBtn">▤ Kolom
+    <button class="btn" id="colBtn">▤ Columns
       <div class="col-menu" id="colMenu"></div>
     </button>
     <div class="live"><span class="pulse"></span>live <span class="mono" id="clock">--:--:--</span></div>
@@ -178,21 +178,21 @@ tbody tr.sel{background:#132132;box-shadow:inset 2px 0 0 var(--acc)}
 
 <div class="login" id="login" hidden>
   <form id="loginForm" autocomplete="off">
-    <h3>Masuk sebagai operator</h3>
-    <p>Tempel <b>sk</b> tenant Anda (awalan <code>sk_</code>). Kunci hanya disimpan di tab ini
-      (sessionStorage) dan dikirim lewat header, tidak pernah lewat URL. <b>pk</b> tidak cukup:
-      pk ada di kode halaman publik.</p>
+    <h3>Operator sign-in</h3>
+    <p>Paste your tenant's <b>sk</b> (starts with <code>sk_</code>). It is kept in this tab only
+      (sessionStorage) and sent in a header, never in a URL. The <b>pk</b> is not enough: it is
+      in every public page.</p>
     <input id="skIn" type="password" placeholder="sk_..." spellcheck="false">
-    <button type="submit">Masuk</button>
+    <button type="submit">Sign in</button>
     <div class="err" id="loginErr"></div>
   </form>
 </div>
 
 <script>
-/* C-41: semua nilai dari server adalah DATA KIRIMAN KLIEN (userId, reasons, fp, ...) -
-   di-escape sebelum masuk innerHTML. Dulu tidak, dan satu /log berisi <img onerror>
-   menjalankan skrip di browser operator (stored XSS). Level dibatasi daftar putih,
-   angka dipaksa Number. CSP ber-nonce dari server adalah lapisan kedua. */
+/* C-41: every value from the server may have come from a client (userId, reasons, ...),
+   so it is escaped before it reaches innerHTML. It once was not, and one logged reason with
+   <img onerror> ran script in the operator's browser (stored XSS). Levels are allow-listed,
+   numbers are forced through Number. The server's nonce CSP is the second layer. */
 const LV={HIGH:"#f85149",MEDIUM:"#d29922",LOW:"#3fb950",UNKNOWN:"#7d8590"};
 const $=id=>document.getElementById(id);
 const ESC={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","`":"&#96;"};
@@ -205,11 +205,11 @@ const state={sk:ss("bg_sk")||"",view:"accounts",lvl:"",q:"",data:null,sel:null,
   panels:load("bg_panels",{ringkasan:true,skor:true,fitur:true,sesi:true,perangkat:true})};
 function load(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v?Object.assign(d,v):d;}catch(e){return d;}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
-const COLS=[["trend","Tren skor"],["sessions","Sesi"],["dist","Distribusi"],["features","Fitur menyimpang"],["source","Sumber"],["seen","Terakhir"]];
+const COLS=[["trend","Score trend"],["sessions","Windows"],["dist","Distribution"],["features","Deviating features"],["source","Source"],["seen","Last seen"]];
 
-function fmt(ts){ts=num(ts);if(!ts)return"-";return new Date(ts*1000).toLocaleTimeString("id-ID",{hour12:false});}
-function fdate(ts){ts=num(ts);if(!ts)return"-";const d=new Date(ts*1000);return d.toLocaleDateString("id-ID",{day:"2-digit",month:"short"})+" "+fmt(ts);}
-function ago(ts){ts=num(ts);if(!ts)return"-";const s=Math.floor(Date.now()/1000-ts);if(s<60)return s+"d";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"j";return Math.floor(s/86400)+"h";}
+function fmt(ts){ts=num(ts);if(!ts)return"-";return new Date(ts*1000).toLocaleTimeString("en-GB",{hour12:false});}
+function fdate(ts){ts=num(ts);if(!ts)return"-";const d=new Date(ts*1000);return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"})+" "+fmt(ts);}
+function ago(ts){ts=num(ts);if(!ts)return"-";const s=Math.floor(Date.now()/1000-ts);if(s<60)return s+"s";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"h";return Math.floor(s/86400)+"d";}
 function zt(z){z=num(z);const a=Math.abs(z);return a>99?((z<0?"−":"")+">99σ"):(z.toFixed(1)+"σ");}
 function spark(series,lv,w,h){w=w||120;h=h||30;series=(Array.isArray(series)?series:[]).map(num);if(!series.length)return"";const p=3;
  const mn=Math.min(...series,0),mx=Math.max(...series,0.1),rg=(mx-mn)||1;
@@ -226,27 +226,27 @@ function pill(l,extra){l=lvl(l);return `<span class="pill p-${l}"${extra?` style
 function showLogin(msg){$("login").hidden=false;$("loginErr").textContent=msg||"";$("skIn").value="";setTimeout(()=>$("skIn").focus(),0);}
 $("loginForm").onsubmit=async e=>{e.preventDefault();
   const sk=$("skIn").value.trim();
-  if(!sk.startsWith("sk_")){$("loginErr").textContent=sk.startsWith("pk_")?"Itu pk (publik). Dashboard butuh sk.":"Format sk tidak dikenal.";return;}
+  if(!sk.startsWith("sk_")){$("loginErr").textContent=sk.startsWith("pk_")?"That is the pk (public). The dashboard needs the sk.":"Not a recognised sk.";return;}
   state.sk=sk;const ok=await tick();
-  if(ok){ss("bg_sk",sk);$("login").hidden=true;}else{state.sk="";$("loginErr").textContent="sk ditolak server.";}};
+  if(ok){ss("bg_sk",sk);$("login").hidden=true;}else{state.sk="";$("loginErr").textContent="The server refused this sk.";}};
 $("logout").onclick=()=>{ss("bg_sk",null);state.sk="";state.data=null;closeDrawer();$("panel").innerHTML="";showLogin();};
 
 async function api(path){
   if(!state.sk)return null;
   try{const r=await fetch(path,{headers:{Authorization:"Bearer "+state.sk},cache:"no-store"});
-    if(r.status===401){ss("bg_sk",null);state.sk="";showLogin("Sesi operator berakhir atau sk dicabut.");return null;}
+    if(r.status===401){ss("bg_sk",null);state.sk="";showLogin("Operator session ended, or the sk was revoked.");return null;}
     if(!r.ok)return null;return await r.json();}catch(e){return null;}}
 
 /* ---------- KPI + crumb ---------- */
 function renderTop(d){
   $("crumbTenant").textContent=d.name||"-";$("tenantName").textContent=d.name||"-";
   $("pkTag").textContent=String(d.pk||"").slice(0,14)+"...";
-  $("crumbView").textContent=state.view==="accounts"?"Akun":"Kejadian";
+  $("crumbView").textContent=state.view==="accounts"?"Accounts":"Events";
   $("nAcc").textContent=d.accounts.length;$("nEv").textContent=num(d.kpi.events);
   const risk=num(d.kpi.atRisk);
-  $("tmeta").innerHTML=`<span><b>${num(d.kpi.accounts)}</b> akun</span><span><b style="color:${risk?'#f85149':'#7d8590'}">${risk}</b> berisiko</span>`;
-  const K=[["Akun terpantau",d.kpi.accounts,"",""],["Sesi dinilai",d.kpi.events,"",""],
-    ["Akun berisiko",d.kpi.atRisk,"crit",LV.HIGH],["HIGH",d.kpi.high,"crit",LV.HIGH],
+  $("tmeta").innerHTML=`<span><b>${num(d.kpi.accounts)}</b> accounts</span><span><b style="color:${risk?'#f85149':'#7d8590'}">${risk}</b> at risk</span>`;
+  const K=[["Accounts watched",d.kpi.accounts,"",""],["Windows assessed",d.kpi.events,"",""],
+    ["Accounts at risk",d.kpi.atRisk,"crit",LV.HIGH],["HIGH",d.kpi.high,"crit",LV.HIGH],
     ["MEDIUM",d.kpi.medium,"warn",LV.MEDIUM],["LOW",d.kpi.low,"ok",LV.LOW]];
   $("kpis").innerHTML=K.map(k=>`<div class="kpi ${k[2]}"><div class="k">${k[3]?`<i style="background:${k[3]}"></i>`:""}${k[0]}</div><div class="v">${num(k[1])}</div></div>`).join("");
 }
@@ -254,9 +254,9 @@ function renderTop(d){
 /* ---------- accounts table ---------- */
 function renderAccounts(d){
   const c=state.cols;
-  const th=["<th>Akun</th>","<th>Status</th>","<th>Skor</th>",
-    c.trend?"<th>Tren skor</th>":"",c.sessions?"<th>Sesi</th>":"",c.dist?"<th>Distribusi</th>":"",
-    c.features?"<th>Fitur menyimpang</th>":"",c.source?"<th>Sumber</th>":"",c.seen?"<th>Terakhir</th>":""].join("");
+  const th=["<th>Account</th>","<th>Status</th>","<th>Score</th>",
+    c.trend?"<th>Score trend</th>":"",c.sessions?"<th>Windows</th>":"",c.dist?"<th>Distribution</th>":"",
+    c.features?"<th>Deviating features</th>":"",c.source?"<th>Source</th>":"",c.seen?"<th>Last seen</th>":""].join("");
   const rows=d.accounts.filter(a=>(!state.lvl||lvl(a.level)===state.lvl)&&(!state.q||String(a.userId).toLowerCase().includes(state.q)));
   const body=rows.length?rows.map(a=>{
     const L=lvl(a.level);
@@ -267,10 +267,10 @@ function renderAccounts(d){
       c.sessions?`<td class="num">${num(a.sessions??a.total)}<div class="sub mono">${esc(a.convergence)}</div></td>`:"",
       c.dist?`<td>${dist(a.high,a.medium,a.low)}</td>`:"",
       c.features?`<td>${chips(a.topFeatures)}</td>`:"",
-      c.source?`<td class="sub mono">${esc(a.ip)||"-"}<br>${a.fp?"fp:"+esc(String(a.fp).slice(0,8)):""}</td>`:"",
-      c.seen?`<td class="sub mono">${ago(a.lastTs)} lalu<br>${fmt(a.lastTs)}</td>`:""].join("");
+      c.source?`<td class="sub mono">${esc(a.ip)||"-"}<br>${a.fp?"login "+esc(String(a.fp).slice(0,8)):""}</td>`:"",
+      c.seen?`<td class="sub mono">${ago(a.lastTs)} ago<br>${fmt(a.lastTs)}</td>`:""].join("");
     return `<tr data-u="${esc(encodeURIComponent(a.userId))}" class="${state.sel===a.userId?'sel':''}">${td}</tr>`;}).join("")
-    :`<tr><td colspan="9" class="empty">Tidak ada akun cocok filter.</td></tr>`;
+    :`<tr><td colspan="9" class="empty">No account matches the filter.</td></tr>`;
   $("panel").innerHTML=`<table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
 }
 function renderEvents(d){
@@ -284,49 +284,49 @@ function renderEvents(d){
       <td class="num" style="color:${LV[L]}">${num(e.score).toFixed(2)}</td>
       <td class="mut">${rs}</td>
       <td class="sub mono" style="white-space:nowrap">${esc(e.ip)}</td></tr>`;}).join("")
-    :`<tr><td colspan="5" class="empty">Belum ada kejadian.</td></tr>`;
-  $("panel").innerHTML=`<table><thead><tr><th>Waktu</th><th>Akun</th><th>Skor</th><th>Alasan / sinyal</th><th>Sumber</th></tr></thead><tbody>${body}</tbody></table>`;
+    :`<tr><td colspan="5" class="empty">No events yet.</td></tr>`;
+  $("panel").innerHTML=`<table><thead><tr><th>Time</th><th>Account</th><th>Score</th><th>Reason / signal</th><th>Source</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
 /* ---------- drawer ---------- */
 async function openAccount(u){
   state.sel=u;render();
   $("wrap").classList.add("drawer-open");$("drawer").hidden=false;
-  $("drawer").innerHTML='<div class="hint">memuat detail...</div>';
+  $("drawer").innerHTML='<div class="hint">loading details</div>';
   const a=await api("/api/account?u="+encodeURIComponent(u));
-  if(!a){$("drawer").innerHTML='<div class="hint">gagal memuat</div>';return;}
+  if(!a){$("drawer").innerHTML='<div class="hint">could not load</div>';return;}
   const P=state.panels,L=lvl(a.level);
   const tf=Array.isArray(a.topFeatures)?a.topFeatures:[],ses=Array.isArray(a.sessions)?a.sessions:[];
-  const seg=[["ringkasan","Ringkasan"],["skor","Skor"],["fitur","Fitur"],["sesi","Sesi"],["perangkat","Perangkat"]]
+  const seg=[["ringkasan","Summary"],["skor","Score"],["fitur","Features"],["sesi","Windows"],["perangkat","Logins"]]
     .map(x=>`<button data-p="${x[0]}" class="${P[x[0]]?'on':''}">${x[1]}</button>`).join("");
   let html=`<div class="dh"><span class="x" id="dx">✕</span>
     <div class="u">${esc(a.userId)}</div>
-    <div class="a">${esc(a.action)} · ${pill(L,"padding:1px 8px")} skor ${num(a.score).toFixed(2)}</div></div>
+    <div class="a">${esc(a.action)} · ${pill(L,"padding:1px 8px")} score ${num(a.score).toFixed(2)}</div></div>
     <div class="dtoggle">${seg}</div><div class="dbody">`;
-  if(P.ringkasan) html+=`<div class="sect"><h4>Ringkasan</h4><div class="kv">
-    <div class="c"><div class="l">Total sesi</div><div class="n">${num(a.total)}</div></div>
-    <div class="c"><div class="l">Konvergensi</div><div class="n" style="font-size:12px">${esc(a.convergence)||"-"}</div></div>
+  if(P.ringkasan) html+=`<div class="sect"><h4>Summary</h4><div class="kv">
+    <div class="c"><div class="l">Windows</div><div class="n">${num(a.total)}</div></div>
+    <div class="c"><div class="l">Convergence</div><div class="n" style="font-size:12px">${esc(a.convergence)||"-"}</div></div>
     <div class="c"><div class="l">HIGH</div><div class="n" style="color:${LV.HIGH}">${num(a.high)}</div></div>
     <div class="c"><div class="l">MEDIUM</div><div class="n" style="color:${LV.MEDIUM}">${num(a.medium)}</div></div>
     <div class="c"><div class="l">LOW</div><div class="n" style="color:${LV.LOW}">${num(a.low)}</div></div>
-    <div class="c"><div class="l">Pertama · terakhir</div><div class="n" style="font-size:11px">${fdate(a.firstTs)}<br>${fdate(a.lastTs)}</div></div>
+    <div class="c"><div class="l">First · last</div><div class="n" style="font-size:11px">${fdate(a.firstTs)}<br>${fdate(a.lastTs)}</div></div>
     </div></div>`;
-  if(P.skor) html+=`<div class="sect"><h4>Riwayat skor (${(a.series||[]).length} sesi)</h4>
-    ${spark(a.series,L,360,64)}<div class="sub" style="margin-top:6px">makin turun = makin menyimpang dari baseline pemilik</div></div>`;
+  if(P.skor) html+=`<div class="sect"><h4>Score history (${(a.series||[]).length} windows)</h4>
+    ${spark(a.series,L,360,64)}<div class="sub" style="margin-top:6px">lower = further from the owner's baseline</div></div>`;
   if(P.fitur){const mx=Math.max(...tf.map(f=>Math.abs(num(f&&f.z))),1);
-    html+=`<div class="sect"><h4>Fitur paling menyimpang (sesi terakhir)</h4>`+
+    html+=`<div class="sect"><h4>Most deviating features (last window)</h4>`+
     (tf.length?tf.map(f=>{const a2=Math.abs(num(f&&f.z));const col=a2>2.2?LV.HIGH:a2>1.2?LV.MEDIUM:"#6e7681";
       return `<div class="feat"><span class="nm">${fname(f)}</span><span class="b"><i style="width:${Math.min(100,100*a2/mx)}%;background:${col}"></i></span><span class="z">${zt(f&&f.z)}</span></div>`;}).join(""):'<span class="sub">-</span>')+`</div>`;}
-  if(P.sesi) html+=`<div class="sect"><h4>Sesi terakhir</h4><table class="stbl">
-    <thead><tr><th>Waktu</th><th>Status</th><th>Skor</th><th>Sinyal</th></tr></thead><tbody>`+
+  if(P.sesi) html+=`<div class="sect"><h4>Recent windows</h4><table class="stbl">
+    <thead><tr><th>Time</th><th>Status</th><th>Score</th><th>Signal</th></tr></thead><tbody>`+
     ses.slice(0,14).map(s=>{const SL=lvl(s.level);return `<tr><td class="tag">${fmt(s.ts)}</td>
       <td>${pill(SL,"padding:0 7px;font-size:10.5px")}</td>
       <td class="num" style="color:${LV[SL]}">${num(s.score).toFixed(2)}</td>
       <td class="mut" style="font-size:11px">${esc((Array.isArray(s.reasons)&&s.reasons[0])||s.convergence||"")}</td></tr>`;}).join("")+`</tbody></table></div>`;
-  if(P.perangkat) html+=`<div class="sect"><h4>Perangkat & sumber</h4>
+  if(P.perangkat) html+=`<div class="sect"><h4>Logins & source</h4>
     <div class="sub" style="margin-bottom:4px">IP address</div><div class="chipline">${(a.ips||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")||'<span class="sub">-</span>'}</div>
-    <div class="sub" style="margin:8px 0 4px">Device fingerprint</div><div class="chipline">${(a.fps||[]).map(x=>`<span class="chip">${esc(String(x).slice(0,16))}</span>`).join("")||'<span class="sub">-</span>'}</div>
-    <div class="sub" style="margin-top:8px">Fingerprint berbeda dari baseline = indikasi ganti perangkat.</div></div>`;
+    <div class="sub" style="margin:8px 0 4px">Login sessions</div><div class="chipline">${(a.fps||[]).map(x=>`<span class="chip">${esc(String(x).slice(0,16))}</span>`).join("")||'<span class="sub">-</span>'}</div>
+    <div class="sub" style="margin-top:8px">Each login gets its own session id; a new one with HIGH verdicts is someone else on the account.</div></div>`;
   html+=`</div>`;
   $("drawer").innerHTML=html;
   $("dx").onclick=closeDrawer;
@@ -336,7 +336,7 @@ function closeDrawer(){state.sel=null;$("wrap").classList.remove("drawer-open");
 
 /* ---------- column menu ---------- */
 function buildColMenu(){
-  $("colMenu").innerHTML='<div class="hd">Kolom tabel akun</div>'+COLS.map(c=>
+  $("colMenu").innerHTML='<div class="hd">Account table columns</div>'+COLS.map(c=>
     `<label><input type="checkbox" data-c="${c[0]}" ${state.cols[c[0]]?"checked":""}> ${c[1]}</label>`).join("");
   $("colMenu").querySelectorAll("input").forEach(i=>i.onchange=()=>{state.cols[i.dataset.c]=i.checked;save("bg_cols",state.cols);render();});
 }
@@ -358,9 +358,9 @@ async function tick(){
   if(!d||!Array.isArray(d.accounts)||!Array.isArray(d.events)||!d.kpi)return false;
   state.data=d;render();return true;
 }
-setInterval(()=>{$("clock").textContent=new Date().toLocaleTimeString("id-ID",{hour12:false});},1000);
+setInterval(()=>{$("clock").textContent=new Date().toLocaleTimeString("en-GB",{hour12:false});},1000);
 (async()=>{ buildColMenu();
-  if(!state.sk||!(await tick()))showLogin(state.sk?"sk tersimpan ditolak.":"");
+  if(!state.sk||!(await tick()))showLogin(state.sk?"The saved sk was refused.":"");
   setInterval(()=>{if(state.sk)tick();},3000); })();
 </script>
 </body></html>

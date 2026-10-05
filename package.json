@@ -1,13 +1,13 @@
 {
   "name": "behaviorguard-sdk",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "type": "module",
-  "description": "On-device behavioral-biometrics ATO detection with built-in step-up MFA. One brain, five runtimes, zero dependencies.",
+  "description": "Behavioral-biometrics account-takeover detection with a built-in step-up: the page measures, your own server keeps the profile and decides. Zero dependencies.",
   "scripts": {
     "reproduce": "python tools/reproduce_db.py",
     "reproduce:ablation": "python tools/reproduce_db.py --ablation",
     "reproduce:simple": "python tools/reproduce_simple.py",
-    "demo": "python -m http.server 8080",
+    "demo": "python demo/arunika/server.py",
     "sync-core": "powershell -ExecutionPolicy Bypass -File tools/sync_core.ps1",
     "prebuild": "npm run sync-core",
     "build:extension": "npm run sync-core",
@@ -29,7 +29,14 @@
     "build:wasm": "cd ports/rust && cargo build --release --target wasm32-unknown-unknown --lib && cp target/wasm32-unknown-unknown/release/bg_core.wasm ../wasm/bg_core.wasm",
     "conformance:wasm": "node ports/wasm/run.mjs",
     "test:c46": "node core/c46.test.mjs",
-    "eval:typing": "node tools/eval_typing.mjs --sweep"
+    "eval:typing": "node tools/eval_typing.mjs --sweep",
+    "demo:local": "python -m http.server 8080",
+    "server": "python server/app.py",
+    "test:server": "python server/test_app.py",
+    "test:parity": "python server/test_parity.py",
+    "test:rhythm": "python server/test_rhythm.py",
+    "test:backend": "python server/test_backend_sdk.py",
+    "test:demos": "python demo/arunika/test_server.py && python demo/shop-checkout/test_install.py"
   },
   "license": "MIT",
   "author": "May San",
@@ -43,7 +50,7 @@
     "continuous-authentication",
     "keystroke-dynamics",
     "fraud-detection",
-    "on-device",
+    "self-hosted",
     "zero-dependency",
     "mfa",
     "step-up-auth"
@@ -56,6 +63,12 @@
     "core/golden.json",
     "ports/",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "server/guard.py",
+    "server/engine.py",
+    "server/rhythm.py",
+    "server/app.py",
+    "server/dashboard.html",
+    "core/bg_core.py"
   ]
 }

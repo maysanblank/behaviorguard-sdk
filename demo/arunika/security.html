@@ -43,16 +43,16 @@
 
     <div class="grid" style="align-content:start">
       <section class="card">
-        <div class="card-h"><div><h2>Security activity</h2><p>Assessments and verifications on this device.</p></div></div>
+        <div class="card-h"><div><h2>Security activity</h2><p>Assessments and verifications on this account, from any device.</p></div></div>
         <ul class="list" id="log"></ul>
       </section>
       <section class="card">
-        <div class="card-h"><div><h2>Data on this device</h2></div></div>
+        <div class="card-h"><div><h2>Your behavior data</h2></div></div>
         <div class="card-b">
-          <p class="small muted">The behavior profile and typing rhythm are stored only in this browser and never sent to an Arunika server. Deleting them makes Arunika learn you from the start.</p>
+          <p class="small muted">The behavior profile and typing-rhythm template are kept on Arunika's server, for this account: summary numbers only, never what you type or your screen. Deleting them makes Arunika learn you from the start.</p>
           <button class="btn btn-danger" id="hapus" style="margin-top:12px"></button>
           <hr style="border:0;border-top:1px solid var(--line-2);margin:16px 0">
-          <p class="small muted">To restart the demo at the sign-up screen: delete the demo accounts, session and behavior profile in one go.</p>
+          <p class="small muted">To restart the demo at the sign-up screen: delete this demo account, its history and its behavior profile in one go.</p>
           <button class="btn" id="ulangi" style="margin-top:12px">Restart the demo</button>
         </div>
       </section>
@@ -90,7 +90,7 @@
         else A.toast('Not removed: ' + r.reason);
       } else {
         const r = await BehaviorGuard.enrollMfa();
-        if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Stored on this device.' }); A.toast('Typing-rhythm verification is ready.'); }
+        if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Kept on Arunika\'s server, for this account.' }); A.toast('Typing-rhythm verification is ready.'); }
         else if (!/cancelled|timed out/.test(r.reason || '')) A.toast(r.reason === 'session is under suspicion - verify first (stepUp)' ? 'Finish verifying first, then try again.' : 'Not done yet: ' + (r.reason || 'try again'));
       }
       render();
@@ -101,7 +101,7 @@
     const e = st.lastVerdict;
     const alasan = e && e.level !== 'LOW' ? Guard.explain(BehaviorGuard._instance._lastEvt) : [];
     $('detail').innerHTML = `<dl class="kv">
-      <dt>This device's profile</dt><dd>${st.phase === 'learning' ? `learning ${st.enrollment.done}/${st.enrollment.need}` : 'ready'}</dd>
+      <dt>This account's profile</dt><dd>${st.phase === 'learning' ? `learning ${st.enrollment.done}/${st.enrollment.need}` : 'ready'}</dd>
       <dt>Latest assessment</dt><dd>${e && e.at ? Guard.levelLabel(e.level) + ' · ' + A.jam(e.at) : '-'}</dd>
       <dt>Verification grace</dt><dd>${st.mfa.graceLeftSec > 0 ? Math.ceil(st.mfa.graceLeftSec / 60) + ' min left' : '-'}</dd>
     </dl>${alasan.length ? `<p class="small muted" style="margin-top:10px">Triggers: ${A.esc(alasan.join('; '))}.</p>` : ''}`;
@@ -127,23 +127,29 @@
     if (s1.length < 8 || !/\d/.test(s1) || !/[a-z]/i.test(s1)) return ($('es').textContent = 'The new password needs at least 8 characters, letters and numbers.');
     if (s1 !== s2) return ($('es').textContent = 'The new passwords do not match.');
     $('es').textContent = '';
-    const g = await Guard.gate('ganti-sandi', { label: 'change your password' });
-    if (!g.ok) return ($('es').textContent = 'Password not changed because verification was not completed.');
+    // the server checks the current password AND asks BehaviorGuard (always verify)
+    const res = await Guard.act('ganti-sandi', { label: 'change your password' }, () => A.api('/api/password', { current: s0, new: s1 }));
+    if (res.ended) return;
+    if (res.cancelled) return ($('es').textContent = 'Password not changed because verification was not completed.');
+    if (!res.ok) return ($('es').textContent = (res.body && res.body.error) || 'The password could not be changed.');
     $('fs').reset();
     Guard.record({ lv: 'info', t1: 'Password changed', t2: 'From this device.' });
     A.toast('Password changed.');
     render();
   });
   $('hapus').onclick = async () => {
-    const ok = await A.konfirmasi({ judul: 'Delete the behavior profile?', isi: 'Arunika will learn how you use your account from the start on this device, and typing-rhythm verification is removed too. Transaction history is not affected.', ya: 'Delete', bahaya: true });
+    const ok = await A.konfirmasi({ judul: 'Delete the behavior profile?', isi: 'Arunika will learn how you use your account from the start, on every device, and typing-rhythm verification is removed too. You verify first. Transaction history is not affected.', ya: 'Delete', bahaya: true });
     if (!ok) return;
-    await BehaviorGuard.forget();
+    // erasing needs a fresh verification (the server refuses otherwise): an attacker in the
+    // session must not be able to wipe the owner's profile and be learned instead
+    const r = await BehaviorGuard.forget();
+    if (!r.removed) { A.toast('Not deleted: ' + (r.reason || 'verification not completed')); return; }
     Guard.record({ lv: 'info', t1: 'Behavior profile deleted', t2: 'Learning starts over.' });
     A.toast('Behavior profile deleted.');
     render();
   };
   $('ulangi').onclick = async () => {
-    const ok = await A.konfirmasi({ judul: 'Restart the demo?', isi: 'Every demo account, history and behavior profile in this browser is deleted. You go back to the sign-up screen.', ya: 'Delete everything', bahaya: true });
+    const ok = await A.konfirmasi({ judul: 'Restart the demo?', isi: 'This account, its history and its behavior profile are deleted from the demo server. You go back to the sign-up screen.', ya: 'Delete everything', bahaya: true });
     if (!ok) return;
     await A.resetDemo();
     location.href = 'signup.html';

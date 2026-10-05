@@ -8,7 +8,8 @@
   const BG = window.BehaviorGuard, A = window.Arunika;
   if (!BG || !A || !A.sesi() || !window.Guard) return;
   const inst = BG._instance;
-  const K_OPEN = 'arunika:panel:buka', K_HIST = 'arunika:panel:vonis', K_REC = 'arunika:panel:rekaman', K_CEPAT = 'arunika:mode-cepat';
+  const K_OPEN = 'arunika:panel:buka', K_HIST = 'arunika:panel:vonis', K_REC = 'arunika:panel:rekaman';
+  const fastOn = () => !!(A.akun() && A.akun().fast);
   const ss = { get: (k, d) => { try { return JSON.parse(sessionStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 
   // Keep the window that was JUST assessed as normal, for the replay simulation. Hooking an
@@ -77,7 +78,7 @@
         <button data-a="cepat" class="w" id="pd-cepat"></button>
         <button data-a="reset" class="w">Delete profile & start over<small>enrollment restarts at 0</small></button>
       </div></div>
-      <div class="pd-f">This panel does not exist on a real site. The verdict above is what the site receives through onRisk.</div>
+      <div class="pd-f">This panel does not exist on a real site. The verdict above is made on Arunika's server and reaches the page through onRisk; the server uses it to allow or refuse money moves.</div>
     </div>
     <button class="pd-t" id="pd-t" type="button"><i id="pd-dot"></i>Demo panel</button>`;
   document.body.appendChild(root);
@@ -121,8 +122,8 @@
   function render() {
     const s = Guard.status();
     if (!s) return;
-    const cepat = localStorage.getItem(K_CEPAT) === '1';
-    $('pd-v').textContent = 'v' + s.version;
+    const cepat = fastOn();
+    $('pd-v').textContent = 'v' + s.version + (s.mode === 'backend' ? ' · backend' : '');
     $('pd-mode').textContent = cepat ? 'presentation mode' : 'standard mode';
     $('pd-cepat').innerHTML = cepat ? 'Presentation mode: ON<small>60 events/verdict, 15 s clock · click to go back to standard</small>' : 'Presentation mode: OFF<small>standard 150 events/verdict, 30 s clock · click to speed up</small>';
     const learning = s.phase === 'learning';
@@ -206,19 +207,20 @@
       if (ok) await inst.scoreExternalEvents(synthBot());
     }
     if (a === 'cepat') {
-      const cepat = localStorage.getItem(K_CEPAT) === '1';
+      const cepat = fastOn();
       const ok = await A.konfirmasi({ judul: cepat ? 'Back to standard mode?' : 'Turn on presentation mode?',
         isi: (cepat ? 'Verdicts go back to 150 events and a 30-second clock, the same as the published accuracy numbers.' : 'Verdicts use 60 events and a 15-second clock, so enrollment finishes about twice as fast. The published accuracy numbers do not apply in this mode.') + ' The behavior profile is deleted and enrollment restarts, because a different evidence size produces a profile that is not comparable.', ya: 'Switch mode' });
       if (!ok) return;
-      await BG.forget();
-      localStorage.setItem(K_CEPAT, cepat ? '0' : '1');
+      await A.api('/api/demo/mode', { fast: !cepat });     // DEMO: erases the profile on the server
+      try { await BG.stop(); } catch {}
       sessionStorage.removeItem(K_HIST); sessionStorage.removeItem(K_REC);
       location.reload();
     }
     if (a === 'reset') {
-      const ok = await A.konfirmasi({ judul: 'Delete the behavior profile?', isi: 'The profile and typing rhythm for this account in this browser are deleted. Enrollment starts again from 0.', ya: 'Delete', bahaya: true });
+      const ok = await A.konfirmasi({ judul: 'Delete the behavior profile?', isi: 'The profile and typing rhythm of this account are deleted from the server, without verifying (presenter shortcut). Enrollment starts again from 0.', ya: 'Delete', bahaya: true });
       if (!ok) return;
-      await BG.forget();
+      await A.api('/api/demo/forget-profile', {});
+      try { await BG.stop(); } catch {}
       sessionStorage.removeItem(K_HIST); sessionStorage.removeItem(K_REC);
       location.reload();
     }

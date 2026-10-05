@@ -73,7 +73,7 @@
       <section class="card card-b" id="guard"></section>
       <section class="card card-b">
         <h3>When do we ask you to verify?</h3>
-        <p class="small muted" style="margin-top:6px">When your account is being used in an unusual way, and for every transfer while this device is still being learned. The main check is your typing rhythm; a one-time code is available as another way.</p>
+        <p class="small muted" style="margin-top:6px">When your account is being used in an unusual way, and for every transfer while your account is still being learned. The main check is your typing rhythm; a one-time code is available as another way.</p>
       </section>
     </aside>
   </div>
@@ -144,14 +144,14 @@
   $('kembali').onclick = () => step(1);
   $('kirim').onclick = async () => {
     const b = $('kirim'); b.disabled = true; b.textContent = 'Checking'; $('e2').textContent = '';
-    const g = await Guard.gate('transfer', { amount: draf.nom, label: 'send this transfer' });
+    // The transfer is made by Arunika's server, which asks BehaviorGuard first (guard.check).
+    const res = await Guard.act('transfer', { amount: draf.nom, label: 'send this transfer' },
+      () => A.api('/api/transfer', { rek: draf.p.rek, nama: draf.p.nama, bank: draf.p.bank, amount: draf.nom, note: draf.cat }));
     b.disabled = false; b.textContent = 'Send now';
-    if (!g.ok) { $('e2').textContent = 'Transfer cancelled because verification was not completed. No money was sent.'; return; }
-    const acc = A.akun();
-    if (draf.nom + draf.biaya > acc.saldo) { $('e2').textContent = 'Insufficient balance.'; return; }
-    const ref = 'ARN' + Date.now().toString().slice(-9);
-    A.catatTx(acc, { id: ref, t: Date.now(), ket: 'Transfer to ' + draf.p.nama, kat: 'Transfer', jml: -(draf.nom + draf.biaya) });
-    if (draf.p.baru && !acc.penerima.some(x => x.rek === draf.p.rek)) { acc.penerima.push({ nama: draf.p.nama, bank: draf.p.bank, rek: draf.p.rek }); A.simpanAkun(acc); }
+    if (res.ended) return;
+    if (res.cancelled) { $('e2').textContent = 'Transfer cancelled because verification was not completed. No money was sent.'; return; }
+    if (!res.ok) { $('e2').textContent = (res.body && res.body.error) || 'The transfer could not be sent.'; return; }
+    const acc = A.setAkun(res.body.account), ref = res.body.ref;
     $('r-nom').textContent = A.rupiah(draf.nom);
     $('r-ke').textContent = 'to ' + draf.p.nama + ' · ' + draf.p.bank;
     $('r-kv').innerHTML = `<dt>Reference</dt><dd class="num">${ref}</dd><dt>Time</dt><dd>${A.tanggal(Date.now())}, ${A.jam(Date.now())}</dd>

@@ -1,8 +1,8 @@
 # BehaviorGuard
 
 **Mendeteksi pengambilalihan akun dari cara seseorang menggerakkan mouse, mengetik, dan
-berpindah halaman - seluruhnya di perangkat pengguna, lengkap dengan verifikasi tambahan
-(step-up). Satu tag script. Tanpa backend.**
+berpindah halaman - lalu bertindak di tempat yang menentukan: server Anda sendiri. Satu tag
+script di halaman, beberapa baris di backend, lengkap dengan verifikasi tambahan (step-up).**
 
 > English version: [README.md](README.md)
 
@@ -14,10 +14,11 @@ Pemilik vs penyusup, akun dan kata sandi yang sama:
   <img src="assets/detection.gif" alt="Pemilik lolos cek ritme ketik dan transfernya jalan; orang lain di akun yang sama gagal dan sesinya dihentikan" width="100%">
 </p>
 
-Dicolok ke situs checkout polos:
+Dipasang ke toko polos yang punya backend sendiri, lalu dibuka dari browser kedua dengan
+password curian:
 
 <p align="center">
-  <img src="assets/demo.gif" alt="BehaviorGuard dicolok ke situs checkout polos" width="100%">
+  <img src="assets/demo.gif" alt="BehaviorGuard dipasang ke toko checkout polos: satu baris di backend, satu di halaman; server menolak pembayaran sampai pengguna verifikasi, dan login kedua dengan password curian dinilai terhadap profil pemilik lalu dihentikan" width="100%">
 </p>
 
 ---
@@ -31,61 +32,119 @@ Justru di situ celahnya. Password bocor, cookie sesi dicuri, ekstensi browser ja
 penipuan remote-access, laptop yang ditinggal terbuka: hasilnya sama - sesi yang **sudah
 lolos pintu** tapi kini dipakai orang lain.
 
-**BehaviorGuard membuat sesi itu terus diperiksa.** Ia mempelajari cara *pemilik akun ini*
-memakai komputer - dinamika mouse, ritme ketikan, pola navigasi - lalu menilai ulang sesi
-setiap 30 detik. Kalau perilakunya berhenti mirip pemilik, ia meminta verifikasi: tantangan
-ritme-ketik bawaan, atau OTP/WebAuthn milik situs Anda.
+**BehaviorGuard membuat sesi itu terus diperiksa, di infrastruktur milik Anda.** Ia
+mempelajari cara *pemilik akun ini* memakai komputer - dinamika mouse, ritme ketikan, pola
+navigasi - lalu menilai ulang sesi setiap 30 detik. Kalau perilakunya berhenti mirip
+pemilik, ia meminta verifikasi: tantangan ritme-ketik bawaan, atau OTP/WebAuthn milik situs
+Anda. Keputusan akhir untuk aksi sensitif ada di backend Anda.
 
-Data interaksi mentah tidak pernah keluar dari browser. Huruf yang diketik tidak pernah
-disimpan, bahkan di perangkat itu sendiri.
+Halaman mengirim **34 angka ringkasan per jendela 30 detik** ke server Anda. Event mentah
+tidak pernah keluar dari halaman, dan huruf yang diketik tidak pernah dikirim atau disimpan.
 
 ---
 
-## Pasang dalam 30 detik
+## Di mana ia berjalan
+
+```
+ browser (halaman Anda)                      server Anda (blueprint Flask, atau server/app.py)
+ ---------------------------------           ---------------------------------------------------
+ tangkap: pointer, tombol, gulir, navigasi   profil & model akun (dari perangkat mana pun)
+ 34 fitur per jendela 30 detik     ------>   skor, vonis LOW / MEDIUM / HIGH, aturan berturut
+ cek bot / integritas (event mentah)         template ritme ketik dan pencocokannya
+ dialog verifikasi (Shadow DOM)    <------   verifikasi: ritme, atau OTP ANDA yang dilaporkan
+                                             guard.check() sebelum uang berpindah <- route Anda
+```
+
+- **Profil milik akun, bukan milik browser.** Penyerang yang login dengan password curian
+  dari laptopnya sendiri langsung dinilai terhadap profil pemilik sejak jendela pertama,
+  bukan profil kosong.
+- **Keputusan yang memindahkan uang dibuat di server Anda.** `guard.check()` di route Anda
+  menjawab boleh atau "verifikasi dulu". Skrip di halaman tidak bisa menembusnya, dan tidak
+  bisa menjamin verifikasinya sendiri: hanya backend Anda yang melaporkannya (ia yang
+  memegang kunci rahasia).
+- **Gagal-tertutup.** Tidak ada penilaian segar, backend tak terjangkau, bukti belum cukup:
+  jawabannya "verifikasi", tidak pernah "aman".
+
+Yang masih dikerjakan browser, dan alasannya: menghitung 34 angka (supaya perilaku mentah
+tetap di halaman) dan menjalankan heuristik bot/integritas, yang butuh aliran event mentah.
+
+Ada juga **mode lokal** - mesin yang sama sepenuhnya di browser, profil di IndexedDB, tanpa
+server. Mode itu yang dipakai harness riset dan uji konformansi, dan praktis untuk mencoba
+pustaka di halaman statis. Mode lokal tidak bisa melindungi dari penyerang di perangkat lain
+(profilnya tidak ada di sana), jadi bukan cara pasang yang dianjurkan.
+
+---
+
+## Pasang (Flask, sekitar 15 baris)
+
+Bagian server ada di `server/` (`guard.py`, `engine.py`, `rhythm.py`, plus `core/bg_core.py`;
+salinan datarnya di `dist/server/`). Pustaka standar ditambah Flask, tidak ada yang lain.
+
+```python
+from guard import Guard, create_blueprint
+
+guard = Guard('behaviorguard.db', tenant=(BG_PK, BG_SK))          # kunci dari environment
+app.register_blueprint(create_blueprint(guard), url_prefix='/bg')  # API untuk browser
+
+@app.get('/api/bg-token')                      # sesudah login: token untuk user INI dan login INI
+def bg_token():
+    return {'token': guard.mint_token(current_user.id, session['login_id'], ttl=900)}
+
+@app.post('/api/transfer')
+def transfer():
+    c = guard.check(current_user.id, session['login_id'], money=True)
+    if not c['allowed']:
+        return {'verify': True, 'reason': c['reason']}, 403      # halaman verifikasi, lalu kirim ulang
+    ...                                                          # pindahkan uangnya
+
+# OTP Anda sendiri, dicek oleh Anda, dilaporkan ke guard:
+guard.report_verified(None, current_user.id, session['login_id'], passed=True)
+```
+
+Halamannya:
 
 ```html
-<script src="dist/behaviorguard.js" data-user="andi@contoh.id" defer></script>
+<script src="/dist/behaviorguard.min.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
 <script>
-  addEventListener('behaviorguard:risk', e => {
-    // e.detail = { level, score, action, reasons, topFeatures, ... }
-    if (e.detail.level === 'HIGH') kunciCheckout();
-  });
+  // sebelum aksi sensitif: penilaian segar, disimpan di server untuk guard.check()
+  async function sebelumTransfer() {
+    const v = await BehaviorGuard.assessNow();     // UNKNOWN = bukti belum cukup -> tetap verifikasi
+    if (v.level === 'LOW') return true;
+    return (await BehaviorGuard.stepUp({ reason: 'kirim transfer ini' })).verified;
+  }
 </script>
 ```
 
-Itu seluruh integrasinya. Penangkapan event, penilaian, pendaftaran, latih ulang, dan popup
-verifikasi berjalan sendiri.
+Itu seluruh integrasinya. Penangkapan event, pendaftaran, penilaian, latih ulang, dan popup
+verifikasi berjalan sendiri; id pengguna diambil dari token yang ditandatangani, bukan dari
+halaman.
+
+**Bukan Flask?** Jalankan `server/app.py` sebagai layanan dan tandatangani tokennya di backend
+Anda sendiri (HMAC-SHA256, empat baris di Node, PHP, atau Laravel):
+[docs/INTEGRATION.id.md](docs/INTEGRATION.id.md).
 
 Dialog verifikasinya hidup di Shadow DOM (CSS situs tidak bisa merusaknya, CSP ketat aman),
-bisa dipakai dengan keyboard & pembaca layar, dan jalan di keyboard layar sentuh.
+bisa dipakai dengan keyboard & pembaca layar, dan jalan di keyboard layar sentuh. Ritme
+ketiknya dicocokkan **di server** terhadap template pemilik.
 
-**Sudah punya OTP / WebAuthn?** Pasang sebagai jalur "Gunakan cara lain" di dialog. Jalur ini
-juga dipakai otomatis saat pengguna belum punya template irama atau sudah terlalu sering gagal:
-
-```js
-window.BehaviorGuardConfig = { userId, mfa: { onFallback: async () => await otpDiverifikasiServer() } };
-```
-
-Atau matikan dialog bawaan dan laporkan hasil verifikasi Anda dengan
-`BehaviorGuard.reportStepUp({ passed: true })`.
-
-**Sebelum aksi sensitif** (ganti email/sandi, transfer, tambah perangkat), minta vonis saat
-itu juga, lalu verifikasi bila perlu:
+**Sudah punya OTP / WebAuthn?** Itulah jalur "Gunakan cara lain" di dialog, dan dipakai
+otomatis saat pengguna belum punya template irama atau sudah terlalu sering gagal. Server Anda
+memeriksa kodenya lalu memanggil `guard.report_verified(...)`; pustaka kemudian mengambil
+hasilnya:
 
 ```js
-const v = BehaviorGuard.assessNow();   // UNKNOWN = bukti belum cukup -> tetap minta verifikasi
-if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'ganti email' })).verified) return;
+window.BehaviorGuardConfig = { mfa: { onFallback: async () => await dialogOtpSaya() } };
 ```
 
 `BehaviorGuard.status()` memberi keadaan untuk UI Anda sendiri (masih mengenali / melindungi,
-progres pendaftaran, vonis terakhir), `stop()` untuk logout, `forget()` menghapus data pengguna.
+progres pendaftaran, vonis terakhir), `stop()` untuk logout, `forget()` menghapus profil akun
+(sesudah verifikasi segar).
 
-Untuk produksi, pakai `dist/behaviorguard.min.js` (144 KB, **44 KB gzip**): bundel yang sama
+Untuk produksi, pakai `dist/behaviorguard.min.js` (155 KB, **47 KB gzip**): bundel yang sama
 tanpa baris komentar dan indentasi; `node tools/min_check.mjs` membuktikan urutan vonisnya
 identik.
 
-Panduan lengkap (modul ES, objek konfigurasi, server opsional):
-[docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang berbahasa Indonesia:
+Panduan lengkap: [docs/QUICKSTART.md](docs/QUICKSTART.md). Panduan pasang:
 [dist/INSTALL.md](dist/INSTALL.md).
 
 ---
@@ -115,7 +174,10 @@ asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di brows
 diputar **menurut urutan rekamannya**, satu kunjungan per sesi (muat halaman, status dibaca
 ulang dari penyimpanan), jadi pendaftaran = sepuluh kunjungan pertama tiap pemilik. Pemilik
 menjawab verifikasi lewat API publik `reportStepUp`. Penyusup = 15 relawan lain, masing-masing
-datang lewat kunjungan baru ke akun pemilik.
+datang lewat kunjungan baru ke akun pemilik. Harness menjalankan pustaka dalam mode lokal;
+mesin server (`server/engine.py`) dicocokkan dengannya keputusan demi keputusan
+(`python server/test_parity.py`: level, aksi, skor, ambang, dan model yang sama di setiap
+jendela), jadi angka ini juga angka mode backend.
 
 | Pemilik | |
 | --- | --- |
@@ -221,38 +283,49 @@ tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
 | WASM | host WASM mana pun | 319/319 |
 
 Algoritmanya ditulis sebagai spesifikasi yang lepas dari bahasa ([core/SPEC.md](core/SPEC.md)
-v1.3.0), dan setiap implementasi dicek terhadap [core/golden.json](core/golden.json) yang
-sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
+v1.4.0), dan setiap implementasi dicek terhadap [core/golden.json](core/golden.json) yang
+sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa. Mesin server berdiri
+di atas inti Python (`core/bg_core.py`), dan lapisan keputusannya dicocokkan dengan pustaka
+JavaScript jendela demi jendela (`server/test_parity.py`).
 
 ---
 
 ## Coba demonya
 
-**Colok ke situs polos (GIF di atas):** [demo/shop-checkout](demo/shop-checkout/) - toko Flask
-dengan backend sendiri, tanpa MFA. Dua baris yang dikomentari menyalakan BehaviorGuard;
-README di sana menjelaskan langkahnya.
-
 ```bash
-python -m http.server 8080
+pip install flask
+python demo/arunika/server.py        # http://127.0.0.1:8300   (--lan supaya bisa dibuka dari laptop kedua)
 ```
 
-**Situs realistis yang sudah memasang pustaka:** <http://localhost:8080/demo/arunika/> - bank
-digital fiktif (masuk, transfer, bayar tagihan, riwayat, keamanan). Semua kode khusus
-BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integration.js`. Panel presentasi di
-pojok kiri bawah menampilkan fase, bukti, vonis, dan alasannya dalam bahasa biasa, serta bisa
-mensimulasikan kembali-setelah-absen, rekam-ulang, dan bot.
+**Arunika, bank realistis dengan BehaviorGuard di backend-nya** ([demo/arunika](demo/arunika/)).
+Akun, saldo, dan riwayat ada di server Flask-nya sendiri; API BehaviorGuard dipasang di
+dalamnya, transfer/pembayaran/ganti sandi bertanya ke `guard.check()` dulu, dan kode sekali
+pakainya (dikirim ke HP simulasi) dilaporkan lewat `guard.report_verified()`. Demo dimulai dari
+pembukaan akun: profil dibangun dari nol sambil ditonton. Lalu buka akun yang sama dari
+**laptop kedua** dengan passwordnya: laptop itu langsung dinilai terhadap profil pemilik,
+perilaku orang asing = HIGH, dan server mengakhiri login tersebut.
 
-Tampilan tanpa kode: <http://localhost:8080/demo/monitor/>. Panel kiri adalah toko biasa **tanpa satu baris
-kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor langsung.
-Panduan lengkap: [demo/README.md](demo/README.md).
+**Pasang di toko polos (GIF di atas):** [demo/shop-checkout](demo/shop-checkout/) - toko Flask
+dengan backend sendiri, tanpa MFA. Satu baris di backend, satu di halaman; README di sana
+menjelaskan langkahnya.
 
 ```bash
-python core/conformance.py         # mesin vs golden.json            -> 319/319
-node   core/lifecycle.test.mjs     # siklus hidup & API integrator   -> 49/49
-node   core/stepup.test.mjs        # verifikasi, cadangan, penguncian -> 61/61
-node   core/privacy.test.mjs       # huruf ketikan tidak tersimpan   -> 14/14
-python server/test_app.py          # server opsional: auth, XSS      -> 35/35
-node   tools/eval_sdk.mjs --live   # ukur pustaka yang dikirim (butuh ekspor data riset lokal)
+python demo/shop-checkout/shop.py    # http://127.0.0.1:5000
+```
+
+**Mode lokal, tanpa server:** `python -m http.server 8080`, lalu
+<http://localhost:8080/demo/monitor/> (toko tanpa satu baris kode BehaviorGuard pun, dinilai
+dari luar) dan tiga toko plug-and-play di [demo/README.md](demo/README.md).
+
+```bash
+python core/conformance.py           # mesin vs golden.json              -> 319/319
+node   core/lifecycle.test.mjs       # siklus hidup & API integrator     -> 49/49
+node   core/stepup.test.mjs          # verifikasi, cadangan, penguncian  -> 61/61
+node   core/privacy.test.mjs         # huruf ketikan tidak tersimpan     -> 14/14
+python server/test_app.py            # API server: token, gerbang, IDOR  -> 58/58
+python server/test_parity.py         # mesin server == pustaka JS        -> 67 jendela
+python server/test_backend_sdk.py    # pustaka lewat HTTP vs server      -> 21/21
+python demo/arunika/test_server.py   # backend bank demo                 -> 38/38
 ```
 
 ---
@@ -264,8 +337,11 @@ event DOM -> buang kembar -> pendekkan jeda idle -> kumpulkan 150 event
          -> 34 fitur -> z-score vs pemilik -> IF 0,30 + Mahalanobis 0,70
          -> ambang per pemilik (mean - k*std) -> LOW / MEDIUM / HIGH + alasan
          -> cek rekam-ulang, lantai lengket, aturan HIGH berturut, absen, masa berlaku
-         -> verifikasi (ritme ketik bawaan, atau OTP Anda lewat reportStepUp)
+         -> verifikasi (ritme ketik bawaan, atau OTP Anda lewat guard.report_verified)
+         -> guard.check() di route Anda sebelum aksi sensitif
 ```
+
+Dua baris pertama berjalan di halaman; semuanya mulai dari z-score berjalan di server Anda.
 
 - **Pendaftaran** - 10 sesi layak pertama menjadi jangkar profil pemilik dan tidak pernah
   tergeser.
@@ -281,12 +357,15 @@ Detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Privasi
 
-Event mentah tidak pernah keluar perangkat, dan huruf yang diketik tidak pernah disimpan.
-Profil disimpan lokal (IndexedDB -> localStorage -> memori). Tidak ada telemetri.
+Event mentah tidak pernah keluar dari halaman, dan huruf yang diketik tidak pernah dikirim
+atau disimpan di mana pun. Per jendela 30 detik halaman mengirim 34 angka fitur, berapa event
+dan detik asalnya, dan hasil cek bot. Server Anda menyimpan per akun: vektor-vektor itu (kolam
+latih), vonis, dan template ritme ketik (lama tekan dan jeda antartombol untuk satu frasa,
+bukan hurufnya). Tidak ada telemetri dan tidak ada pihak ketiga: servernya milik Anda.
 
-Server opsional ([server/README.md](server/README.md)) hanya menerima **34 angka fitur per
-jendela** + vonis, dan hanya aktif kalau Anda memberi kunci publik, endpoint, **dan** token
-pengguna berumur pendek yang dicetak backend Anda sendiri.
+`forget()` menghapus profil dan template akun (sesudah verifikasi segar, supaya penyusup di
+dalam sesi tidak bisa menghapus profil pemilik lalu dipelajari sebagai pemilik); backend Anda
+bisa memanggil `guard.forget(..., require_verified=False)` saat akun dihapus.
 
 ---
 
@@ -295,10 +374,12 @@ pengguna berumur pendek yang dicetak backend Anda sendiri.
 | Dokumen | Isi |
 | --- | --- |
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | Semua cara integrasi dan konfigurasi |
+| [docs/INTEGRATION.id.md](docs/INTEGRATION.id.md) | Backend Anda di Flask, Node, PHP, atau Laravel: token, gerbang, laporan OTP |
+| [server/README.md](server/README.md) | Server: kunci, token pengguna, endpoint, gerbang, dashboard |
 | [dist/INSTALL.md](dist/INSTALL.md) | Panduan pasang satu tag (bahasa Inggris) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, peta modul, keputusan desain |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Batas kepercayaan, serangan yang belum tertutup |
-| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-48: tiap cacat, buktinya, dan ujinya |
+| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-49: tiap cacat, buktinya, dan ujinya |
 | [core/SPEC.id.md](core/SPEC.id.md) | Spesifikasi mesin |
 
 ---

@@ -41,7 +41,7 @@
 
   <div class="hero">
     <h1 id="halo">Your account is ready.</h1>
-    <p id="lead">From now on Arunika recognises <b>how</b> you use this account - not just your password. The profile is built from zero, on this device, from your own everyday use.</p>
+    <p id="lead">From now on Arunika recognises <b>how</b> you use this account - not just your password. The profile is built from zero, from your own everyday use, and belongs to the account: log in from another laptop and it is already there.</p>
   </div>
 
   <div class="grid g-2">
@@ -49,7 +49,7 @@
 
       <section class="card">
         <div class="card-h">
-          <div><h2>Learning this device</h2><p>Arunika needs a few pieces of normal use before it can tell you apart from someone else.</p></div>
+          <div><h2>Learning how you use Arunika</h2><p>Arunika needs a few pieces of normal use before it can tell you apart from someone else.</p></div>
         </div>
         <div class="card-b">
           <div class="ring">
@@ -132,7 +132,7 @@
     [I.device, 'Cursor movement', 'Speed, path curvature, and the pause before a click.'],
     [I.shield, 'Usage flow', 'Which pages you open, how far you scroll, the order you fill in fields.'],
   ].map(([ic, t, d]) => `<div><div class="t">${ic}${A.esc(t)}</div><div class="d">${A.esc(d)}</div></div>`).join('');
-  $('privasi').textContent = 'Every calculation happens in this browser. No screen recording, no typed text, and nothing is sent to an Arunika server. You can delete it at any time from the Security page.';
+  $('privasi').textContent = 'Every 30 seconds this page sends 34 summary numbers (speeds, timings, counts) to Arunika\'s server, which keeps the profile and makes the decisions. No screen recording and no typed text ever leave the page. You can delete the profile at any time from the Security page.';
 
   // ---- news (something to scroll) ----
   const KABAR = [
@@ -177,11 +177,12 @@
   });
 
   // ---- presentation mode ----
-  const cepatOn = localStorage.getItem('arunika:mode-cepat') === '1';
-  $('cepat').checked = cepatOn;
-  $('cepat').onchange = () => {
-    if ($('cepat').checked) localStorage.setItem('arunika:mode-cepat', '1');
-    else localStorage.removeItem('arunika:mode-cepat');
+  // kept on the account (server), so a second laptop opening it uses the same evidence size
+  $('cepat').checked = !!a.fast;
+  $('cepat').onchange = async () => {
+    $('cepat').disabled = true;
+    await A.api('/api/demo/mode', { fast: $('cepat').checked });
+    try { await BehaviorGuard.stop(); } catch {}
     location.reload();
   };
 
@@ -214,7 +215,7 @@
       $('atur').disabled = true;
       const r = await BehaviorGuard.enrollMfa();
       $('atur').disabled = false;
-      if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Stored on this device.' }); A.toast('Your typing rhythm is saved. Verification is ready.'); }
+      if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Kept on Arunika\'s server, for this account.' }); A.toast('Your typing rhythm is saved. Verification is ready.'); }
       else if (!/cancelled|timed out/.test(r.reason || '')) A.toast('Not done yet: ' + (r.reason || 'try again'));
       render();
     };

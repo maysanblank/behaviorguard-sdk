@@ -193,8 +193,8 @@ for(let i=0;i<tmpl.dwell.length;i++){
 }
 ```
 
-A sample shorter than the template ⇒ `undefined` ⇒ `NaN` ⇒ the comparison is always false
-⇒ **zero violations** ⇒ `ok:true`. Two real paths:
+A sample shorter than the template -> `undefined` -> `NaN` -> the comparison is always false
+-> **zero violations** -> `ok:true`. Two real paths:
 
 - **right-click -> Paste**: zero key events -> `dwell=[]` -> passes completely.
 - **Ctrl+V**: `'Control'` is filtered out, but `'v'` passes the `key.length===1` filter ->
@@ -215,7 +215,7 @@ Locked by: `core/challenge.test.mjs` (20 tests).
 ## C-2 · CRITICAL - an intruder could ENROLL their own MFA template
 
 `_maybeMfa()` calls `runMfaChallenge({template: this.challengeTemplate})`. On a new device
-storage is empty ⇒ `challengeTemplate` is null ⇒ **ENROLL mode**. The flow:
+storage is empty -> `challengeTemplate` is null -> **ENROLL mode**. The flow:
 
 1. The intruder opens the account on a new device -> behaviour deviates -> verdict HIGH.
 2. The popup appears in enroll mode -> the intruder types the phrase 3× with **their own**
@@ -246,7 +246,7 @@ consistent.
 
 ## C-5 · A non-finite score fails OPEN to LOW
 
-`toRisk()` used `score <= thr`; for `NaN` that is **always false** ⇒ falls through to `LOW`.
+`toRisk()` used `score <= thr`; for `NaN` that is **always false** -> falls through to `LOW`.
 A broken model or statistic was therefore read as "safe". Now `!Number.isFinite(score)`
 is handled explicitly as an anomaly (`degraded:true`) and does not train the model.
 
@@ -254,7 +254,7 @@ is handled explicitly as an anomaly (`degraded:true`) and does not train the mod
 
 `score=Math.min(score,-0.9)` overwrote the real score while the sticky floor was active.
 Because thresholds are calibrated per user (`low` can be −3.5), −0.9 often lands in the LOW
-band ⇒ `level` and `score` **contradict each other**, and the fake number was stored in the
+band -> `level` and `score` **contradict each other**, and the fake number was stored in the
 session and sent to the cloud log. Now the real score is kept; the raised level is marked
 `stickyFloor:true` and the model's raw verdict is reported too
 (`modelLevel`/`modelScore`).
@@ -1921,7 +1921,7 @@ session stopped, bot injection -> BLOCK, the full live path with the 30 s clock,
 | Attack simulator C-12..C-15 | `demo/attack_sim.html` | 4/4 HIGH, mimicry via ensemble |
 | Integrity heuristics C-16 | `core/integrity.test.html` / `.mjs` | 10/10 pass |
 | Full live path C-16..C-18 | real page + DOM events | enrollment 10/10, correct LOW/MEDIUM verdicts, persistent after reload |
-| sdk↔extension sync (extension scheduled for removal, C-41) | `tools/sync_core.ps1` | identical, exit 0 |
+| sdk<->extension sync (extension scheduled for removal, C-41) | `tools/sync_core.ps1` | identical, exit 0 |
 | Idle segmentation C-23 | `core/idle.test.mjs` / `.html` | 33/33 pass |
 | Full idle path C-23 | `core/idle.live.test.mjs` | 20/20 pass |
 | Session-length invariance C-24 | `core/invariance.test.mjs` / `.html` | 26/26 pass |
@@ -2195,3 +2195,45 @@ Example: `dist/panel-pengenalan.html`. Tests: min_check 7/7, stepup 61/61, c46 2
 The C-1..C-19 changes are all outside the scope of `core/SPEC.md` §1 (challenge, session cycle,
 rate limit, storage) **except** C-8, which touches the `ensemble.js` defaults; so conformance was
 re-run on both sides and stays at 227/227 (255/255 since SPEC 1.3, C-34; 319/319 since SPEC 1.4, C-44).
+
+## C-49 - the profile lived in the browser, so an attacker on another laptop met an empty one
+
+**Finding (design review, Oct 2026).** Every decision lived in the browser that built the profile.
+An attacker who logs in with a stolen password from their own laptop is the classic account
+takeover, and on that laptop there was no profile: no verdicts for 10 windows, then the library
+enrolled *the attacker* as the owner (THREAT-MODEL 4.13). The optional server could hand a new
+device the account's baseline, but the device still scored itself, still decided itself, and the
+page still vouched for its own verifications (`reportStepUp`, `onFallback` returning `true`).
+
+**Fix: backend mode.** With an endpoint and a token the page captures, computes the 34 numbers
+and the integrity check, and sends one window at a time. The server keeps everything else:
+- `server/engine.py` - the orchestrator's decisions (enrollment, pool, convergence, floor, run rule,
+  replay, away/re-verify, grace, `assessNow`), on top of `core/bg_core.py`.
+  `server/test_parity.py` runs it and the JavaScript library on the same 67 windows and requires
+  the same level, action, score, thresholds and model on every one; so the C-29 measurement holds
+  for the server.
+- `server/rhythm.py` - the rhythm template and check (`test_rhythm.py`: 40 cases identical). The
+  template never reaches a page.
+- `server/guard.py` - state per **account** (profile, floor, template, failed dialogs) and per
+  **login session** (verification time, last assessment, absence, run of HIGH verdicts); tokens
+  `b64url(user).b64url(session).exp.HMAC(sk, pk|user|session|exp)`; `check()` for the site's own
+  routes (fail closed: no assessment in 90 s is `UNKNOWN`); `report_verified()` as the only way a
+  site factor counts; `forget()` and template removal only after a verification in the last 2
+  minutes.
+- The library: `_remoteIngest`, `_remoteProbe` (`assessNow()` returns a Promise), rhythm checks
+  sent to the server, the fallback counted only when the server confirms a report, an unreachable
+  or refusing backend is `UNKNOWN`/`ABSTAIN`, never "safe". Local mode is unchanged.
+
+**One more defect found while testing it.** The run rule ("two HIGH in a row end the session") was
+counted on the account, as in the library. With a shared account that becomes a free lock-out: the
+attacker's two windows end the attacker's login, the floor makes the owner's next window `HIGH`, and
+that third `HIGH` in the account's run ended the **owner's** login before they could verify. The run
+is now counted per login session; the floor stays per account, so the owner is still asked to verify
+after an attack. `server/test_app.py` checks both halves. Parity is unaffected (one session).
+
+**Tests.** `server/test_app.py` 58/58, `test_parity.py` PASS, `test_rhythm.py` PASS,
+`test_backend_sdk.py` 21/21 (the library over HTTP), `demo/arunika/test_server.py` 38/38,
+`demo/shop-checkout/test_install.py` 23/23; the 12 JavaScript suites and conformance 319/319 are
+unchanged. Checked in a real browser: a second, isolated browser logging in to the same account
+starts in `protecting`, a stranger's windows end that login, and its direct call to the transfer
+route gets 401.

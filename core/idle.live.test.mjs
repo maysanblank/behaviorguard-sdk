@@ -88,7 +88,7 @@ check('B: LOW dinaikkan jadi MEDIUM (step-up), bukan dilewatkan',
   `model=${last.modelLevel} vonis=${last.level}`);
 check('B: aksinya minta verifikasi', last.action === 'REQUIRE_MFA', last.action);
 check('B: alasannya bisa dibaca manusia',
-  last.reasons.some(r => r.includes('absen')), last.reasons[0]);
+  last.reasons.some(r => r.includes('away')), last.reasons[0]);
 check('B: vonis segmen PERTAMA (sebelum absen) tidak ikut dinaikkan',
   seen[0].reverifyAfterAway === false && !seen[0].resumedAfterAway);
 

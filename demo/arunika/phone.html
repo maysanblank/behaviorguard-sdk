@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone (demo) · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+/* DEMO: the account owner's phone. A real bank sends an SMS; this page stands in for it. */
+.ph{max-width:380px;margin:28px auto;padding:0 16px}
+.ph-frame{background:#0f141b;border-radius:34px;padding:14px;box-shadow:var(--shadow)}
+.ph-screen{background:var(--bg);border-radius:24px;min-height:520px;padding:18px 14px;display:flex;flex-direction:column;gap:10px}
+.ph-hd{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-3);padding:0 4px 6px}
+.ph-who{font-weight:650;font-size:15px;padding:0 4px}
+.ph-msg{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px 13px;font-size:14px;line-height:1.5}
+.ph-msg .k{font-size:11.5px;color:var(--ink-3);margin-bottom:3px}
+.ph-msg .code{font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+.ph-empty{color:var(--ink-3);font-size:13.5px;text-align:center;margin-top:40px}
+</style>
+</head>
+<body>
+<div class="ph">
+  <div class="ph-frame"><div class="ph-screen">
+    <div class="ph-hd"><span id="clock"></span><span>Messages</span></div>
+    <div class="ph-who" id="who">Phone</div>
+    <div id="list"></div>
+  </div></div>
+  <p class="small muted" style="margin-top:14px;text-align:center">Demo only. This page shows the one-time codes Arunika "sends" to the account's phone.
+    Its link holds the phone's key; only the browser that opened the account has it.</p>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  const A = Arunika;
+  const key = decodeURIComponent(location.hash.slice(1));
+  const $ = id => document.getElementById(id);
+  const tick = () => { $('clock').textContent = A.jam(Date.now()); };
+  tick(); setInterval(tick, 10000);
+  let seen = 0;
+  const msgs = [];
+  async function poll() {
+    if (!key) { $('list').innerHTML = '<div class="ph-empty">Open this page from the link in the verification dialog.</div>'; return; }
+    const r = await A.api('/api/demo/phone?k=' + encodeURIComponent(key) + '&after=' + seen);
+    if (!r.ok) { $('list').innerHTML = '<div class="ph-empty">This phone is not linked to an account.</div>'; return; }
+    $('who').textContent = r.body.owner + ' · ' + r.body.number;
+    for (const m of r.body.messages) { seen = Math.max(seen, m.id); msgs.unshift(m); }
+    $('list').innerHTML = msgs.slice(0, 8).map(m => `<div class="ph-msg"><div class="k">ARUNIKA · ${A.jam(m.t)}</div>${A.esc(m.text).replace(/(\d{6})/, '<span class="code">$1</span>')}</div>`).join('')
+      || '<div class="ph-empty">No messages yet.</div>';
+  }
+  poll(); setInterval(poll, 1500);
+})();
+</script>
+</body>
+</html>

@@ -1,12 +1,10 @@
 /*
  * app.js - the Arunika application (demo site). Nothing here is BehaviorGuard: this is the
- * "existing site" before the library is installed. All data lives in this browser's
- * localStorage; no server, no real money.
+ * "existing site" before the library is installed. Accounts, balances and history live on
+ * Arunika's server (server.py); no real money.
  */
 (function () {
   'use strict';
-  const KEY_SESI = 'arunika:sesi';
-  const keyAkun = email => 'arunika:akun:' + email.toLowerCase();
 
   // ---------------- formatting ----------------
   const fmtRp = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
@@ -50,119 +48,61 @@
     'Transfer': { ic: 'send', c: '#475569' }, 'Income': { ic: 'in', c: '#15803d' },
   };
 
-  // ---------------- sample data ----------------
-  function contohTransaksi() {
-    const now = Date.now(), D = 86400000;
-    const list = [
-      [0.2, 'Warung Makan Sederhana', 'Food & drink', -38000],
-      [0.9, 'Ride-hailing to the office', 'Transport', -24500],
-      [1.3, 'Transfer from Rina Wulandari', 'Income', 250000],
-      [1.8, 'Apotek Sehat Selalu', 'Shopping', -67500],
-      [2.4, 'Prepaid electricity token', 'Bills', -202500],
-      [3.1, 'Toko Buku Pelita', 'Shopping', -129000],
-      [4.2, 'Kedai Kopi Senja Pagi', 'Food & drink', -31000],
-      [5.0, 'Transfer to Budi Santoso', 'Transfer', -500000],
-      [6.3, 'Phone credit & data 50,000', 'Bills', -51500],
-      [7.1, 'Laundry Bersih Kilat', 'Shopping', -45000],
-      [8.6, 'Monthly groceries, Pasar Segar', 'Shopping', -412300],
-      [9.4, 'September salary - PT Kencana Abadi', 'Income', 8750000],
-      [10.2, 'Water bill', 'Bills', -96000],
-      [12.5, 'Bakso Pak Kumis', 'Food & drink', -28000],
-      [13.9, 'Transfer to Mum', 'Transfer', -1500000],
-      [15.2, 'Parking & tolls', 'Transport', -36000],
-      [17.8, 'Home internet subscription', 'Bills', -335000],
-      [19.4, 'Martabak Bangka 88', 'Food & drink', -55000],
-      [22.0, 'Train ticket Jakarta-Bandung', 'Transport', -150000],
-      [24.6, 'Transfer from Dimas Pratama', 'Income', 120000],
-      [27.3, 'Running shoes', 'Shopping', -489000],
-      [30.1, 'Sate Madura Cak Mat', 'Food & drink', -42000],
-    ];
-    return list.map(([hari, ket, kat, jml], i) => ({ id: 'TX' + (900100 + i), t: now - hari * D, ket, kat, jml }));
-  }
-  function akunBaru(email, namaDiisi) {
-    const nm = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim() || 'Customer';
-    const nama = namaDiisi && namaDiisi.trim()
-      ? namaDiisi.trim().replace(/\s+/g, ' ')
-      : nm.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
-    let h = 0; for (const c of email) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    const rek = String(1000000000 + (h % 8999999999)).slice(0, 10);
-    return {
-      email: email.toLowerCase(), nama, rekening: rek, hp: '+62 812-' + String(1000 + h % 9000) + '-' + String(1000 + (h >>> 7) % 9000),
-      saldo: 12847300, dibuat: Date.now(), tx: contohTransaksi(),
-      penerima: [
-        { nama: 'Budi Santoso', bank: 'Arunika', rek: '2203419876' },
-        { nama: 'Rina Wulandari', bank: 'Other bank', rek: '0081223344' },
-        { nama: 'Mum', bank: 'Arunika', rek: '1900345671' },
-      ],
-    };
-  }
-
-  // ---------------- storage ----------------
   const baca = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const tulis = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-  const sesi = () => baca(KEY_SESI, null);
-  function akun() { const s = sesi(); return s ? baca(keyAkun(s.email), null) : null; }
-  function simpanAkun(a) { tulis(keyAkun(a.email), a); }
-  // Sign-up and log-in are SEPARATE, as on a real site. `masuk()` used to create an account
-  // for any email silently, so the demo never had the "new account, empty behavior profile"
-  // moment - which is exactly what it is meant to show.
-  const adaAkun = email => !!baca(keyAkun(String(email || '').trim().toLowerCase()), null);
-  function daftar({ email, nama }) {
-    email = String(email || '').trim().toLowerCase();
-    if (adaAkun(email)) return { ok: false, alasan: 'terdaftar' };
-    const a = akunBaru(email, nama);
-    a.tx = [];                       // NEW account: empty history, opening deposit only
-    a.saldo = SALDO_DEMO;
-    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Opening deposit', kat: 'Income', jml: SALDO_DEMO });
-    a.penerima = [];
-    a.baruDaftar = true;
-    simpanAkun(a);
-    tulis(KEY_SESI, { email, masukPada: Date.now(), baru: true });
-    return { ok: true, akun: a };
+
+  // ---------------- the account, from Arunika's server ----------------
+  // The server puts the logged-in account into the page (window.ARUNIKA_ME) and is the only
+  // place that changes it: balance, history, recipients and password all live there, so the
+  // same account opens from any browser or laptop.
+  const ME = window.ARUNIKA_ME || { session: null };
+  const sesi = () => ME.session;
+  const akun = () => ME.account || null;
+  const setAkun = a => { if (a) ME.account = a; return a; };
+  async function api(path, body, method) {
+    try {
+      const r = await fetch(path, { method: method || (body === undefined ? 'GET' : 'POST'), credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
+    } catch { return { ok: false, status: 0, body: { error: 'Arunika could not be reached. Check the connection.' } }; }
   }
-  function masuk(email) {
-    email = String(email || '').trim().toLowerCase();
-    const a = baca(keyAkun(email), null);
-    if (!a) return { ok: false, alasan: 'tidak-terdaftar' };
-    tulis(KEY_SESI, { email, masukPada: Date.now() });
-    return { ok: true, akun: a };
+  // DEMO: the simulated phone. Only the browser that created the account holds its key, so a
+  // second laptop that logs in with the stolen password does not receive the codes.
+  const phoneKey = email => baca('arunika:phone:' + String(email || '').toLowerCase(), null);
+  const setPhoneKey = (email, k) => { if (k) tulis('arunika:phone:' + String(email).toLowerCase(), k); };
+  async function daftar({ email, nama, hp, password }) {
+    const r = await api('/api/signup', { email, nama, hp, password });
+    if (r.status === 409) return { ok: false, alasan: 'terdaftar' };
+    if (!r.ok) return { ok: false, alasan: r.body.error || 'error' };
+    setPhoneKey(email, r.body.phoneKey);
+    return { ok: true, akun: r.body.account };
   }
-  // Sample account for presentations: history is pre-filled so the pages are not empty
-  // when showing transfer/history. Its BEHAVIOR profile still starts from zero.
-  function akunContoh(email, nama) {
-    const a = akunBaru(email, nama);
-    a.tx = contohTransaksi(); a.saldo = 12847300;
-    a.penerima = [
-      { nama: 'Budi Santoso', bank: 'Arunika', rek: '2203419876' },
-      { nama: 'Rina Wulandari', bank: 'Other bank', rek: '0081223344' },
-      { nama: 'Mum', bank: 'Arunika', rek: '1900345671' },
-    ];
-    simpanAkun(a);
-    tulis(KEY_SESI, { email: a.email, masukPada: Date.now() });
-    return a;
+  async function masuk(email, password) {
+    const r = await api('/api/login', { email, password });
+    if (r.status === 404) return { ok: false, alasan: 'tidak-terdaftar' };
+    if (r.status === 401) return { ok: false, alasan: 'sandi' };
+    if (!r.ok) return { ok: false, alasan: r.body.error || 'error' };
+    return { ok: true };
+  }
+  // Sample account for presentations: history is pre-filled so the pages are not empty.
+  // Its BEHAVIOR profile is whatever the server holds for it.
+  async function akunContoh() {
+    const r = await api('/api/sample', {});
+    if (r.ok) setPhoneKey('nadia.putri@example.com', r.body.phoneKey);
+    return r.ok;
   }
   async function keluar(alasan) {
     try { if (window.BehaviorGuard) await window.BehaviorGuard.stop(); } catch {}
-    try { localStorage.removeItem(KEY_SESI); sessionStorage.clear(); } catch {}
+    await api('/api/logout', {});
+    try { sessionStorage.clear(); } catch {}
     location.href = 'index.html' + (alasan ? '?keluar=' + encodeURIComponent(alasan) : '');
-  }
-  function catatTx(a, tx) { a.tx.unshift(tx); a.saldo += tx.jml; simpanAkun(a); }
-  // Demo site: a balance drained by practice transfers refills itself, so the demo (and the
-  // impostor test) never stops at "insufficient balance". The behavior profile is untouched.
-  const SALDO_DEMO = 25000000, SALDO_BATAS = 1000000;
-  function isiUlangDemo(a) {
-    if (!a || a.saldo >= SALDO_BATAS) return a;
-    catatTx(a, { id: 'TOPUP' + Date.now().toString().slice(-8), t: Date.now(), ket: 'Demo balance top-up', kat: 'Income', jml: SALDO_DEMO - a.saldo });
-    return a;
   }
 
   // ---------------- page shell ----------------
   const NAV = [['home.html', 'Home'], ['transfer.html', 'Transfer'], ['pay.html', 'Pay'], ['history.html', 'History'], ['security.html', 'Security']];
   function shell(aktif) {
-    const s = sesi();
-    if (!s) { location.replace('index.html'); return null; }
-    const a = isiUlangDemo(akun());
-    if (!a) { localStorage.removeItem(KEY_SESI); location.replace('index.html'); return null; }
+    const a = akun();
+    if (!sesi() || !a) { location.replace('index.html' + (ME.ended ? '?keluar=diblokir' : '')); return null; }
     const top = document.getElementById('top');
     top.className = 'top';
     top.innerHTML = `<div class="top-in">
@@ -212,22 +152,19 @@
     });
   }
 
-  // Wipe EVERY trace of the demo in this browser (accounts, session, log, the library's
-  // behavior profile), so the demo restarts at sign-up without an incognito window.
+  // DEMO: delete this account on the server (bank data and behavior profile) and the few
+  // presenter settings in this browser, so the demo restarts at sign-up.
   async function resetDemo() {
-    try { if (window.BehaviorGuard) { await window.BehaviorGuard.forget(); await window.BehaviorGuard.stop(); } } catch {}
+    try { if (window.BehaviorGuard) await window.BehaviorGuard.stop(); } catch {}
+    await api('/api/demo/reset', {});
     try {
       const buang = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith('arunika:') || k.startsWith('bg:'))) buang.push(k);
-      }
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.startsWith('arunika:') || k.startsWith('bg:'))) buang.push(k); }
       buang.forEach(k => localStorage.removeItem(k));
       sessionStorage.clear();
-      if (window.indexedDB && indexedDB.deleteDatabase) indexedDB.deleteDatabase('bg_store');
     } catch {}
   }
 
-  window.Arunika = { I, KAT, rupiah, tanggal, jam, esc, angka, salam, inisial, sesi, akun, simpanAkun,
-    daftar, masuk, adaAkun, akunContoh, keluar, resetDemo, catatTx, shell, toast, dialog, konfirmasi, nominalInput, baca, tulis };
+  window.Arunika = { I, KAT, rupiah, tanggal, jam, esc, angka, salam, inisial, ME, sesi, akun, setAkun, api, phoneKey,
+    daftar, masuk, akunContoh, keluar, resetDemo, shell, toast, dialog, konfirmasi, nominalInput, baca, tulis };
 })();

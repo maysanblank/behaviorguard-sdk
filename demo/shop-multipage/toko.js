@@ -173,7 +173,7 @@
           '<button type="button" id="kurang">−</button><span id="jml">1</span>' +
           '<button type="button" id="tambah">+</button></div>' +
         '<button class="btn" id="ke-keranjang" style="padding:12px 22px">Masukkan keranjang</button>' +
-        '<p style="margin-top:20px"><a href="index.html">← kembali ke katalog</a></p>' +
+        '<p style="margin-top:20px"><a href="index.html">&lsaquo; kembali ke katalog</a></p>' +
       '</div>';
     var n = 1;
     var span = document.getElementById('jml');

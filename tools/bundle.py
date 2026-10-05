@@ -187,7 +187,13 @@ try{
   var S  = __CURRENT;
   var cfg = (window.BehaviorGuardConfig && typeof window.BehaviorGuardConfig==='object') ? window.BehaviorGuardConfig : {};
   var userId = cfg.userId || (S && (S.getAttribute('data-user') || S.getAttribute('data-user-id')));
-  if(BG && userId){
+  // BACKEND MODE (C-49): endpoint + a token from the site's backend. The user id is read
+  // from the token, so data-user is not needed.
+  var endpoint = cfg.endpoint || (S && S.getAttribute('data-endpoint')) || null;
+  var token = cfg.token || cfg.userToken || (S && (S.getAttribute('data-token') || S.getAttribute('data-user-token'))) || null;
+  var tokenUrl = cfg.tokenUrl || (S && S.getAttribute('data-token-url')) || null;
+  var backend = !!(endpoint && (token || tokenUrl || typeof cfg.getToken==='function'));
+  if(BG && (userId || backend)){
     var cbName = cfg.callback || (S && S.getAttribute('data-callback'));
     var userOnRisk = (cbName && typeof window[cbName]==='function') ? window[cbName] : cfg.onRisk;
     var wantPanel = cfg.panel===true || (S && S.getAttribute('data-panel')!=null);
@@ -200,17 +206,17 @@ try{
       // C-45: event DOM `behaviorguard:risk` kini disiarkan oleh inti untuk SEMUA integrasi;
       // menyiarkannya lagi di sini membuat pendengar auto-boot menerima tiap vonis dua kali.
     };
-    var opts = {userId:userId, onRisk:onRisk};
-    // HYBRID cloud: pk (kunci tenant) + endpoint (VPS) -> baseline lintas-device + log verdict
-    opts.pk       = cfg.pk       || (S && S.getAttribute('data-pk'))       || null;
-    opts.endpoint = cfg.endpoint || (S && S.getAttribute('data-endpoint')) || null;
-    // C-39: token pengguna berumur pendek dari server integrator; tanpa ini mode cloud mati
-    opts.userToken = cfg.userToken || (S && S.getAttribute('data-user-token')) || null;
+    var opts = {userId:userId || undefined, onRisk:onRisk};
+    opts.pk       = cfg.pk || (S && S.getAttribute('data-pk')) || null;
+    opts.endpoint = endpoint;
+    opts.token    = token;
+    opts.tokenUrl = tokenUrl;
+    if(typeof cfg.getToken==='function') opts.getToken = cfg.getToken;
     // C-33: session/idle/calibration dulu TIDAK diteruskan -> integrator auto-boot tak bisa
     // mengatur titik operasi maupun ukuran bukti.
     ['weights','baseline','retrainEvery','features','thresholds','mfa','session','idle','calibration',
      'aggregateWindows','calibrationHoldout'].forEach(function(k){ if(cfg[k]!=null) opts[k]=cfg[k]; });
-    BG.init(opts);
+    BG.init(opts).catch(function(e){ try{ console.error('[BehaviorGuard boot]', e); }catch(_){} });
     // C-40: DULU di sini ada pagehide -> BG.endSession(). Pendengar ini terpasang SEBELUM
     // milik SDK (init() menunggu fingerprint dulu), jadi ia menguras buffer lebih dulu:
     // penilaian async-nya tak sempat selesai karena halaman mati, dan _bankTail milik SDK
@@ -237,13 +243,17 @@ try{
     print("OK -> dist/behaviorguard.min.js  (%.1f KB, %.1f KB gzip)"
           % (len(mini.encode("utf-8"))/1024, len(gzip.compress(mini.encode("utf-8"), 9))/1024))
 
-    # SDK backend single-file: salin bg_core.py apa adanya ke dist/ (biar sinkron)
+    # The backend half, ready to copy next to your app: server/guard.py + engine.py + rhythm.py
+    # and the numeric core they run on. `from guard import Guard, create_blueprint`.
     import shutil
-    src_py = os.path.join(ROOT, "core", "bg_core.py")
-    dst_py = os.path.join(out, "behaviorguard.py")
-    shutil.copyfile(src_py, dst_py)
-    print("OK -> dist/behaviorguard.py (%.1f KB, Python SDK backend)"
-          % (os.path.getsize(dst_py)/1024))
+    srv = os.path.join(out, "server")
+    os.makedirs(srv, exist_ok=True)
+    for src in ("server/guard.py", "server/engine.py", "server/rhythm.py", "core/bg_core.py"):
+        shutil.copyfile(os.path.join(ROOT, src), os.path.join(srv, os.path.basename(src)))
+    old = os.path.join(out, "behaviorguard.py")
+    if os.path.exists(old):
+        os.remove(old)
+    print("OK -> dist/server/ (guard.py, engine.py, rhythm.py, bg_core.py)")
 
 if __name__ == "__main__":
     main()

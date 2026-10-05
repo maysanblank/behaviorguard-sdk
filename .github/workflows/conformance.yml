@@ -63,6 +63,36 @@ jobs:
           node core/compress.test.mjs
           node core/invariance.test.mjs
 
+  server:
+    # C-49: backend mode. The server engine must take the library's decisions window by
+    # window, the rhythm check must agree with challenge.js, and the gate must hold.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: pip install flask
+      - name: Server API (tokens, sessions, gate, report, IDOR, XSS, CSP, rate limits)
+        run: python server/test_app.py
+      - name: engine.py == the JavaScript library (parity)
+        run: python server/test_parity.py
+      - name: rhythm.py == challenge.js
+        run: python server/test_rhythm.py
+      - name: The library over HTTP against a real server
+        run: python server/test_backend_sdk.py
+      - name: Demo bank backend (Arunika)
+        run: python demo/arunika/test_server.py
+      - name: Install demo, before and after the one line
+        run: python demo/shop-checkout/test_install.py
+      - name: dist/server/ is a copy of server/ and core/bg_core.py
+        run: |
+          fail=0
+          for f in guard.py engine.py rhythm.py; do diff -q "server/$f" "dist/server/$f" || fail=1; done
+          diff -q core/bg_core.py dist/server/bg_core.py || fail=1
+          exit $fail
+
   sync:
     # C-9: sdk/ is the only source; extension/ is just a copy. If the two drift apart
     # (the orchestrator used to be left out of the sync), the build goes red.

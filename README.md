@@ -4,8 +4,9 @@
 
 # BehaviorGuard
 
-**Detect account takeover from how someone moves, types and navigates - entirely on the
-device, with a built-in step-up challenge. One script tag. No backend required.**
+**Detect account takeover from how someone moves, types and navigates - and act on it
+where it counts, on your own server. One script tag in the page, a few lines in your
+backend, a built-in step-up challenge.**
 
 [![conformance](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml/badge.svg)](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -21,10 +22,11 @@ Owner vs attacker, same account, same password:
   <img src="assets/detection.gif" alt="The owner passes the typing-rhythm check and the transfer goes through; a second person on the same account fails it and the session is ended" width="100%">
 </p>
 
-Plugging it into a plain checkout site:
+Installing it on a plain store with its own backend, then logging in from a second browser
+with the stolen password:
 
 <p align="center">
-  <img src="assets/demo.gif" alt="BehaviorGuard plugged into a plain checkout site" width="100%">
+  <img src="assets/demo.gif" alt="BehaviorGuard installed on a plain checkout store: one line in the backend, one in the page; the server refuses the payment until the user verifies, and a second login with the stolen password is judged against the owner's profile and ended" width="100%">
 </p>
 
 ---
@@ -39,70 +41,124 @@ malicious browser extensions, remote-access scams and physical device handoff al
 the same thing - a session that **passed the door check** and is now driven by someone
 else. The login was legitimate. The session is not.
 
-The usual answer is a server-side risk engine: it sees IP, user agent and coarse behavior,
-it requires a backend, and it ships your users' interaction data off-device. For a small
-team, a research project, or a privacy-sensitive product, that is a heavy and often
-unacceptable price.
+The usual answer is a commercial risk engine: a vendor's servers receive your users'
+interaction data and send back a score you cannot inspect. For a small team, a research
+project, or a privacy-sensitive product, that is a heavy and often unacceptable price.
 
-**BehaviorGuard makes the session itself continuously accountable.** It builds a model of
-how *this account's owner* behaves - mouse dynamics, keystroke rhythm, navigation shape -
-and re-scores the live session every 30 seconds. When the behavior stops looking like the
-owner, it asks for a step-up: its own typing-rhythm challenge, or your OTP / WebAuthn.
+**BehaviorGuard makes the session itself continuously accountable, on infrastructure you
+own.** It builds a model of how *this account's owner* behaves - mouse dynamics, keystroke
+rhythm, navigation shape - and re-scores the live session every 30 seconds. When the
+behavior stops looking like the owner, it asks for a step-up: its own typing-rhythm
+challenge, or your OTP / WebAuthn. Your backend gets the last word on every sensitive
+action.
 
-Raw interaction data never leaves the browser. The characters a user types are never
-stored - not even on the device.
+The page sends **34 summary numbers per 30-second window** to your server. Raw events never
+leave the page, and the characters a user types are never sent or stored anywhere.
 
 ---
 
-## 30-second quickstart
+## Where it runs
 
-One tag. No build step, no bundler, no account, no API key.
+```
+ browser (your page)                         your server (Flask blueprint, or server/app.py)
+ ---------------------------------           ---------------------------------------------------
+ capture: pointer, keys, scroll, nav         the account's profile and model (any device)
+ 34 features per 30-s window       ------>   score, verdict LOW / MEDIUM / HIGH, run rule
+ bot / integrity check (raw events)          typing-rhythm template and its check
+ step-up dialog (Shadow DOM)       <------   verifications: rhythm, or YOUR OTP reported
+                                             guard.check() before money moves  <- your routes
+```
+
+- **The profile belongs to the account, not the browser.** An attacker who logs in with a
+  stolen password from their own laptop meets the owner's profile on the first window, not
+  an empty one.
+- **The decision that moves money is made on your server.** `guard.check()` in your route
+  says allowed or "verify first". A script in the page cannot talk its way past it, and
+  cannot vouch for its own verification: only your backend reports that (it holds the
+  secret key).
+- **Fail closed.** No fresh assessment, backend unreachable, not enough evidence: the answer
+  is "verify", never "safe".
+
+What the browser still does, and why: it computes the 34 numbers (so raw behavior stays in
+the page) and runs the bot/integrity heuristics, which need the raw event stream.
+
+A **local mode** also exists - the same engine entirely in the browser, the profile in
+IndexedDB, no server. It is what the research harness and the conformance suite drive, and
+it is handy for trying the library on a static page. It cannot protect against an attacker
+on another device (the profile is not there), so it is not the recommended deployment.
+
+---
+
+## Quickstart (Flask, about 15 lines)
+
+The server side ships in `server/` (`guard.py`, `engine.py`, `rhythm.py`, plus `core/bg_core.py`;
+a flat copy is in `dist/server/`). Standard library plus Flask, nothing else.
+
+```python
+from guard import Guard, create_blueprint
+
+guard = Guard('behaviorguard.db', tenant=(BG_PK, BG_SK))          # keys from your environment
+app.register_blueprint(create_blueprint(guard), url_prefix='/bg')  # the browser's API
+
+@app.get('/api/bg-token')                      # after login: a token for THIS user and THIS login
+def bg_token():
+    return {'token': guard.mint_token(current_user.id, session['login_id'], ttl=900)}
+
+@app.post('/api/transfer')
+def transfer():
+    c = guard.check(current_user.id, session['login_id'], money=True)
+    if not c['allowed']:
+        return {'verify': True, 'reason': c['reason']}, 403      # the page steps up, then retries
+    ...                                                          # move the money
+
+# your own OTP, checked by you, reported to the guard:
+guard.report_verified(None, current_user.id, session['login_id'], passed=True)
+```
+
+The page:
 
 ```html
-<script src="dist/behaviorguard.js" data-user="andi@example.com" defer></script>
+<script src="/dist/behaviorguard.min.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
 <script>
-  addEventListener('behaviorguard:risk', e => {
-    // e.detail = { level, score, action, reasons, topFeatures, ... }
-    if (e.detail.level === 'HIGH') lockCheckout();
-  });
+  // before a sensitive action: a fresh assessment, kept on the server for guard.check()
+  async function beforeTransfer() {
+    const v = await BehaviorGuard.assessNow();     // UNKNOWN means "not enough evidence": fail closed
+    if (v.level === 'LOW') return true;
+    return (await BehaviorGuard.stepUp({ reason: 'send this transfer' })).verified;
+  }
 </script>
 ```
 
-That is the whole integration. Capture (pointer, keystroke, scroll, focus, navigation),
-scoring, enrollment, retraining and the step-up prompt all start on their own.
+That is the whole integration. Capture, enrollment, scoring, retraining and the step-up
+prompt all start on their own; the user id comes from the signed token, never from the page.
+
+**Not on Flask?** Run `server/app.py` as a service and sign the token in your own backend
+(HMAC-SHA256, four lines in Node, PHP or Laravel): [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 **The built-in step-up needs no code at all.** On a `MEDIUM` or `HIGH` verdict the library
-raises its own dialog and asks the user to retype a short phrase; identity is proven from
-per-character dwell and flight timing. The dialog lives in a Shadow DOM (site CSS cannot
-break it, strict CSP is fine), is accessible, and works with touch-screen keyboards.
+raises its own dialog and asks the user to retype a short phrase; the per-character dwell
+and flight timing are matched **on the server** against the owner's template. The dialog
+lives in a Shadow DOM (site CSS cannot break it, strict CSP is fine), is accessible, and
+works with touch-screen keyboards.
 
-**Already have OTP or WebAuthn?** Plug it in as the dialog's "use another method" path. It is
-also used automatically when the user has no rhythm template yet or has failed too often:
-
-```js
-window.BehaviorGuardConfig = { userId, mfa: { onFallback: async () => await myServerVerifiedOtp() } };
-```
-
-Or turn the built-in dialog off and report your own result with
-`BehaviorGuard.reportStepUp({ passed: true })`.
-
-**Before a sensitive action** (change email or password, payout, new device), ask for a
-verdict right now instead of waiting for the next 30-second window, and step up if needed:
+**Already have OTP or WebAuthn?** It is the dialog's "use another method" path, used
+automatically when the user has no rhythm template yet or has failed too often. Your server
+checks the code and calls `guard.report_verified(...)`; the library then picks it up:
 
 ```js
-const v = BehaviorGuard.assessNow();             // UNKNOWN means "not enough evidence": fail closed
-if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'change your email' })).verified) return;
+window.BehaviorGuardConfig = { mfa: { onFallback: async () => await myOtpDialog() } };
 ```
 
 `BehaviorGuard.status()` gives you what to show in your own UI (learning vs protecting,
-enrollment progress, last verdict), `stop()` is logout, `forget()` erases the user's data.
+enrollment progress, last verdict), `stop()` is logout, `forget()` erases the account's
+profile (after a fresh verification).
 
-For production, serve `dist/behaviorguard.min.js` (144 KB, **44 KB gzip**). It is the same
+For production, serve `dist/behaviorguard.min.js` (155 KB, **47 KB gzip**). It is the same
 bundle with whole-line comments and indentation removed, and `node tools/min_check.mjs`
 proves it returns the identical verdict sequence.
 
-More: [docs/QUICKSTART.md](docs/QUICKSTART.md) covers the ES-module form, the config
-object, the optional server and framework notes.
+More: [docs/QUICKSTART.md](docs/QUICKSTART.md) covers every integration path, the config
+object and framework notes.
 
 ---
 
@@ -138,6 +194,10 @@ Every verdict carries its reasoning - the top deviating features with their z-sc
 Measured on **653 sessions from 16 human subjects** by driving the **shipped library
 itself** (`node tools/eval_sdk.mjs --live`): every session is replayed through the real
 capture-to-verdict path in 30-second windows, exactly as `setInterval` runs in a browser.
+The harness drives the library in local mode; the server engine (`server/engine.py`) is
+checked against it decision by decision (`python server/test_parity.py`: the same level,
+action, score, thresholds and model on every window, including enrollment, retraining,
+blocking, step-up, replay and the away rule), so these numbers are the backend's numbers.
 Sessions are replayed **in the order they were recorded**, one visit each (page load, state
 read back from storage), so enrollment is each owner's first ten visits. Owners answer
 step-ups through the public `reportStepUp` API. Impostors are the other 15 subjects, each
@@ -271,62 +331,64 @@ the *same* numeric contract - not asserted to match, **proven** to match.
   including real mouse-move pairs that sit exactly on a `pi/4` turn, where `atan2` differs by
   one ulp between math libraries (C-34).
 
-CI runs all five on every push, plus the regression suites for the step-up layer, the
-detector gate and the integrity heuristics.
+The server engine sits on the Python core (`core/bg_core.py`, 319/319), and its decision
+layer is checked against the JavaScript library window by window (`server/test_parity.py`).
+CI runs all five runtimes on every push, plus the regression suites for the step-up layer,
+the detector gate, the integrity heuristics, the server API and the parity check.
 
 ### No dependencies, anywhere
 
-No `npm install`, no `pip install`, no model download, no network call. Every port uses
-only its standard library - including a hand-written JSON reader in the compiled ones. The
-entire browser build is one ~250 KB classic script (144 KB minified).
+No `npm install`, no model download, no third-party service. Every port uses only its
+standard library - including a hand-written JSON reader in the compiled ones. The entire
+browser build is one ~267 KB classic script (155 KB minified). The server engine is pure
+Python; Flask is only the HTTP layer, and you can mount the same `Guard` behind anything.
 
 ---
 
 ## Try the demo
 
-No Node required.
-
-**Plug it into a plain site (the GIF above):** [demo/shop-checkout](demo/shop-checkout/) - a
-Flask shop with its own backend and no MFA. Two commented lines turn BehaviorGuard on; the
-README there walks through it.
-
 ```bash
-python -m http.server 8080
+pip install flask
+python demo/arunika/server.py        # http://127.0.0.1:8300   (--lan to reach it from a second laptop)
 ```
 
-**A realistic site with the library installed:** <http://localhost:8080/demo/arunika/> - a
-fictional digital bank with account opening, transfer, bill payment, history and security
-settings.
+**Arunika, a realistic bank with BehaviorGuard on its backend** ([demo/arunika](demo/arunika/)).
+Accounts, balances and history live on its own Flask server; BehaviorGuard's API is mounted
+inside it, transfers, payments and the password change ask `guard.check()` first, and its
+one-time code (delivered to a simulated phone) is reported with `guard.report_verified()`.
 
-It **starts at account opening**, on purpose: you watch a profile being built from zero for an
-account the library knows nothing about. Signing up leads to an onboarding page with a live
-`0/10` progress ring, an evidence counter, a plain statement of what is measured and what is
-never stored, and the step that matters - enrolling the typing rhythm. Enroll it there and the
-behavioral check is what users actually meet; skip it and every verification falls through to
-the one-time code, which is the recovery path, not the product.
+It **starts at account opening**, on purpose: you watch a profile being built from zero for
+an account the system knows nothing about - a live `0/10` progress ring, an evidence counter,
+what is measured and what never leaves the page, and the step that matters, enrolling the
+typing rhythm. Then open the same account from a **second laptop** (or a second browser
+profile) with its password: it is judged against the owner's profile from its first window,
+a stranger's behavior is `HIGH`, and the server ends that login. A presenter panel shows the
+live phase, evidence, verdict gauge and plain-language reasons, and can simulate a
+lunch-break return, a replay of your own recorded behavior, and a bot.
 
-Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integration.js` (init,
-verdict handling, a risk-based gate for transfers, and the code fallback). A presenter panel in
-the bottom-left corner shows the live phase, evidence, verdict gauge and plain-language
-reasons, and can simulate a lunch-break return, a replay of your own recorded behavior, and a
-bot. Security -> *Restart the demo* wipes everything and returns you to the sign-up screen.
-
-**The zero-code view:** <http://localhost:8080/demo/monitor/>.
-
-The left pane is an ordinary shop page with **zero BehaviorGuard code inside it** - check
-the Network tab, it loads no SDK. The right pane attaches from the outside and shows live
-scores, the session log and the top deviating features. Move the mouse, type, click through
-products for 10-12 sessions to enroll, then let someone else drive and watch the verdict
-move.
+**Install it on a plain store (the GIF above):** [demo/shop-checkout](demo/shop-checkout/) - a
+Flask shop with its own backend and no MFA. One commented line in the backend, one in the
+page; the README there walks through it.
 
 ```bash
-python core/conformance.py         # engine vs golden.json        -> 319/319
-node   core/lifecycle.test.mjs     # long-run lifecycle & APIs    -> 49/49
-node   core/stepup.test.mjs        # step-up, fallback, lockout   -> 61/61
-node   core/c46.test.mjs           # script-made input rejected   -> 25/25
-node   core/privacy.test.mjs       # no typed characters stored   -> 14/14
-node   core/challenge.test.mjs     # step-up regression
-python server/test_app.py          # optional server: auth, XSS   -> 35/35
+python demo/shop-checkout/shop.py    # http://127.0.0.1:5000
+```
+
+**Local mode, no server:** `python -m http.server 8080`, then
+<http://localhost:8080/demo/monitor/> (a shop page with zero BehaviorGuard code, scored from
+the outside) and the three plug-and-play shops in [demo/](demo/README.md).
+
+```bash
+python core/conformance.py           # engine vs golden.json              -> 319/319
+node   core/lifecycle.test.mjs       # long-run lifecycle & APIs          -> 49/49
+node   core/stepup.test.mjs          # step-up, fallback, lockout         -> 61/61
+node   core/c46.test.mjs             # script-made input rejected         -> 25/25
+node   core/privacy.test.mjs         # no typed characters stored         -> 14/14
+python server/test_app.py            # server API: tokens, gate, IDOR     -> 58/58
+python server/test_parity.py         # server engine == JS library        -> 67 windows
+python server/test_rhythm.py         # server rhythm check == JS          -> 40 cases
+python server/test_backend_sdk.py    # the library over HTTP vs a server  -> 21/21
+python demo/arunika/test_server.py   # the demo bank's backend            -> 38/38
 ```
 
 `demo/attack_sim.html` runs four attack vectors - paste replay, speed bot, minimal mouse
@@ -341,8 +403,11 @@ DOM events -> drop duplicates -> compress idle gaps -> 150 events of evidence
           -> 34 features -> z-score vs owner -> IF 0.30 + Mahalanobis 0.70
           -> per-owner thresholds (mean - k*std) -> LOW / MEDIUM / HIGH + reasons
           -> replay check, sticky floor, run rule, away/re-verify, step-up grace
-          -> step-up (typing rhythm, or your OTP via reportStepUp)
+          -> step-up (typing rhythm, or your OTP via guard.report_verified)
+          -> guard.check() in your route before the sensitive action
 ```
+
+The first two lines run in the page; everything from the z-score on runs on your server.
 
 - **Enrollment** - the first 10 eligible sessions build the owner baseline. They are an
   anchor: they never roll out of the training pool.
@@ -377,8 +442,9 @@ drop into a site.
 
 The combination below is what we have not found elsewhere:
 
-1. **It trains in the browser.** Every detector is browser-trainable, so there is no server
-   ML and no model-serving step.
+1. **Self-hosted, small and inspectable.** The detectors are light enough to train per
+   account inside your own backend on every window - no GPU, no model-serving step, no
+   vendor receiving your users' behavior. The same engine also runs entirely in the browser.
 2. **Fusion, not keystrokes alone.** 34 features across mouse dynamics, keystroke timing,
    temporal rhythm, navigation and form interaction.
 3. **A drop-in library, not a notebook.** One tag, zero dependencies.
@@ -394,14 +460,17 @@ The combination below is what we have not found elsewhere:
 
 ## Security posture
 
-The step-up layer is **client-side re-authentication for convenience and friction**, not a
-cryptographic second factor. An attacker who fully controls the browser can bypass any
-client-only check. For a real security boundary, pair it with a server-verified factor and
-`reportStepUp`.
+In backend mode the verdict, the typing-rhythm match and the permission for a sensitive
+action are decided on your server, and a verification only counts when your server reports
+it with the secret key. What remains on the client is the measurement: an attacker who fully
+controls the browser can send forged feature vectors. Those cannot skip the gate - they have
+to look like the owner to the model, window after window - and that is the open problem
+(targeted mimicry) in [THREAT-MODEL.md](THREAT-MODEL.md). Treat the step-up as risk-based
+friction in front of your own factors, not as a cryptographic factor itself.
 
 We audited our own defenses adversarially and fixed more than forty logic flaws, each with
 its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/DRIFT.md)
-(C-1 to C-48). A few that defeated the product entirely:
+(C-1 to C-49). A few that defeated the product entirely:
 
 - **Script-generated events counted as behavior.** The capture layer never checked
   `isTrusted`, so anything running JavaScript in the page could `dispatchEvent` a humanlike
@@ -422,10 +491,14 @@ its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/D
   sweep re-ran the default. The symptom was results identical to the last decimal, which reads
   as "the knob does nothing" rather than as a bug. Fixed, and every non-default number it
   produced was re-measured (C-46).
-- **The public key opened everything.** On the optional server, the `pk` embedded in every
-  page could read and overwrite any account's behavior template. Per-user HMAC tokens now
-  gate every account call, and the operator dashboard escapes all client-supplied fields
-  under a nonce CSP (C-39, C-41).
+- **The public key opened everything.** On the server, the `pk` embedded in every page could
+  read and overwrite any account's behavior template. Per-user HMAC tokens now gate every
+  account call, and the operator dashboard escapes all client-supplied fields under a nonce
+  CSP (C-39, C-41).
+- **The profile lived in the attacker's browser too.** In the original design the profile was
+  stored only in the browser that built it, so an attacker logging in from their own laptop
+  met an empty profile - and the library started learning *them* as the owner. The profile,
+  verdicts, rhythm template and verifications now live on the server, per account (C-49).
 
 Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-MODEL.md).
 
@@ -433,28 +506,30 @@ Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-M
 
 ## Privacy
 
-Raw events never leave the device, and typed characters are never stored anywhere. Features
-are computed locally and the baseline is stored locally (IndexedDB, falling back to
-localStorage, then memory). There is no telemetry and no default network destination.
+Raw events never leave the page, and typed characters are never sent or stored anywhere.
+The page sends, per 30-second window, the 34 feature numbers, how many events and seconds
+they came from, and the bot-check result. Your server keeps per account: those vectors (the
+training pool), the verdicts, and the typing-rhythm template (key hold and gap times for one
+phrase, not the letters). There is no telemetry and no third party: the server is yours.
 
-The optional server ([server/README.md](server/README.md)) syncs a **34-number feature
-vector per window** to a server you run, so a baseline can follow a user across devices,
-and logs verdicts for an operator dashboard. It is off unless you supply a public key, an
-endpoint **and** a short-lived user token minted by your own backend.
+`forget()` erases an account's profile and template (after a fresh verification, so an
+attacker in the session cannot wipe the owner and be learned instead); your backend can
+call `guard.forget(..., require_verified=False)` when an account is deleted.
 
 ---
 
 ## Project layout
 
 ```
-sdk/          the library (entry + 18 core modules)    <- single source of truth
-dist/         one-file bundle for a plain <script> tag
+sdk/          the browser library (entry + 18 core modules)   <- single source of truth
+server/       the backend: guard.py (API, tokens, gate), engine.py (decisions), rhythm.py,
+              app.py (standalone service + operator dashboard), tests
+dist/         one-file bundle for a plain <script> tag, and dist/server/ (flat server copy)
 loader/       one-line drop-in loader for the ES-module build
 core/         SPEC.md, golden.json, conformance runners, DRIFT.md, tests
 ports/        Rust, Java and WASM implementations
-demo/         offline demos (clean site + external monitor, shops, accuracy lab)
+demo/         Arunika (bank with a backend), shop-checkout (install demo), local-mode demos
 tools/        eval_sdk.mjs (measures the shipped library), research scripts, bundler
-server/       optional backend (baseline sync, verdict log) and operator dashboard
 extension/    experimental Chrome extension: the same engine on any site (copy of sdk/)
 docs/         documentation set - start at docs/README.md
 assets/       banner and screenshots used in this README
@@ -471,8 +546,9 @@ assets/       banner and screenshots used in this README
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-48 audit: every defect, its evidence and its test |
-| [server/README.md](server/README.md) | Optional server: keys, user tokens, dashboard |
+| [docs/INTEGRATION.md](docs/INTEGRATION.md) | Your backend in Flask, Node, PHP or Laravel: token, gate, OTP report |
+| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-49 audit: every defect, its evidence and its test |
+| [server/README.md](server/README.md) | The server: keys, user tokens, endpoints, gate, dashboard |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 | [BACKLOG.md](BACKLOG.md) | Roadmap - what is planned and explicitly out of scope |
 

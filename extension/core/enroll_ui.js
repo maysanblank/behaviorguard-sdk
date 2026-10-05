@@ -42,7 +42,8 @@ const TEXT = {
       ['flow', 'Alur pemakaian', 'Halaman yang dibuka, seberapa dalam menggulir, urutan mengisi kolom.'],
     ],
     privLocal: 'Semua perhitungan terjadi di browser ini. Tidak ada rekaman layar, tidak ada isi ketikan, dan tidak ada yang dikirim ke server.',
-    privCloud: 'Perhitungan terjadi di browser ini. Tidak ada rekaman layar dan tidak ada isi ketikan; hanya ringkasan angka profil yang disinkronkan ke server situs.',
+    privServer: 'Halaman ini hanya mengirim 34 angka ringkasan per 30 detik ke server situs, yang menyimpan profil akunmu dan memutuskan. Tidak ada rekaman layar dan tidak ada isi ketikan yang keluar dari halaman.',
+    hintFullServer: 'Aktivitas di akun ini dinilai terhadap kebiasaanmu, dari perangkat mana pun. Profilnya terus menyesuaikan diri selama kamu memakai akunmu.',
     practiceT: 'Cara tercepat: ketik sesuatu',
     practiceS: 'Mengetik memberi bukti paling banyak per detik. Salin kalimat di bawah dengan kecepatan biasamu.',
     practiceDone: 'Sudah cukup. Kamu boleh berhenti mengetik.',
@@ -84,7 +85,8 @@ const TEXT = {
       ['flow', 'Usage flow', 'Pages opened, scroll depth, the order you fill in fields.'],
     ],
     privLocal: 'Everything is computed in this browser. No screen recording, no typed text, and nothing is sent to a server.',
-    privCloud: 'Computed in this browser. No screen recording and no typed text; only a numeric profile summary is synced to the site’s server.',
+    privServer: 'This page only sends 34 summary numbers per 30 seconds to the site’s server, which keeps your account’s profile and decides. No screen recording and no typed text leave the page.',
+    hintFullServer: 'Activity on this account is compared against your habits, from any device. The profile keeps adapting as you use your account.',
     practiceT: 'Fastest way: type something',
     practiceS: 'Typing gives the most evidence per second. Copy the sentence below at your normal speed.',
     practiceDone: 'That’s enough. You can stop typing.',
@@ -350,7 +352,7 @@ function build(api, root, o, onClose) {
     fill.style.width = (p * 100).toFixed(1) + '%';
     bar.setAttribute('aria-valuemax', String(poolNeed)); bar.setAttribute('aria-valuenow', String(base ? Math.max(done, pool) : done));
     st.textContent = full ? L.full : base ? L.base : done ? L.some(done, need) : L.none;
-    sd.textContent = full ? L.hintFull : base ? L.hintBase(pool, poolNeed) : L.hint((s.evidence && s.evidence.windowSec) || 30);
+    sd.textContent = full ? (s.mode === 'backend' ? L.hintFullServer : L.hintFull) : base ? L.hintBase(pool, poolNeed) : L.hint((s.evidence && s.evidence.windowSec) || 30);
     mWin.textContent = base ? `${Math.min(pool, poolNeed)} / ${poolNeed}` : `${done} / ${need}`;
     mEv.textContent = `${s.evidence.buffered} / ${s.evidence.need}`;
     m2.hidden = full;
@@ -358,7 +360,7 @@ function build(api, root, o, onClose) {
     g1.r.className = 'stg ' + (base ? 'done' : 'on'); g1.dot.innerHTML = base ? ICON.check : ''; g1.n.textContent = `${done}/${need}`;
     g2.r.className = 'stg ' + (full ? 'done' : base ? 'on' : ''); g2.dot.innerHTML = full ? ICON.check : ''; g2.n.textContent = `${Math.min(pool, poolNeed)}/${poolNeed}`;
 
-    priv.textContent = s.cloud ? L.privCloud : L.privLocal;
+    priv.textContent = s.mode === 'backend' ? L.privServer : L.privLocal;
     if (pSub) pSub.textContent = full ? L.practiceDone : L.practiceS;
     drawMfa(s);
     if (full && !completed) {

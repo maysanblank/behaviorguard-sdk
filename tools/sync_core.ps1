@@ -23,4 +23,4 @@ foreach($top in @("storage.js","behaviorguard.js")){
   if($a -ne $b){ $diffAll+=$top }
 }
 if($diffAll){ Write-Error "Masih beda: $($diffAll -join ', ')"; exit 1 }
-Write-Host "Verifikasi: semua core + storage identik (LF/CRLF dinormalisasi)"
+Write-Host "Verified: every core module and storage.js identical (LF/CRLF normalised)"

@@ -1,87 +1,165 @@
 """
-bg_backend.py - bagian BACKEND untuk mencolok BehaviorGuard ke aplikasi Flask.
+bg_backend.py - the BACKEND part of installing BehaviorGuard into a Flask app.
 
-Dipasang dengan SATU baris di aplikasi kamu (sesudah route login dibuat):
+One line in your app, after your routes:
 
-    from bg_backend import pasang
-    pasang(app, current_user=lambda: session.get("user"), verify_password=cek_sandi)
+    from bg_backend import install
+    install(app, current_user=lambda: session.get("user"),
+            send_code=lambda user, code: send_email(user, "Your code", code), protect=["/api/checkout"])
 
-Yang ditambahkan ke aplikasi kamu:
+What it adds to your app (BehaviorGuard's server runs INSIDE it; no second service):
 
-  GET  /api/bg-token   mencetak token pengguna BehaviorGuard untuk user yang SUDAH login.
-                       Halaman memakainya supaya fitur + vonis boleh dikirim ke server BG.
-                       sk tenant TIDAK pernah keluar dari backend ini.
+  /bg/v1/...          BehaviorGuard's API (server/guard.py). The page sends 34 summary
+                      numbers per 30-second window; the account's profile, the verdicts and
+                      the verifications are kept and decided here.
+  GET  /api/bg-token  a short-lived token for the logged-in user and THIS login, signed
+                      with the secret key. The page cannot make one; the sk never leaves.
+  POST /api/bg-code   the fallback verification for a site without MFA: a 6-digit code
+       /api/bg-code/verify  sent with YOUR send_code(user, code) (email, SMS), checked HERE
+                      and reported to the guard. An attacker with the stolen password does
+                      not have the mailbox. Only when send_code is given.
+  POST /api/bg-reauth the weakest fallback: the user retypes the password. Only when
+                      verify_password is given, and only for trying things out - whoever
+                      stole the password knows it.
+  the gate            every POST to a path in `protect` asks guard.check() first. Not
+                      allowed -> 403 {verify: true}; a session the verdict ended -> 401.
+                      The browser cannot talk its way past it.
 
-  POST /api/bg-reauth  jalur verifikasi CADANGAN untuk situs yang belum punya MFA:
-                       pengguna mengetik ulang sandinya, dan BACKEND (bukan browser) yang
-                       memeriksanya. Dipakai BehaviorGuard lewat mfa.onFallback.
-                       Hanya aktif kalau verify_password diberikan.
+Keys and data:
+  BG_PK / BG_SK  the tenant keys (production). Without them, a pair is generated once and
+                 kept in .bg-tenant.json next to this file (gitignored).
+  BG_DB          where profiles live. Default: a fresh file per start, because this demo
+                 shop keeps its own accounts in memory too. Set it to keep profiles.
 
-Kredensial tenant (urutan):
-  1. variabel lingkungan BG_PK dan BG_SK (cara produksi)
-  2. kalau kosong: dibuat sekali di server BG lalu disimpan ke .bg-tenant.json (demo)
+For Node, PHP, Laravel and other stacks, run server/app.py as a service instead and sign
+the token in your own backend: docs/INTEGRATION.md.
 """
-import base64, hashlib, hmac, json, os, time, urllib.request
-from flask import jsonify, request
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import time
+import sys
+import tempfile
+
+from flask import jsonify, request, session
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BG_SERVER = os.environ.get("BG_SERVER", "http://127.0.0.1:5055")
+_root = os.path.abspath(os.path.join(HERE, "..", ".."))
+for _p in (os.path.join(_root, "server"), os.path.join(_root, "dist", "server")):
+    if os.path.isfile(os.path.join(_p, "guard.py")):
+        sys.path.insert(0, _p)
+        break
+from guard import Guard, create_blueprint  # noqa: E402
+
 TENANT_FILE = os.path.join(HERE, ".bg-tenant.json")
 
 
-def _b64u(b):
-    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-
-
-def mint_token(pk, sk, user_id, ttl=3600):
-    """Sama persis dengan mint_user_token di server/app.py (HMAC-SHA256)."""
-    exp = int(time.time()) + ttl
-    sig = hmac.new(sk.encode(), f"{pk}|{user_id}|{exp}".encode(), hashlib.sha256).hexdigest()
-    return f"{_b64u(user_id.encode())}.{exp}.{sig}"
-
-
-def get_tenant():
+def _tenant():
     if os.environ.get("BG_PK") and os.environ.get("BG_SK"):
-        return {"pk": os.environ["BG_PK"], "sk": os.environ["BG_SK"]}
-    if os.path.exists(TENANT_FILE):
-        try:
-            return json.load(open(TENANT_FILE, encoding="utf-8"))
-        except Exception:
-            pass
+        return os.environ["BG_PK"], os.environ["BG_SK"]
     try:
-        req = urllib.request.Request(
-            BG_SERVER + "/tenant",
-            data=json.dumps({"name": "Toko Checkout Demo"}).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        t = json.load(urllib.request.urlopen(req, timeout=2))
-        json.dump(t, open(TENANT_FILE, "w", encoding="utf-8"))
-        return t
+        with open(TENANT_FILE, encoding="utf-8") as f:
+            t = json.load(f)
+        if str(t.get("pk", "")).startswith("pk_") and str(t.get("sk", "")).startswith("sk_"):
+            return t["pk"], t["sk"]
     except Exception:
-        return None
+        pass
+    pk, sk = "pk_" + secrets.token_hex(12), "sk_" + secrets.token_hex(24)
+    with open(TENANT_FILE, "w", encoding="utf-8") as f:
+        json.dump({"pk": pk, "sk": sk, "note": "demo tenant keys; the sk stays on the server"}, f)
+    return pk, sk
 
 
-def pasang(app, current_user, verify_password=None):
-    """current_user(): email/id user yang login, atau None.
-    verify_password(user, sandi) -> bool: dipakai jalur cadangan /api/bg-reauth."""
+def install(app, current_user, send_code=None, verify_password=None, protect=(), money=True, db_path=None):
+    """current_user(): the logged-in user's id, or None.
+    send_code(user, code): deliver a one-time code to the account's email or phone; the
+        fallback verification (POST /api/bg-code, /api/bg-code/verify).
+    verify_password(user, password) -> bool: a weaker fallback (POST /api/bg-reauth), used
+        only when send_code is not given.
+    protect: paths whose POST requests need BehaviorGuard's permission.
+    money: apply the stricter money rule to them (guard.check(money=True))."""
+    pk, sk = _tenant()
+    db_path = db_path or os.environ.get("BG_DB") or os.path.join(tempfile.mkdtemp(prefix="bg-"), "behaviorguard.db")
+    guard = Guard(db_path, tenant=(pk, sk))
+    app.register_blueprint(create_blueprint(guard), url_prefix="/bg")
+    app.config["BG_GUARD"] = guard
+    protect = set(protect or ())
+
+    def login_sid():
+        """A login session id, new for every login: an attacker's login never shares the
+        owner's verification."""
+        user = current_user()
+        if not user:
+            return None, None
+        if session.get("_bg_user") != user or not session.get("_bg_sid"):
+            session["_bg_user"], session["_bg_sid"] = user, secrets.token_hex(16)
+        return user, session["_bg_sid"]
 
     @app.get("/api/bg-token")
     def bg_token():
-        user = current_user()
+        user, sid = login_sid()
         if not user:
-            return jsonify(enabled=False, error="belum login"), 401
-        t = get_tenant()
-        if not t:
-            # server BG mati: halaman tetap dilindungi on-device, tanpa dashboard
-            return jsonify(enabled=False, userId=user, reason="server BG tidak aktif")
-        return jsonify(enabled=True, userId=user, pk=t["pk"], endpoint=BG_SERVER,
-                       token=mint_token(t["pk"], t["sk"], user),
-                       fallback=bool(verify_password))
+            return jsonify(error="not logged in"), 401
+        return jsonify(token=guard.mint_token(user, sid, ttl=900), endpoint="/bg", pk=pk,
+                       fallback="code" if send_code else "password" if verify_password else None)
 
-    if verify_password:
-        @app.post("/api/bg-reauth")
-        def bg_reauth():
-            user = current_user()
+    codes = {}                                                # (user, sid) -> [hash, expires, tries]
+
+    if send_code:
+        @app.post("/api/bg-code")
+        def bg_code_send():
+            user, sid = login_sid()
             if not user:
                 return jsonify(ok=False), 401
-            sandi = (request.get_json(force=True, silent=True) or {}).get("password") or ""
-            return jsonify(ok=bool(verify_password(user, sandi)))
+            code = "%06d" % secrets.randbelow(1000000)
+            codes[(user, sid)] = [hashlib.sha256((sid + code).encode()).hexdigest(), time.time() + 300, 0]
+            send_code(user, code)
+            return jsonify(sent=True)
+
+        @app.post("/api/bg-code/verify")
+        def bg_code_verify():
+            user, sid = login_sid()
+            if not user:
+                return jsonify(ok=False), 401
+            c = codes.get((user, sid))
+            code = str((request.get_json(silent=True) or {}).get("code") or "").strip()
+            if not c or c[1] < time.time() or c[2] >= 3:
+                return jsonify(ok=False, error="the code expired - send a new one", expired=True)
+            if hmac.compare_digest(c[0], hashlib.sha256((sid + code).encode()).hexdigest()):
+                codes.pop((user, sid), None)
+                guard.report_verified(pk, user, sid, True)    # the trust boundary: server to server
+                return jsonify(ok=True)
+            c[2] += 1
+            if c[2] >= 3:
+                guard.report_verified(pk, user, sid, False)
+            return jsonify(ok=False, error="wrong code", left=3 - c[2])
+
+    if verify_password and not send_code:
+        @app.post("/api/bg-reauth")
+        def bg_reauth():
+            user, sid = login_sid()
+            if not user:
+                return jsonify(ok=False), 401
+            ok = bool(verify_password(user, (request.get_json(silent=True) or {}).get("password") or ""))
+            guard.report_verified(pk, user, sid, ok)        # the trust boundary: server to server
+            return jsonify(ok=ok)
+
+    @app.before_request
+    def bg_gate():
+        if request.method != "POST" or request.path not in protect:
+            return None
+        user, sid = login_sid()
+        if not user:
+            return None                                       # the app's own "not logged in"
+        if guard.blocked(user, sid):
+            session.clear()
+            return jsonify(ok=False, ended=True, error="session ended: activity did not match the account owner"), 401
+        c = guard.check(user, sid, money=money)
+        if not c["allowed"]:
+            return jsonify(ok=False, verify=True, level=c["level"], reason=c["reason"],
+                           error="verify first: " + c["reason"]), 403
+        return None
+
+    return guard

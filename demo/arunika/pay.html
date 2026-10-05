@@ -98,12 +98,15 @@
     if (pilihan[1] > A.akun().saldo) return ($('err').textContent = 'Insufficient balance.');
     $('err').textContent = '';
     const b = $('btn'); b.disabled = true; b.textContent = 'Checking';
-    const g = await Guard.gate('payment', { amount: pilihan[1], label: 'make this payment' });
+    // The payment is made by Arunika's server, which asks BehaviorGuard first (guard.check).
+    const res = await Guard.act('payment', { amount: pilihan[1], label: 'make this payment' },
+      () => A.api('/api/pay', { kind: jenis, label: pilihan[0], number: n, amount: pilihan[1] }));
     b.disabled = false; b.textContent = 'Pay';
-    if (!g.ok) return ($('err').textContent = 'Payment cancelled because verification was not completed.');
-    const acc = A.akun(), ref = 'ARN' + Date.now().toString().slice(-9);
-    A.catatTx(acc, { id: ref, t: Date.now(), ket: pilihan[0] + ' · ' + n, kat: 'Bills', jml: -pilihan[1] });
-    const token = jenis === 'listrik' ? Array.from({ length: 5 }, () => String(Math.floor(1000 + Math.random() * 9000))).join(' ') : null;
+    if (res.ended) return;
+    if (res.cancelled) return ($('err').textContent = 'Payment cancelled because verification was not completed.');
+    if (!res.ok) return ($('err').textContent = (res.body && res.body.error) || 'The payment could not be made.');
+    A.setAkun(res.body.account);
+    const ref = res.body.ref, token = res.body.token;
     const d = A.dialog(`<div class="receipt"><div class="okc">${A.I.check}</div><h2>Payment complete</h2><div class="big num">${A.rupiah(pilihan[1])}</div><p class="muted">${A.esc(pilihan[0])}</p></div>
       <dl class="kv" style="margin-top:14px"><dt>Number</dt><dd class="num">${A.esc(n)}</dd>${token ? `<dt>Token</dt><dd class="num">${token}</dd>` : ''}<dt>Reference</dt><dd class="num">${ref}</dd></dl>
       <div class="acts"><button class="btn btn-pri" data-ok>Done</button></div>`);

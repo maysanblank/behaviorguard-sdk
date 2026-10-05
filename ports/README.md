@@ -6,7 +6,7 @@ languages. Every implementation must produce **the same numbers** from the same 
 proven, not asserted, against a single shared golden file.
 
 ```
-raw events ──▶ 34-float feature vector ──▶ risk verdict
+raw events --> 34-float feature vector --> risk verdict
    (SPEC §8)              (exchange format)        (SPEC §5)
 ```
 

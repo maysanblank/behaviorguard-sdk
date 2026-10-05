@@ -37,59 +37,65 @@ windows), but see §5 on how far that evidence stretches.
 ## 2. Trust boundaries
 
 ```
-┌─ the user's browser ────────────────────────────────────┐
-│                                                          │
-│  DOM events ─▶ features ─▶ model ─▶ verdict ─▶ step-up   │   ← ALL of this is
-│                    │                                     │     attacker-reachable
-│                    ▼                                     │     if the browser is
-│  local storage (baseline, rhythm template)               │     compromised
-│                                                          │
-└──────────────────────────┬───────────────────────────────┘
-                           │  optional hybrid mode:
-                           │  34-float feature vectors only
-                           ▼
-                  ┌─ your server ─────────┐
-                  │ account baseline      │   ← you operate this;
-                  │ verdict log           │     we make no claims about it
-                  └───────────────────────┘
++- the user's browser -----------------------------------+
+|                                                        |
+|  DOM events --> features --> integrity check            |   <- attacker-reachable
+|                    |             |                      |      if the browser is
+|  step-up dialog (shows, collects key timings)           |      compromised
+|                                                        |
++--------------------+-----------------------------------+
+                     |  34 numbers + counts per window, rhythm timings,
+                     |  a user token signed by YOUR backend (not forgeable here)
+                     v
++- your server (backend mode) --------------------------------------------+
+|  account profile, model, verdicts, run rule, floor, rhythm template      |
+|  verifications: rhythm checked here, or YOUR factor reported with the sk |
+|  guard.check() <-- your routes, before money moves                       |   <- you operate this
++--------------------------------------------------------------------------+
 ```
 
-**Everything inside the browser is inside the attacker's reach** when the attacker controls
-the browser. The library computes, stores and enforces on the same machine the adversary is
-using. This is inherent to a client-side design, not a bug we intend to fix.
+**In backend mode the decisions are outside the attacker's reach** even when the attacker
+controls the browser: scoring, the verdict, the rhythm match, the training pool and the
+permission for a sensitive action all live on your server, and a verification counts only
+when the server checked it (rhythm) or your backend reported it with the secret key. What
+the browser still controls is **the measurement**: an attacker who owns the page can send
+any 34 numbers they like. They still have to look like the owner to the model, window after
+window, which is §4.1 (targeted mimicry) - the open problem, now in a much narrower form.
 
-What that buys, and what it costs:
+In **local mode** everything is in the browser - computing, storing and enforcing on the
+machine the adversary is using. That mode is for trying the library and for research; it
+cannot see an attacker on another device (§4.13) and cannot enforce anything (§4.2).
 
-- **Buys:** raw behavioral data never transmitted; no backend to run; works offline; no
-  vendor sees your users.
-- **Costs:** no client-side check is authoritative. Verdicts are *advice to your
-  application*, and your application decides what they are worth.
+What backend mode buys, and what it costs:
 
-**The correct deployment** treats BehaviorGuard as a signal source and enforces
-consequences where the attacker cannot reach - server-side. A verdict that only gates
-client-side UI can be bypassed by anyone willing to open devtools.
+- **Buys:** the profile follows the account to every device; enforcement where the attacker
+  cannot reach; raw behavioral data still never transmitted; no vendor sees your users.
+- **Costs:** a server to run (a Flask blueprint or `server/app.py`); a network round trip per
+  window and per sensitive action; and when the server is unreachable the answer is
+  `UNKNOWN` - verify - not "safe".
 
 ---
 
 ## 3. Data handling
 
-| Data | Where it lives | Leaves the device? |
+| Data | Where it lives (backend mode) | Leaves the page? |
 | --- | --- | --- |
-| Raw events (coordinates, key timings) | Memory; an unscored tail may wait in localStorage up to 15 min between page loads | **Never** |
+| Raw events (coordinates, key timings) | Memory of the page; an unscored tail may wait in localStorage up to 15 min between page loads | **Never** |
 | Typed characters | Not captured: keys become per-page tokens before anything is buffered | **Never** |
-| 34-float feature vector | IndexedDB / localStorage | Only in hybrid mode |
-| Rhythm template (dwell/flight medians + MAD) | IndexedDB / localStorage | **Never** |
-| Verdicts and reasons | Passed to your callback | Only if you send them |
-| Device fingerprint (hash) | IndexedDB / localStorage | Only in hybrid mode |
+| 34-float feature vector, event counts, integrity result | Your server (training pool, per account) | Yes, to your server only |
+| Rhythm template (dwell/flight medians + MAD) | Your server, per account | Only the timings of a sample, to be checked |
+| Verdicts and reasons | Your server (per login), your callback, the operator log | To your server only |
+| Device fingerprint | Not computed in backend mode | - |
 
-Stored values are sealed with an HMAC to detect tampering. **This is integrity, not
-confidentiality** - the payload is base64, not encrypted, and the key is derived locally.
-Anyone with access to the browser profile can read the baseline and the rhythm template.
-Treat local storage as readable by the user and by anything running in the origin.
+In local mode the vector, template and fingerprint stay in IndexedDB / localStorage, sealed
+with an HMAC to detect tampering. **That is integrity, not confidentiality** - anyone with
+access to the browser profile can read them.
 
 The rhythm template is **biometric-derived data**. Depending on your jurisdiction (GDPR
-Art. 9, BIPA, and similar), storing it may carry legal obligations even though it never
-leaves the device. That is your call to make, and worth making deliberately.
+Art. 9, BIPA, and similar), storing it may carry legal obligations. In backend mode it is
+on your server, which makes it your data to protect, retain and erase (`forget()`,
+`guard.forget()`, `POST /v1/forget`). That is your call to make, and worth making
+deliberately.
 
 ---
 
@@ -106,21 +112,28 @@ adversaries optimizing to defeat the model. These are different threat classes a
 second is strictly harder. We have not tested it, we do not claim resistance to it, and we
 would expect a determined, well-informed mimic to have meaningfully better odds.
 
-An attacker who can additionally read local storage can retrieve the rhythm template
-directly - dwell and flight medians per position - and synthesize a passing sample without
-guessing. Nothing in a client-side design prevents this.
+In local mode an attacker who can read local storage can retrieve the rhythm template
+directly and synthesize a passing sample without guessing. In backend mode the template is
+on the server and never sent to a page; the attacker would have to guess it, three attempts
+per dialog and three dialogs in a row before the rhythm path locks (§4.14).
 
-**Mitigation if this is in your threat model:** repeat the rhythm check server-side, and
-combine with an out-of-band factor.
+**Mitigation if this is in your threat model:** backend mode, plus an out-of-band factor for
+high-value actions.
 
-### 4.2 Client-side bypass - OPEN by design
+### 4.2 Client-side bypass - CLOSED in backend mode, OPEN in local mode
 
-An attacker controlling the page can call the library's internals directly, overwrite the
-stored baseline, suppress the callback, or simply not load the script. `window.BehaviorGuard`
+An attacker controlling the page can call the library's internals directly, suppress the
+callback, claim a verification, or simply not load the script. `window.BehaviorGuard`
 exposes `_instance` for the demo and loader, which makes this trivial rather than merely
 possible.
 
-This is not defensible client-side. Enforce server-side.
+In local mode this is not defensible: the page is the enforcement point. In backend mode the
+enforcement point is your route: `guard.check()` answers from the server's own state - no
+fresh assessment is `UNKNOWN`, a page saying "verified" changes nothing, a session the
+verdict ended stays ended - so skipping the script or calling the protected route directly
+gets 403 (tested in `server/test_app.py`, `demo/arunika/test_server.py` and
+`demo/shop-checkout/test_install.py`). What a page attacker can still do is lie about the
+measurement; see §2 and §4.1.
 
 ### 4.3 Synthetic input and replay - PARTLY covered
 
@@ -232,25 +245,28 @@ shape and finiteness must match the template exactly before any comparison happe
 miss budget is proportional to phrase length rather than a fixed two. Locked by 20
 regression tests in `core/challenge.test.mjs`, enforced in CI. See `core/DRIFT.md` §C-1.
 
-### 4.7 Cross-device baseline poisoning via hybrid mode - MITIGATED (was open)
+### 4.7 Cross-device profile poisoning through the server - MITIGATED (was open)
 
 Earlier, the client authenticated with only the **publishable key embedded in every page**.
 Anyone who read it could read any account's behavior template, overwrite it with their own
-vectors (and so be accepted as the owner on every device that adopted it), forge verdicts,
-and list every tenant's key through an unauthenticated `/tenants` (C-39).
+vectors (and so be accepted as the owner), forge verdicts, and list every tenant's key
+through an unauthenticated `/tenants` (C-39).
 
 Now each tenant has a public `pk` and a secret `sk`. Every account call needs a short-lived
-user token, `HMAC-SHA256(sk, pk|userId|exp)`, minted by **your** backend after a real login;
-the server takes the user id from the token, never from the request. The operator dashboard
-needs `sk`, escapes every client-supplied field and is served under a nonce CSP, and the
-server whitelists the shape of logged verdicts (C-41). The client adopts a server baseline
-**only on a device that has no enrollment of its own**; an existing local baseline is never
-replaced remotely.
+user token, `HMAC-SHA256(sk, pk|userId|sessionId|exp)`, minted by **your** backend after a
+real login; the server takes the user and the login session from the token, never from the
+request. The page cannot write a profile at all: it sends windows, and the **server** decides
+whether a window may train (only `LOW`, eligible, non-replayed windows, or one the owner just
+verified). Verifications and the step-up grace belong to the login session, so a second login
+never inherits them. The operator dashboard needs `sk`, escapes every client-supplied field
+and is served under a nonce CSP, and the server bounds the shape of every input (C-41, C-49).
 
-What remains: anyone holding a valid token for a user (for example, script running in that
-user's session) can write that user's server baseline, and a **new** device of that user
-would adopt it. Mint tokens with short lifetimes, only after authentication you trust. The
-bundled `server/` is a reference implementation (Flask + SQLite), not a hardened service.
+What remains: anyone holding a valid token for a user (script running in that user's
+session, or the attacker's own login with a stolen password) sends windows as that login.
+Those windows are scored against the owner's profile; to train it they must first score
+`LOW`, which brings us back to §4.1. Mint tokens with short lifetimes, only after
+authentication you trust. The bundled `server/` is a reference implementation (Flask +
+SQLite), not a hardened service.
 
 ### 4.8 An ignored step-up prompt disabled the whole step-up layer - FIXED
 
@@ -289,8 +305,10 @@ An attacker who can produce two consecutive `HIGH` verdicts triggers `BLOCK_SESS
 anyone with brief physical access to an unlocked session can behave unlike the owner on
 purpose, this can lock a user out. The run rule (block only on *consecutive* `HIGH`) and the
 step-up path exist to keep false blocks rare - the owner block rate is 0% when a step-up
-path exists, but **25.7% if the integrator wires none** (C-32), so wire `reportStepUp` or
-leave the built-in challenge on - and a deliberate attempt will still succeed. Provide a
+path exists, but **25.7% if the integrator wires none** (C-32), so leave the built-in
+challenge on or report your own factor (`guard.report_verified`) - and a deliberate attempt
+will still succeed. In backend mode the block ends **that login** (the server refuses it);
+the owner's other logins are not ended. Provide a
 recovery path that does not depend on BehaviorGuard.
 
 ### 4.11 Step-up grace - accepted residual risk
@@ -309,35 +327,44 @@ A verdict needs 150 events. An impostor session too short to produce them is nev
 (0.6% of impostor sessions; 2.8% when long idle gaps are injected). Such a window emits
 `UNKNOWN`/`ABSTAIN`, never "safe" - but a routine callback that only reacts to `HIGH` will
 let it through. An attacker who logs in and changes the recovery email within 20 seconds
-can finish before the first routine verdict. **Every sensitive action must call
-`assessNow()` and treat `UNKNOWN` as "verify".**
+can finish before the first routine verdict. **Every sensitive action must be gated on a
+fresh assessment and treat `UNKNOWN` as "verify"** - in backend mode that is
+`guard.check()`, which does exactly this and fails closed when no assessment is fresh.
 
-### 4.13 Enrollment is unprotected
+### 4.13 Enrollment, and the attacker's own device - CLOSED for a known account in backend mode
 
-The first 10 eligible windows produce no verdict - there is nothing to compare against.
-Windows whose keystroke block was pasted or autofilled never count toward enrollment (their
-typing features are structurally empty), so a user who only ever uses a password manager
-may take a long time to enroll. Until enrollment completes, rely on your other controls.
+The first 10 eligible windows of an account produce no verdict - there is nothing to compare
+against. Windows whose keystroke block was pasted or autofilled never count toward
+enrollment (their typing features are structurally empty), so a user who only ever uses a
+password manager may take a long time to enroll. Until enrollment completes, rely on your
+other controls: `guard.check(money=True)` answers "verify" for the whole period, and also
+until the main detector is on (20 training windows).
 
-A new device is the same case: in on-device mode an attacker who logs in with a stolen
-password from their own machine meets an empty profile, and the library enrolls *them*. That
-is the classic account-takeover path, and on-device scoring alone cannot see it. Two answers,
-use at least one: `assessNow()` returns `UNKNOWN` for the whole enrollment period, so a
-policy of "verify every sensitive action on `UNKNOWN`" puts a server-verified factor in front
-of the attacker; and hybrid mode (§4.7) gives a new device the account's baseline instead of
-an empty one.
+**The attacker's own device** used to be the same case, and it was the most serious design
+gap. In local mode the profile lives in the browser that built it, so an attacker who logs in
+with a stolen password from their own laptop meets an empty profile - and the library enrolls
+*them* as the owner. That is the classic account-takeover path, and local scoring cannot see
+it.
+
+In backend mode the profile belongs to the account on your server (C-49). A new login on any
+device is scored against the owner's profile from its first window (tested:
+`server/test_app.py`, `server/test_backend_sdk.py`, and with real browsers in the Arunika and
+shop-checkout demos). What remains is a **brand-new account** - no owner profile exists yet,
+for anyone - which is why the fail-closed policy above matters.
 
 ### 4.14 The step-up fallback and rhythm guessing - MITIGATED (C-45)
 
-`mfa.onFallback` is the integrator's own factor (OTP, WebAuthn). The library trusts its
-return value exactly as it trusts `reportStepUp`: return `true` only after **your server**
-verified the factor. A page script can call it too - the same client-side boundary as §4.2.
+`mfa.onFallback` is the integrator's own factor (OTP, WebAuthn). In backend mode its return
+value is not trusted: the library asks the server whether your backend reported the
+verification (`guard.report_verified` / `POST /v1/report`, signed with the `sk`) for this
+login in the last two minutes, and counts it only then. In local mode the library trusts the
+return value exactly as it trusts `reportStepUp` - the client-side boundary of §4.2.
 
 Before C-45 each verdict opened a fresh dialog with three attempts, with no memory across
 dialogs, so an impostor who kept coming back had unlimited tries at the owner's rhythm.
 After `mfa.lockAfterFailures` (default 3) exhausted dialogs in a row, persisted across page
-loads, the rhythm path is locked and only the fallback can verify; a passed verification
-unlocks it. Without a fallback configured the locked state is fail-closed (`unavailable`),
+loads (on the server, per account, in backend mode), the rhythm path is locked and only the
+fallback can verify; a passed verification unlocks it. Without a fallback configured the locked state is fail-closed (`unavailable`),
 not a pass.
 
 ### 4.15 Deployment conditions that used to silence the library - FIXED (C-45)
@@ -398,8 +425,10 @@ the security sense but broken as a product:
 - **Not fraud proof.** A `HIGH` verdict means "this does not look like the owner" - which is
   also what a new keyboard, an injury, a shared account or a bad night look like.
 - **Not a login control.** It needs sessions to learn from; the first 10 produce no verdicts.
-- **Not resistant to a compromised browser.** Nothing client-side is.
-- **Not a replacement for server-side authorization.** Ever.
+- **Not resistant to a compromised browser's measurements.** In backend mode a compromised
+  page cannot grant itself anything, but it can lie about how the user behaves (§4.1).
+- **Not a replacement for server-side authorization.** `guard.check()` adds a behavioral
+  condition to your authorization; it does not replace it.
 
 ---
 

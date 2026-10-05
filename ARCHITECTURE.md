@@ -1,8 +1,9 @@
 # Architecture
 
-One script tag sits on top of a 17-module engine, a normative specification, and five
-independently verified runtime implementations. This document shows what is underneath the
-one-liner, and - more usefully - *why* each piece is shaped the way it is.
+One script tag in the page and a few lines in your backend sit on top of an 18-module
+browser library, a server engine, a normative specification, and five independently
+verified runtime implementations. This document shows what is underneath, and - more
+usefully - *why* each piece is shaped the way it is.
 
 For the exact numeric contract, read [`core/SPEC.md`](core/SPEC.md). Where this document
 and the spec disagree, the spec wins.
@@ -12,30 +13,42 @@ and the spec disagree, the spec wins.
 ## 1. The pipeline
 
 ```
-  ┌────────────┐   ┌────────────┐   ┌──────────────┐   ┌──────────────────┐
-  │  capture   │──▶│  features  │──▶│ standardize  │──▶│    ensemble      │
-  │ DOM events │   │ 34 floats  │   │ z vs owner   │   │ IF .30 + Maha .70│
-  └────────────┘   └────────────┘   └──────────────┘   └────────┬─────────┘
-   pointer, key,    per session,     mean/std of the            │
-   scroll, focus,   deterministic,   owner's baseline           ▼
-   nav, form        no DOM                              ┌──────────────────┐
-                                                        │  risk banding    │
-                                                        │ mean − k·std     │
-                                                        └────────┬─────────┘
-                                                                 │
-                        ┌────────────────────────────────────────┤
-                        ▼                                        ▼
-              ┌──────────────────┐                    ┌──────────────────────┐
-              │   lifecycle      │                    │  step-up challenge   │
-              │ enroll, retrain, │◀───────────────────│  typing rhythm       │
-              │ convergence      │  only verified     │  (dwell + flight)    │
-              └──────────────────┘  sessions teach    └──────────────────────┘
+        BROWSER (the page)                        |        YOUR SERVER (backend mode)
+                                                  |
+  +------------+   +-------------+                |   +--------------+   +-------------------+
+  |  capture   |-->|  features   |---- 34 floats ---->| standardize  |-->|     ensemble      |
+  | DOM events |   | 34 floats   |   per 30-s window  | z vs owner   |   | IF .30 + Maha .70 |
+  +------------+   +-------------+    + counts    |   +--------------+   +---------+---------+
+   pointer, key,    per window,                   |    mean/std of the            |
+   scroll, focus,   deterministic,                |    account's baseline         v
+   nav, form        no DOM                        |                      +-------------------+
+        |                                         |                      |   risk banding    |
+        v                                         |                      |   mean - k*std    |
+  +------------+                                  |                      +---------+---------+
+  | integrity  |---- suspected + reasons ---------->  (bot: HIGH, block)           |
+  | bot checks |                                  |              +-----------------+------+
+  +------------+                                  |              v                        v
+                                                  |   +------------------+   +--------------------+
+  +------------------+    rhythm sample           |   |    lifecycle     |   |  typing-rhythm     |
+  | step-up dialog   |---- (hold/gap times) --------->|  enroll, retrain,|<--|  template + check  |
+  | (Shadow DOM)     |<--- verdict, status -----------|  convergence     |   |  (dwell + flight)  |
+  +------------------+                            |   +------------------+   +--------------------+
+                                                  |     only LOW or verified windows teach
+                                                  |
+                                                  |   guard.check()  <-- your routes, before
+                                                  |   report_verified() <-- your own OTP
 ```
 
 The **34-float feature vector is the system's exchange point.** Everything to its left is
-platform-specific (DOM, touch, native). Everything to its right is pure arithmetic, and is
-what the specification and the five ports cover. That boundary is why a browser can capture
-while a JVM or a WASM host scores.
+platform-specific (DOM, touch, native) and stays in the page, including the raw event
+stream. Everything to its right is pure arithmetic, is what the specification and the five
+ports cover, and runs on your server in backend mode. That boundary is why a browser can
+capture while a Python server - or a JVM, or a WASM host - scores.
+
+In **local mode** the right-hand side runs in the browser instead, with the profile in
+IndexedDB. It is the same code path the research harness measures; `server/engine.py` is
+checked against it window by window (`server/test_parity.py`), so both modes reach the same
+decisions.
 
 ---
 
@@ -64,7 +77,20 @@ while a JVM or a WASM host scores.
 | `core/token.js` | HMAC session token | No |
 | `core/fingerprint.js` | Lightweight device fingerprint | No |
 | `core/config.js` | Defaults and validated constants | Yes (constants) |
-| `storage.js` | IndexedDB -> localStorage -> memory, HMAC-sealed (unsigned on insecure origins) | No |
+| `storage.js` | IndexedDB -> localStorage -> memory, HMAC-sealed (unsigned on insecure origins); local mode only | No |
+
+The server side, in `server/` (copied flat to `dist/server/`):
+
+| Module | Responsibility | In spec? |
+| --- | --- | --- |
+| `core/bg_core.py` | Features, standardize, Isolation Forest, Mahalanobis, ensemble, risk: the Python reference | Yes |
+| `server/engine.py` | The orchestrator's decisions, ported: enrollment, pool, convergence, sticky floor, run rule, replay, away/re-verify, grace, probe | Parity-tested |
+| `server/rhythm.py` | Rhythm template and check, ported from `challenge.js` | Parity-tested |
+| `server/guard.py` | SQLite state per account and per login, tenants, HMAC user tokens, the browser API, `check()`, `report_verified()`, `forget()`, input shaping, rate limits | No |
+| `server/app.py` | Standalone multi-tenant service and operator dashboard | No |
+
+In backend mode the browser orchestrator skips its own scoring, storage and fingerprinting:
+it sends each window, shows the dialog, and reflects the server's state (C-49).
 
 "In spec" means the module's numeric behavior is pinned by `core/golden.json` and must be
 identical across all five runtimes to within 1e-9.
@@ -76,7 +102,8 @@ identical across all five runtimes to within 1e-9.
 ### Browser-trainable was a hard constraint, not a preference
 
 The single most consequential decision. Every detector must be able to **fit** in a browser,
-not merely evaluate. That immediately excluded scikit-learn's `OneClassSVM`, which looked
+not merely evaluate. It is also what keeps the server cheap: the server retrains one
+account's model on the spot, in plain Python, with no GPU and no model-serving step. That immediately excluded scikit-learn's `OneClassSVM`, which looked
 strongest in the offline research harness but requires libsvm's QP solver.
 
 The first attempt at a browser-trainable substitute - a centroid-RBF approximation - was
@@ -224,6 +251,11 @@ stabilizes. Both together bound over- and under-fitting.
                                       (not pasted/autofilled); failing windows never train
 ```
 
+In backend mode this state lives on the server per **account** (the pool, the floor, the
+run counter, the rhythm template), and per **login session** (the verification time, the
+last assessment, the absence being answered). A second device logging in to the account
+therefore meets the full profile, and never the first device's verification.
+
 The window ticks on a 30-second timer and on `visibilitychange`. On `pagehide` the unscored
 tail is banked to storage and scored on the next page load, so multi-page navigation does
 not lose evidence. Nothing else may call `endSession()` on unload - an earlier auto-boot did,
@@ -243,9 +275,12 @@ sessions at different times of day are correctly treated as one behavioral sampl
 The engine is defined once, in prose and numbers, and implemented five times.
 
 ```
-core/SPEC.md      normative prose  ─┐
-core/bg_core.py   readable reference │──▶ core/golden.json ──▶ every port must match
-                                    ─┘     319 checks, 1e-9
+core/SPEC.md      normative prose    -+
+core/bg_core.py   readable reference -+--> core/golden.json --> every port must match
+                                            319 checks, 1e-9
+
+sdk/behaviorguard.js (orchestrator)  <--- server/test_parity.py --->  server/engine.py
+sdk/core/challenge.js                <--- server/test_rhythm.py --->  server/rhythm.py
 ```
 
 `golden.json` contains **literal inputs and expected outputs** - 204 feature-extraction
@@ -263,9 +298,15 @@ Two portability traps are called out in the spec because both silently break por
    every golden check passed. The spec compares against `pi/4 + 1e-9` and the golden file
    now carries those real move pairs (SPEC 1.3, C-34).
 
+The orchestration above the engine (when to enroll, what may train, the floor, the run
+rule, the grace) is not in the spec; it lives in `behaviorguard.js` and its server port.
+`server/test_parity.py` feeds both the same windows and requires the same level, action,
+score, thresholds and model on every one.
+
 CI runs Python, JavaScript, Rust, Java and WASM on every push, and additionally verifies
-that `golden.json` is still in sync with its generator and that the step-up, detector-gate
-and integrity regression suites pass.
+that `golden.json` is still in sync with its generator, that the step-up, detector-gate and
+integrity regression suites pass, and that the server API, the parity check and the
+library-over-HTTP test pass.
 
 ---
 
@@ -273,22 +314,31 @@ and integrity regression suites pass.
 
 | Shape | Use when | Entry point |
 | --- | --- | --- |
-| One `<script>` tag | You control the page | `dist/behaviorguard.js` |
-| ES module | You want explicit lifecycle control | `sdk/behaviorguard.js` |
-| Hybrid (optional) | Baseline must follow the user across devices | `server/` |
+| **Backend, embedded** (recommended) | Your app is Flask, or can host a Python module | `create_blueprint(Guard(...))` at `/bg`, a token route, `guard.check()` in your routes |
+| **Backend, service** | Node, PHP, Laravel, Go, anything | `server/app.py`; your backend signs tokens and calls `/v1/check`, `/v1/report` with the `sk` |
+| Local, one `<script>` tag | A static page, a prototype, a demo without a server | `dist/behaviorguard.js` with `data-user` |
+| Local, ES module | Explicit lifecycle control in the browser | `sdk/behaviorguard.js` |
 
-Hybrid mode transmits only 34-float feature vectors and verdicts, never raw events. It is
-off unless a public key, an endpoint **and** a short-lived user token (HMAC, minted by your
-backend with the tenant secret) are all supplied; the server takes the user id from the
-token, never from the request. Read [THREAT-MODEL.md](THREAT-MODEL.md) §4.6 before enabling
-it.
+Backend mode transmits only the 34 numbers per window and a few counts, never raw events.
+It is on when the page has an endpoint **and** a short-lived user token (HMAC over
+`pk|userId|sessionId|exp`, minted by your backend with the tenant secret); the server takes
+the user and the login session from the token, never from the request. The page cannot
+grant itself anything: a verification counts only when the rhythm check passed on the server
+or your backend reported its own factor with the `sk`. Read
+[THREAT-MODEL.md](THREAT-MODEL.md) before deploying.
 
 ---
 
 ## 7. Storage
 
-Three tiers, tried in order, so the library never crashes in a private window or with site
-data blocked: **IndexedDB -> localStorage -> in-memory**.
+**Backend mode:** one SQLite file (`Guard(db_path)`), tables `tenants`, `accounts` (the
+profile, model pool, floor, run counter, rhythm template, per account), `sessions` (per login:
+verification time, last assessment, absence), and `logs` (verdicts for the operator
+dashboard). Per-account work is serialised with a lock. The browser keeps nothing about the
+account.
+
+**Local mode:** three tiers, tried in order, so the library never crashes in a private
+window or with site data blocked: **IndexedDB -> localStorage -> in-memory**.
 
 Values are HMAC-sealed for tamper detection. This is **integrity, not confidentiality** -
 the payload is base64, not encrypted - which is why typed characters are never captured in
@@ -300,6 +350,7 @@ enrollment block is always kept and only the progressive history is shortened.
 ## 8. Where to look next
 
 - [`core/SPEC.md`](core/SPEC.md) - the normative contract
-- [`core/DRIFT.md`](core/DRIFT.md) - measured gaps between engines, and the C-1..C-48 audit
+- [`core/DRIFT.md`](core/DRIFT.md) - measured gaps between engines, and the C-1..C-49 audit
+- [`server/README.md`](server/README.md) - keys, tokens, endpoints and the gate
 - [`ports/README.md`](ports/README.md) - how to add a sixth runtime
 - [`THREAT-MODEL.md`](THREAT-MODEL.md) - trust boundaries and known attacks

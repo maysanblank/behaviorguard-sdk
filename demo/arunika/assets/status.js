@@ -33,7 +33,7 @@
       return;
     }
     const grace = st.mfa.graceLeftSec > 0;
-    const lv = e ? e.level : 'LOW';
+    const lv = e ? e.level : (st.risk || 'LOW');
     const baris = grace ? `Verified ${Math.max(1, Math.round((Date.now() - st.mfa.verifiedAt) / 60000))} min ago.`
       : waktu ? `Latest activity ${Guard.levelLabel(lv)} · assessed ${waktu}.` : 'Waiting for the first activity on this visit.';
     const mfa = st.mfa.enrolled ? '' : `<p class="small" style="margin-top:8px"><a href="security.html#irama">Set up typing-rhythm verification</a> so verifying takes your typing rhythm, not a code.</p>`;

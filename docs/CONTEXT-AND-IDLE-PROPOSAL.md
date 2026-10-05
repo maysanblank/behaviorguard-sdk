@@ -237,61 +237,61 @@ person.** A behavioural biometric system infers identity from a signal that is r
 `identity × device × context × physical condition`. Every case below shifts one of the factors other
 than identity - and a naive system reads it as "someone else".
 
-**Impact** column: `FRR↑` = the real owner is bothered; `FAR↑` = an intruder gets through.
+**Impact** column: `FRR up` = the real owner is bothered; `FAR up` = an intruder gets through.
 
 ### A. Presence and attention
 
 | # | Case | Impact | Status |
 |---|---|---|---|
-| A1 | **Idle/AFK** - the page is opened and then left | FRR↑ | **Done (C-23)** |
-| A2 | **Background tab / unfocused window** - the browser throttles timers to 1/minute and sends no `mousemove`; a 30-second window quietly becomes a window of several minutes | FRR↑ | Partly: `visibilitychange` is already watched; timer throttling is not yet compensated |
-| A3 | **Rapid multitasking** - switching to WhatsApp/Excel in the middle of filling a form | FRR↑ | Done through segmentation (a pause < 5 min = idle, not away) |
-| A4 | **Very short sessions** - open, click one thing, leave | FRR↑ | Done: ABSTAIN, not a guess |
-| A5 | **Unattended session takeover** - the owner leaves, someone else sits down | **FAR↑** | **Done (C-23 layer 2)** |
+| A1 | **Idle/AFK** - the page is opened and then left | FRR up | **Done (C-23)** |
+| A2 | **Background tab / unfocused window** - the browser throttles timers to 1/minute and sends no `mousemove`; a 30-second window quietly becomes a window of several minutes | FRR up | Partly: `visibilitychange` is already watched; timer throttling is not yet compensated |
+| A3 | **Rapid multitasking** - switching to WhatsApp/Excel in the middle of filling a form | FRR up | Done through segmentation (a pause < 5 min = idle, not away) |
+| A4 | **Very short sessions** - open, click one thing, leave | FRR up | Done: ABSTAIN, not a guess |
+| A5 | **Unattended session takeover** - the owner leaves, someone else sits down | **FAR up** | **Done (C-23 layer 2)** |
 
 ### B. Environment and device - *the instrument changes*
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| B1 | **Changing input modality** - mouse ↔ trackpad ↔ touch screen ↔ stylus. Speed, curvature and acceleration distributions are completely different | heavy FRR↑ | A **per-context** baseline (§5). A trackpad and a mouse are two instruments, not two people |
-| B2 | **Changing resolution / external monitor / browser zoom** - speed in px/ms changes even when the hand moves the same | FRR↑ | Scale normalisation: divide distances by the viewport diagonal -> DPI-independent units |
-| B3 | **Slow device / heavy page** - events get coalesced, producing fake pauses and speeds | FRR↑ | Detect coalescing; lower the weight of janky sessions or ABSTAIN |
-| B4 | **Phone vs laptop** - the whole mouse feature block is zero on a touch screen | heavy FRR↑ | A special case of B1; needs a separate baseline |
-| B5 | **Remote desktop / VDI / screen sharing** - all timing distorted by the network | FRR↑ **and** FAR↑ | Detect + ABSTAIN. Also an attack vector of its own: an attacker can deliberately go through RDP to blur their rhythm |
-| B6 | **OS settings change** - pointer acceleration, `prefers-reduced-motion`, battery saver | FRR↑ | Part of the context key |
+| B1 | **Changing input modality** - mouse <-> trackpad <-> touch screen <-> stylus. Speed, curvature and acceleration distributions are completely different | heavy FRR up | A **per-context** baseline (§5). A trackpad and a mouse are two instruments, not two people |
+| B2 | **Changing resolution / external monitor / browser zoom** - speed in px/ms changes even when the hand moves the same | FRR up | Scale normalisation: divide distances by the viewport diagonal -> DPI-independent units |
+| B3 | **Slow device / heavy page** - events get coalesced, producing fake pauses and speeds | FRR up | Detect coalescing; lower the weight of janky sessions or ABSTAIN |
+| B4 | **Phone vs laptop** - the whole mouse feature block is zero on a touch screen | heavy FRR up | A special case of B1; needs a separate baseline |
+| B5 | **Remote desktop / VDI / screen sharing** - all timing distorted by the network | FRR up **and** FAR up | Detect + ABSTAIN. Also an attack vector of its own: an attacker can deliberately go through RDP to blur their rhythm |
+| B6 | **OS settings change** - pointer acceleration, `prefers-reduced-motion`, battery saver | FRR up | Part of the context key |
 
 ### C. Legitimate human variation
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| C1 | **Physical condition** - injury, tiredness, illness, sleepiness, or one hand (holding a coffee, carrying a child) | FRR↑ | Cannot be removed. The answer is a friendly step-up, not a block |
-| C2 | **Body position** - laptop on the lap, on a train, lying down | FRR↑ | Same |
-| C3 | **Long-term drift** - the user gets better at using the application | FRR↑ | Already handled by the trust loop + progressive retraining |
-| C4 | **Time zone / night shift / DST** - `temporal_time_of_day_score` deviates while the person is the same | FRR↑ | This feature is **context, not biometrics**. Proposal: take it out of the identity vector, use it as a separate risk signal |
-| C5 | **Assistive technology** - screen readers, keyboard-only navigation, voice input, switch access | heavy FRR↑ | **An inclusion and ethics issue, not just accuracy.** A system that does not handle it systematically locks disabled users out of their own accounts. Must go into the limitations chapter |
+| C1 | **Physical condition** - injury, tiredness, illness, sleepiness, or one hand (holding a coffee, carrying a child) | FRR up | Cannot be removed. The answer is a friendly step-up, not a block |
+| C2 | **Body position** - laptop on the lap, on a train, lying down | FRR up | Same |
+| C3 | **Long-term drift** - the user gets better at using the application | FRR up | Already handled by the trust loop + progressive retraining |
+| C4 | **Time zone / night shift / DST** - `temporal_time_of_day_score` deviates while the person is the same | FRR up | This feature is **context, not biometrics**. Proposal: take it out of the identity vector, use it as a separate risk signal |
+| C5 | **Assistive technology** - screen readers, keyboard-only navigation, voice input, switch access | heavy FRR up | **An inclusion and ethics issue, not just accuracy.** A system that does not handle it systematically locks disabled users out of their own accounts. Must go into the limitations chapter |
 
 ### D. Input paths that are not typing
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| D1 | **Password manager / browser autofill** - the form is filled with **zero** keystrokes; the whole `keystroke_*` block degenerates | FRR↑ **and** FAR↑ | Explicit detection. A session without keystrokes must not be confidently judged LOW - that is ABSTAIN, because the keystroke evidence really does not exist |
-| D2 | **Copy-paste** - 30 characters arrive through 2 events | FRR↑ | Already handled in the MFA layer (C-1 rejects paste); not yet in the session scoring layer |
-| D3 | **Extensions that change the DOM** - translate, adblock, third-party autofill | FRR↑ | Part of the context key |
+| D1 | **Password manager / browser autofill** - the form is filled with **zero** keystrokes; the whole `keystroke_*` block degenerates | FRR up **and** FAR up | Explicit detection. A session without keystrokes must not be confidently judged LOW - that is ABSTAIN, because the keystroke evidence really does not exist |
+| D2 | **Copy-paste** - 30 characters arrive through 2 events | FRR up | Already handled in the MFA layer (C-1 rejects paste); not yet in the session scoring layer |
+| D3 | **Extensions that change the DOM** - translate, adblock, third-party autofill | FRR up | Part of the context key |
 
 ### E. Legitimate multiple identities
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| E1 | **Shared accounts** - family, shop, admin assistant | FRR↑ | A multi-modal (mixture) baseline, or accept it and lower sensitivity. Must be an explicit product decision, not an accident |
-| E2 | **Shared computer / kiosk / internet café** | FRR↑ and FAR↑ | Shorten `reverifyAfterSec` for this context |
-| E3 | **Legitimate delegation** - an admin helping a customer through the customer's account | FAR↑ (technically right to be suspicious) | Needs a "delegation" path on the application side |
+| E1 | **Shared accounts** - family, shop, admin assistant | FRR up | A multi-modal (mixture) baseline, or accept it and lower sensitivity. Must be an explicit product decision, not an accident |
+| E2 | **Shared computer / kiosk / internet café** | FRR up and FAR up | Shorten `reverifyAfterSec` for this context |
+| E3 | **Legitimate delegation** - an admin helping a customer through the customer's account | FAR up (technically right to be suspicious) | Needs a "delegation" path on the application side |
 
 ### F. Population shift
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| F1 | **Application redesigned** - navigation/form features shift for **every** user at once | mass FRR↑ | Watch the aggregate non-LOW rate; a sudden spike = population drift, not a wave of intruders. This is an important operational alarm |
-| F2 | **A browser version changes event throttling** | mass FRR↑ | Same |
+| F1 | **Application redesigned** - navigation/form features shift for **every** user at once | mass FRR up | Watch the aggregate non-LOW rate; a sudden spike = population drift, not a wave of intruders. This is an important operational alarm |
+| F2 | **A browser version changes event throttling** | mass FRR up | Same |
 
 ### G. Attacks on the mitigations themselves
 
@@ -300,11 +300,11 @@ creates a new attack surface.
 
 | # | Case | Impact | Proposal |
 |---|---|---|---|
-| G1 | **Idle padding** - the attacker deliberately inserts pauses so events per window stay under 30 and the session is never judged | **FAR↑** | This is why ABSTAIN has to be *visible*. Silently-not-judging is exactly what the attacker wants; ABSTAIN + an integrator policy ("high-value actions need a verdict, not merely the absence of one") closes it |
-| G2 | **Imitating the owner's idle pattern** | FAR↑ | Residual risk; name it in the limitations chapter |
-| G3 | **Weaponising D1** - the attacker uses autofill so the keystroke block is empty and there is nothing to compare | FAR↑ | Same as G1: absence of evidence ≠ evidence of innocence |
-| G4 | **Fake context claims** - if per-context baselines are applied, the attacker claims a "new context" to get a loose baseline | FAR↑ | A new context is **never** automatically trusted: it must go through its own enrollment with step-up, not inherit the old context's trust |
-| G5 | **Raw event replay** | FAR↑ | Already handled by `integrity.js` + rate limiting |
+| G1 | **Idle padding** - the attacker deliberately inserts pauses so events per window stay under 30 and the session is never judged | **FAR up** | This is why ABSTAIN has to be *visible*. Silently-not-judging is exactly what the attacker wants; ABSTAIN + an integrator policy ("high-value actions need a verdict, not merely the absence of one") closes it |
+| G2 | **Imitating the owner's idle pattern** | FAR up | Residual risk; name it in the limitations chapter |
+| G3 | **Weaponising D1** - the attacker uses autofill so the keystroke block is empty and there is nothing to compare | FAR up | Same as G1: absence of evidence ≠ evidence of innocence |
+| G4 | **Fake context claims** - if per-context baselines are applied, the attacker claims a "new context" to get a loose baseline | FAR up | A new context is **never** automatically trusted: it must go through its own enrollment with step-up, not inherit the old context's trust |
+| G5 | **Raw event replay** | FAR up | Already handled by `integrity.js` + rate limiting |
 
 ---
 

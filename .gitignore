@@ -17,7 +17,6 @@ bg_vecs.json
 # --- Berkas kerja internal --------------------------------------------------
 HANDOFF.md
 demo.zip
-.claude/
 .backup-*/
 dist/tes-*.html
 dist/tes-*.json
@@ -44,3 +43,6 @@ PANDUAN-GITHUB.md
 
 # tenant demo shop-checkout (berisi sk, jangan commit)
 demo/shop-checkout/.bg-tenant.json
+
+# demo bank Arunika: accounts, keys and behavior profiles made while demoing
+demo/arunika/.data/

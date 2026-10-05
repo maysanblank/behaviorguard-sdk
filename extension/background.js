@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (last.level === 'HIGH') {
         try {
           chrome.notifications.create({ type: 'basic', iconUrl: 'icons/icon128.png', title: 'BehaviorGuard',
-            message: `Perilaku tidak dikenali di ${msg.origin}`, priority: 2 });
+            message: `Unrecognised behavior on ${msg.origin}`, priority: 2 });
         } catch {}
       }
     }

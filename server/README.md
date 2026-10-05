@@ -1,91 +1,148 @@
-# BehaviorGuard server (optional)
+# BehaviorGuard server
 
-A small multi-tenant backend for two things: **a baseline that follows the user across devices**
-and **a verdict log for the operator dashboard**. It only stores **34 feature numbers per window**
-and their verdicts. Raw events and typed characters never reach it.
+Where BehaviorGuard's decisions are made in **backend mode** (the recommended deployment).
+The browser library sends **34 feature numbers per 30-second window**; this side keeps each
+account's profile and model, scores, decides, keeps the typing-rhythm template and checks
+it, records verifications, and answers your routes' question *"may this session do this
+now?"*. Raw events and typed characters never reach it.
 
-The library runs fully without this server. The server only comes into play when the site provides
-a `pk`, an `endpoint`, **and** a user token.
+| File | What |
+|---|---|
+| `guard.py` | `Guard`: storage (SQLite), tenants and keys, user tokens, the browser API (`create_blueprint`), the server-side gate `check()`, `report_verified()`, `forget()` |
+| `engine.py` | The decision engine: enrollment, training pool, scoring, verdicts, sticky floor, run rule, replay, away/re-verify, step-up grace. A port of the library's own orchestration on top of `core/bg_core.py` |
+| `rhythm.py` | The typing-rhythm template and its check (port of `sdk/core/challenge.js`) |
+| `app.py` | A standalone service around the same `Guard`, for stacks that are not Flask, plus the operator dashboard |
+| `test_app.py`, `test_parity.py`, `test_rhythm.py`, `test_backend_sdk.py` | The tests (below) |
 
-## Run
+A flat copy of `guard.py`, `engine.py`, `rhythm.py` and `bg_core.py` is written to
+`dist/server/` by `python tools/bundle.py`.
+
+## Is the server engine the same as the library?
+
+Yes, and that is tested rather than assumed:
+
+- `python server/test_parity.py` drives the JavaScript library (in local mode) and
+  `engine.py` with the same 67 windows - enrollment, ineligible windows, the detector gate
+  reopening, retraining, a block, a verification, a replay, the step-up grace and the
+  away/re-verify rule - and requires the same level, action, score, thresholds and model on
+  every one.
+- `python server/test_rhythm.py` runs 40 rhythm samples through `rhythm.py` and
+  `challenge.js`: identical answers (owner passes 36, another person 0).
+- `core/bg_core.py` itself passes the 319 golden checks (`python core/conformance.py`).
+
+So the accuracy measured on the library ([README](../README.md#results)) holds for the server.
+
+## Two ways to run it
+
+**Inside your Flask app** (one process, the demos do this):
+
+```python
+from guard import Guard, create_blueprint
+guard = Guard('behaviorguard.db', tenant=(BG_PK, BG_SK))
+app.register_blueprint(create_blueprint(guard), url_prefix='/bg')
+```
+
+**As a service** (any stack: Node, PHP, Laravel, Go):
 
 ```bash
 pip install flask
-python server/app.py          # http://0.0.0.0:5055
-python server/test_app.py     # 35 tests: auth, IDOR, poisoning, XSS, CSP
+python server/app.py                  # http://127.0.0.1:5055  (BG_HOST, BG_PORT to change)
+curl -X POST http://127.0.0.1:5055/tenant -H "Content-Type: application/json" -d "{\"name\":\"My Shop\"}"
 ```
 
-Environment variables: `BG_DB` (SQLite location), `BG_ADMIN_TOKEN` (turns on `GET /tenants`),
-`BG_TRUST_PROXY=1` (only behind a proxy that overwrites `X-Forwarded-For`).
+`/tenant` returns `{pk, sk}`; the `sk` is shown once. Keep both in your backend's
+environment. Set `BG_TENANT_SIGNUP=0` once your tenants exist. Other variables: `BG_DB`
+(SQLite location), `BG_ADMIN_TOKEN` (turns on `GET /tenants`), `BG_ALLOWED_ORIGIN` (CORS,
+default `*`; auth is a header token, never a cookie), `BG_TRUST_PROXY=1` (only behind a proxy
+that overwrites `X-Forwarded-For`).
 
-## Three keys, three roles
+## Keys and tokens
 
 | Key | Where | Unlocks |
 |---|---|---|
-| `pk_...` (public) | in the page, `data-pk` | **nothing on its own** |
-| `sk_...` (secret) | only on your server | the operator dashboard + minting user tokens |
-| user token | minted by your server after login, short-lived | the baseline & log of **that account only** |
+| `pk_...` (public) | in the page (`data-pk`; optional when embedded) | **nothing on its own** |
+| `sk_...` (secret) | only on your server | minting user tokens, reporting verifications, the operator dashboard |
+| user token | minted by your backend after login, short-lived | that account, in **that login session** only |
 
-Token: `b64url(userId) "." exp "." hex(HMAC-SHA256(sk, pk|userId|exp))`, 7 days at most.
-The server takes `userId` from the token, never from the request body.
+```
+token = b64url(userId) "." b64url(sessionId) "." exp "." hex(HMAC-SHA256(sk, pk|userId|sessionId|exp))
+```
 
-## Flow
+`sessionId` is your login session's id - a new value on every login. Verifications and the
+step-up grace belong to it, so an attacker's login on another device never inherits the
+owner's. The profile belongs to the account, so it is there for every login. The server
+takes the user and the session from the token, never from a request body. Tokens live at
+most 7 days; 15 minutes is a good value, and the library refreshes through `tokenUrl` or
+`getToken` when the server answers 401.
 
-1. **Create a tenant** (sk is shown only once):
-   ```bash
-   curl -X POST http://localhost:5055/tenant -H "Content-Type: application/json" -d "{\"name\":\"Andi's Shop\"}"
-   ```
-2. **Mint a token** in your backend after the user logs in. Node:
-   ```js
-   import crypto from 'node:crypto';
-   function bgToken(pk, sk, userId, ttlSec = 3600) {
-     const exp = Math.floor(Date.now() / 1000) + ttlSec;
-     const sig = crypto.createHmac('sha256', sk).update(`${pk}|${userId}|${exp}`).digest('hex');
-     return `${Buffer.from(userId).toString('base64url')}.${exp}.${sig}`;
-   }
-   ```
-   Local test: `python server/app.py mint <pk> <sk> <userId> [ttl_seconds]`.
-   More backends (Flask, PHP, Laravel): [docs/INTEGRATION.md](../docs/INTEGRATION.md).
-3. **Install on the page**:
-   ```html
-   <script src="/dist/behaviorguard.js" data-user="andi@example.com"
-           data-pk="pk_xxx" data-endpoint="https://bg.example.com" data-user-token="<token>"></script>
-   ```
-   Token expired? Refresh it with `BehaviorGuard.setUserToken(newToken)`.
-4. **Dashboard**: open `http://localhost:5055/dashboard`, paste the `sk`. The key is kept in that
-   tab's sessionStorage only and sent in a header, never in the URL.
+`guard.mint_token(user, sid, ttl)` does it in Python; other languages:
+[docs/INTEGRATION.md](../docs/INTEGRATION.md). For a local test:
+`python server/app.py mint <pk> <sk> <userId> <sessionId> [ttl]`.
+
+## What your routes call
+
+| Call | When |
+|---|---|
+| `guard.check(user, sid, money=True)` | before moving money. Allowed after a fresh `LOW` assessment (with the main detector on) or a verification in this login; otherwise `{'allowed': False, 'reason': ...}` -> answer 403 and let the page step up |
+| `guard.check(user, sid, always=True)` | password, recovery email, new payee: always needs a verification in the last 2 minutes |
+| `guard.blocked(user, sid)` | the verdict ended this login: log it out |
+| `guard.report_verified(pk, user, sid, passed)` | your own factor (OTP, WebAuthn, password) was checked by you. The only way a non-rhythm verification counts |
+| `guard.forget(pk, user, require_verified=False)` | the account was deleted |
+
+`check()` fails closed: no assessment in the last 90 seconds means `UNKNOWN`, which needs a
+verification. The page's `assessNow()` is what records a fresh one.
 
 ## Endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| POST | `/tenant` | - | create a tenant -> `{pk, sk}` |
-| GET | `/baseline` | `pk` + token | the token owner's baseline |
-| POST | `/baseline` `{vectors}` | `pk` + token | store a baseline (NaN/inf dropped, max 100 x 40) |
-| POST | `/log` `{level, score, ...}` | `pk` + token | record a verdict (filtered, see below) |
-| GET | `/api/dashboard` | `sk` | this tenant's dashboard data |
-| GET | `/api/account?u=` | `sk` | one account's details |
-| GET | `/tenants` | `BG_ADMIN_TOKEN` | list tenants (off without the env var) |
-| GET | `/dashboard` | - | static page; nonce-based CSP |
+Browser (headers `Authorization: Bearer <pk>` and `X-BG-User-Token: <token>`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/assess` | one window `{vector, events, activeSec, gapBeforeMs, keystrokeBypassed, synthetic, integrity, away}` -> `{verdict, status}` |
+| POST | `/v1/probe` | `assessNow()`: a verdict now, no training, kept for `check()` |
+| GET | `/v1/session` | status for the page (phase, enrollment, model, risk, verification grace) |
+| POST | `/v1/rhythm/verify` | a rhythm sample (key hold and gap times, no characters) |
+| POST | `/v1/rhythm/enroll` | set up the template (only in a trusted, `LOW` session; never overwrites one) |
+| DELETE | `/v1/rhythm`, `/v1/profile` | remove the template / erase the profile (both need a verification in the last 2 minutes) |
+
+Server to server (`Authorization: Bearer <sk>`): `POST /v1/report {userId, sessionId, passed}`.
+
+Service only (`app.py`): `POST /tenant`, `GET /api/dashboard` and `GET /api/account?u=` (sk),
+`GET /tenants` (`BG_ADMIN_TOKEN`), `GET /dashboard` (static page, nonce CSP; paste the sk,
+kept in that tab's sessionStorage only).
 
 ## What is protected (and why)
 
-- **A leaked `pk` is normal** - it is in every page. It used to be enough on its own to read and
-  **overwrite** any account's behaviour template (making the attacker the "owner"). Now no account
-  operation works without a token (C-39).
-- **Log contents are sent by the client.** The dashboard escapes every value and is served with a
-  nonce-based CSP; the server also limits their shape: allow-listed levels, action `A-Z_`, reasons
-  6 x 160 characters, feature names `a-z0-9_`, implausible client clocks replaced by the server
-  clock (C-41).
-- **An already enrolled device never accepts a baseline from the server.** Only new devices adopt
-  it.
+- **A leaked `pk` is normal** - it is in every page. Nothing works without a user token
+  signed with the `sk` (C-39).
+- **The browser cannot vouch for itself.** A page that says "verified" changes nothing; a
+  verification counts when the rhythm check passed here, or when your backend reported it
+  with the `sk`. `report_verified` also refuses an account the server has never seen.
+- **Input is shaped before it reaches the engine.** Vectors must be 34 finite numbers,
+  counts and times are clamped, reasons and feature names are length-limited, the dashboard
+  escapes everything under a nonce CSP (C-41). Windows are rate-limited per login (12 a
+  minute by default), probes and rhythm attempts too.
+- **Erasing needs a fresh verification**, so an attacker in a session cannot wipe the owner's
+  profile and be learned instead.
 
-Residual risk: anyone holding a user's valid token can write that user's server baseline, and the
-user's NEW devices will adopt it. Mint short-lived tokens, only after an authentication you trust.
-There is no rate limit on `/tenant` yet; CORS `*` is deliberate (the SDK runs on any origin). This
-is a reference implementation (Flask + SQLite), not a hardened service. See THREAT-MODEL.md §4.7.
+Residual risk: whoever holds a valid user token can send windows as that login. The token
+proves who logged in, not who is at the keyboard - which is the point of the behavior check,
+and why the training pool only takes `LOW` or verified windows. This is a reference
+implementation (Flask + SQLite, a per-account lock), not a hardened service; see
+[THREAT-MODEL.md](../THREAT-MODEL.md).
+
+## Tests
+
+```bash
+python server/test_app.py            # 58: tokens, sessions, gate, report, IDOR, XSS, CSP, rate limits
+python server/test_parity.py         # engine.py == the JS library, 67 windows   (needs node; NODE=path)
+python server/test_rhythm.py         # rhythm.py == challenge.js, 40 cases       (needs node)
+python server/test_backend_sdk.py    # the library over HTTP against app.py, 21  (needs node)
+```
 
 ## Deploy
 
-Behind nginx + gunicorn: `gunicorn -w 2 -b 127.0.0.1:5055 app:app` (call `init_db()` once), set
-`BG_TRUST_PROXY=1`, keep `BG_DB` on a persistent volume or switch to Postgres.
+Behind nginx + gunicorn, for example `gunicorn -w 2 -b 127.0.0.1:5055 "app:create_app()"`.
+Set `BG_TRUST_PROXY=1`, keep `BG_DB` on a persistent volume. With more than one worker the
+SQLite file is shared and per-account work is serialised by a lock per process plus SQLite's
+own locking; for heavy traffic, move the two tables to Postgres.

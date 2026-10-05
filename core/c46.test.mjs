@@ -124,7 +124,7 @@ const kotor = await g.scoreExternalEvents(evs);
 check('C1 vonis melaporkan masukan sintetis', !!(kotor && kotor.automation && kotor.automation.syntheticInputs === 60),
   JSON.stringify(kotor && kotor.automation));
 check('C2 jendela tercemar TIDAK layak melatih', kotor && kotor.eligible === false);
-check('C3 alasannya bisa dibaca integrator', !!(kotor && (kotor.reasons || []).some(r => /dibuat skrip/.test(r))));
+check('C3 alasannya bisa dibaca integrator', !!(kotor && (kotor.reasons || []).some(r => /made by a script/.test(r))));
 check('C4 TIDAK diblokir karena sintetis - kebijakan itu milik integrator',
   kotor && kotor.blocked !== true, `level ${kotor && kotor.level}`);
 check('C5 vektor tercemar tidak masuk kolam latih',

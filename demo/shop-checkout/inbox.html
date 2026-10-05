@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mailbox (demo)</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;background:#eef1f5;color:#111827}
+  header{background:#1f2937;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+  header b{font-size:17px}
+  header span{font-size:13px;opacity:.75}
+  main{max-width:640px;margin:22px auto;padding:0 16px}
+  .mail{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .mail .s{font-weight:700}
+  .mail .m{color:#6b7280;font-size:12.5px;margin-top:2px}
+  .mail .t{margin-top:8px;font-size:15px}
+  .code{font-family:ui-monospace,Consolas,monospace;font-size:24px;font-weight:700;letter-spacing:.18em;color:#0a7a63}
+  .note{color:#6b7280;font-size:12.5px;margin-top:16px}
+</style>
+</head>
+<body>
+<header><b>Mailbox</b><span id="who">demo</span></header>
+<main>
+  <div id="list"></div>
+  <p class="note">Demo only: a stand-in for the account owner's email. A real store sends real email.
+    This page opens with the link printed in the store's terminal when the account was created.</p>
+</main>
+<script>
+  const key = decodeURIComponent(location.hash.slice(1));
+  const list = document.getElementById("list");
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  async function poll() {
+    if (!key) { list.textContent = "Open this page with the link from the store's terminal."; return; }
+    const r = await fetch("/api/inbox?k=" + encodeURIComponent(key));
+    if (!r.ok) { list.textContent = "Unknown mailbox."; return; }
+    const d = await r.json();
+    document.getElementById("who").textContent = d.owner;
+    list.innerHTML = d.mail.map(m => `<div class="mail"><div class="s">${esc(m.subject)}</div><div class="m">One-Click Store · ${esc(m.at)}</div>
+      <div class="t">${/^\d{6}$/.test(m.text) ? `<span class="code">${esc(m.text)}</span>` : esc(m.text)}</div></div>`).join("");
+  }
+  poll(); setInterval(poll, 1500);
+</script>
+</body>
+</html>

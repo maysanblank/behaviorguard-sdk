@@ -8,7 +8,7 @@ The difference from `CONTEXT-AND-IDLE-PROPOSAL.md` §4: that one catalogues case
 happen to any behavioural biometric system. This one only lists what **really exists in this
 code** and can be pointed to by line.
 
-**Impact** column: `FRR↑` the real owner is bothered · `FAR↑` an intruder gets through ·
+**Impact** column: `FRR up` the real owner is bothered · `FAR up` an intruder gets through ·
 `BLOCK` a legitimate user is hard-blocked.
 
 **Status as of 10 Sep 2026: 8 of 12 patched (C-25), tested by `core/audit.test.mjs` 32/32.**
@@ -19,17 +19,17 @@ are proposed, not shipped quietly.
 | # | Finding | Impact | Evidence | Status |
 |---|---|---|---|---|
 | A1 | "Just browsing" sessions blocked as bots | **BLOCK** | executed | **DONE** (C-25) |
-| A2 | Changing monitor / zoom changes speed | FRR↑ | executed | Proposed - scale package |
-| A3 | Autofill kills 8 keystroke features at once | FRR↑ FAR↑ | executed | **DONE** (C-25) |
-| A4 | Behaviour tails leak between users | **FAR↑** | code reading | **DONE** (C-25) |
-| A5 | `PAGE_STEP` trained on but never captured | FRR↑ | code reading | **DONE** - `markStep()` API |
-| B1 | Two tabs overwrite each other's data | FRR↑ | code reading | **DONE** (C-25) |
-| B2 | Screen resolution part of the device fingerprint | FRR↑ | code reading | **DONE** (C-25) |
-| B3 | `scroll_delta` in raw pixels | FRR↑ | code reading | Proposed - scale package |
-| B4 | Touch screens kill the whole mouse block | FRR↑ | code reading | **DONE** (C-25) |
-| B5 | Time of day treated as a biometric | FRR↑ | code reading | Proposed - touches the vector |
-| B6 | Constant features in the baseline become large z | FRR↑ | code reading | Proposed - touches SPEC |
-| B7 | Without IndexedDB, the pool is cut at 30 | FRR↑ | code reading | **DONE** (C-25) |
+| A2 | Changing monitor / zoom changes speed | FRR up | executed | Proposed - scale package |
+| A3 | Autofill kills 8 keystroke features at once | FRR up FAR up | executed | **DONE** (C-25) |
+| A4 | Behaviour tails leak between users | **FAR up** | code reading | **DONE** (C-25) |
+| A5 | `PAGE_STEP` trained on but never captured | FRR up | code reading | **DONE** - `markStep()` API |
+| B1 | Two tabs overwrite each other's data | FRR up | code reading | **DONE** (C-25) |
+| B2 | Screen resolution part of the device fingerprint | FRR up | code reading | **DONE** (C-25) |
+| B3 | `scroll_delta` in raw pixels | FRR up | code reading | Proposed - scale package |
+| B4 | Touch screens kill the whole mouse block | FRR up | code reading | **DONE** (C-25) |
+| B5 | Time of day treated as a biometric | FRR up | code reading | Proposed - touches the vector |
+| B6 | Constant features in the baseline become large z | FRR up | code reading | Proposed - touches SPEC |
+| B7 | Without IndexedDB, the pool is cut at 30 | FRR up | code reading | **DONE** (C-25) |
 
 ---
 
@@ -69,7 +69,7 @@ at the end of a session can lift the std above 3 ms and let it through, so the s
 10, **do not fall back to `events`** - just skip that interval check (other checks still run), or
 compute intervals only from events that are not throttled.
 
-### A2 · Changing monitor or zoom changes "hand speed" - FRR↑
+### A2 · Changing monitor or zoom changes "hand speed" - FRR up
 
 `sdk/core/capture.js:40` - `v = Math.hypot(dx,dy)/dt`, with `dx,dy` in CSS pixels.
 
@@ -89,7 +89,7 @@ Browser zoom and moving to an external monitor have the same effect.
 DPI-independent. This can be done in the capture layer **without touching SPEC** - `x`/`y` become
 viewport-relative. But old baselines become incomparable, so it needs re-enrollment or versioning.
 
-### A3 · Autofill kills 8 keystroke features at once - FRR↑ **and** FAR↑
+### A3 · Autofill kills 8 keystroke features at once - FRR up **and** FAR up
 
 `sdk/core/capture.js:65-74` installs no `paste` listener, and password managers fill fields
 **without any keyboard events at all**.
@@ -116,7 +116,7 @@ The same form, typed vs autofilled:
 keystroke block** instead of giving it zeros. This is exactly a generalisation of the C-23
 ABSTAIN.
 
-### A4 · Behaviour tails leak between users - **FAR↑**
+### A4 · Behaviour tails leak between users - **FAR up**
 
 `sdk/behaviorguard.js:67,94,98,177,180` - the `bg:pending` key is **global**, not namespaced per
 user (compare `ns(userId)` = `bg:${id}`, used for sessions).
@@ -131,7 +131,7 @@ shared computer, an internet café, or simply a logout-login, this poisons the b
 **Proposal:** namespace it - `bg:pending:${userId}` - and drop pending data whose owner does not
 match. A small fix with a security impact.
 
-### A5 · `PAGE_STEP` trained on but never captured - FRR↑
+### A5 · `PAGE_STEP` trained on but never captured - FRR up
 
 `sdk/core/features.js:28`
 
@@ -156,7 +156,7 @@ nav feature is not really used.
 
 ## B. Proven by reading the code (not yet executed)
 
-### B1 · Two tabs overwrite each other - FRR↑
+### B1 · Two tabs overwrite each other - FRR up
 
 Each tab runs its own instance with its own `sessions` array in memory, then
 `storage.set(ns(userId), {sessions...})` - **the last writer wins**. Sessions collected by the
@@ -166,7 +166,7 @@ different pages **merge into one "session"**.
 **Proposal:** a cross-tab lock (`BroadcastChannel` or a `localStorage` lock), or elect one tab as
 leader.
 
-### B2 · Screen resolution is part of the device fingerprint - FRR↑
+### B2 · Screen resolution is part of the device fingerprint - FRR up
 
 `sdk/core/fingerprint.js:8` puts `screen.width+'x'+screen.height` into the fingerprint. Plug in an
 external monitor -> the fingerprint changes -> `behaviorguard.js:60-62` forces
@@ -176,7 +176,7 @@ Plugging in a monitor is not changing devices. **Proposal:** take resolution out
 fingerprint (it is already handled by B3/A2 as context), or treat a resolution change as "new
 context", not "suspicious device".
 
-### B3 · `scroll_delta` in raw pixels - FRR↑
+### B3 · `scroll_delta` in raw pixels - FRR up
 
 `sdk/core/capture.js:48` stores `Math.abs(cur-lastScrollY)` in pixels; `features.js:121` reads it
 into `nav_scroll_depth_mean`. The value depends on viewport height and page length, not on the
@@ -185,7 +185,7 @@ person's scrolling habit. A taller screen -> one scroll moves more pixels.
 **Proposal:** normalise to viewport height. This touches the meaning of a field in SPEC, so it goes
 into the same package as A2.
 
-### B4 · Touch screens kill the whole mouse block - FRR↑
+### B4 · Touch screens kill the whole mouse block - FRR up
 
 `capture.js:65-74` only installs `mousemove`/`click`/`scroll`/`keydown`/`keyup`. On a touch screen
 `mousemove` practically never appears, so **nine mouse features become zero** - exactly the A3
@@ -194,7 +194,7 @@ pattern, but for the other block.
 **Proposal:** this is the strongest candidate for a **per-context baseline** (see
 `CONTEXT-AND-IDLE-PROPOSAL.md` §5): touch and mouse are two instruments, not two people.
 
-### B5 · Time of day treated as a biometric - FRR↑
+### B5 · Time of day treated as a biometric - FRR up
 
 `temporal_time_of_day_score` is 1 of the 28 identity features. It is not a property of the body -
 it is **context**. Night shifts, overtime, or travel across time zones shift it without identity
@@ -204,7 +204,7 @@ changing at all.
 `reproduce_db.py` already has an `F4_MINUS_TEMP` arm - so testing it costs almost nothing, it only
 needs comparing.
 
-### B6 · Constant features in the baseline become large z - FRR↑
+### B6 · Constant features in the baseline become large z - FRR up
 
 `sdk/core/standardize.js:14`
 
@@ -222,7 +222,7 @@ This punishes exploring the application's features, and hits new users most ofte
 **Proposal:** mark features that are constant in the baseline and lower their weight, or use a
 wide prior for features never seen to vary.
 
-### B7 · Without IndexedDB, the pool is cut at 30 - FRR↑
+### B7 · Without IndexedDB, the pool is cut at 30 - FRR up
 
 `sdk/storage.js:109` truncates to `sessions.slice(-30)` before writing to localStorage. IndexedDB
 accepts the whole thing, so it is usually fine - but in private mode or in browsers that block IDB,

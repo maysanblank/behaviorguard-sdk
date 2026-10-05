@@ -16,19 +16,23 @@ unless you ask not to be named.
   behavioral similarity (see the measured rates in the README).
 - Passing the typing-rhythm step-up without the owner's rhythm.
 - Making forged or replayed input train the owner's model.
-- Reading or changing stored behavior data of another account through the optional server.
-- Typed characters or raw events leaving the device, or being stored.
+- Getting past the server-side gate (`guard.check()`, `/v1/check`) without a fresh `LOW`
+  assessment or a verification, or making a page-side claim count as a verification.
+- A login inheriting another login's verification, or one login's verdicts ending another's.
+- Reading or changing stored behavior data of another account through the server.
+- Typed characters or raw events leaving the page, or being stored.
 
 ## Out of scope
 
 These are documented limits, not vulnerabilities:
 
-- An attacker with full control of the browser or the page's JavaScript bypassing a
-  client-side check ([THREAT-MODEL.md](THREAT-MODEL.md) section 4.2).
+- In local mode, an attacker with full control of the browser or the page's JavaScript
+  bypassing a client-side check ([THREAT-MODEL.md](THREAT-MODEL.md) section 4.2). In backend
+  mode the same attacker sending made-up feature vectors is section 4.1, below.
 - Targeted mimicry of a specific victim (section 4.1). It is untested and open; a working
   attack is very welcome, as a report, and will be documented with credit.
-- The optional server's deliberate CORS `*`, and the missing rate limit on `/tenant`
-  ([server/README.md](server/README.md)).
+- The standalone service's deliberate CORS `*` (auth is a header token, never a cookie), and
+  open tenant sign-up until you set `BG_TENANT_SIGNUP=0` ([server/README.md](server/README.md)).
 
 ## Supported versions
 

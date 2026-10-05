@@ -1,17 +1,59 @@
 # Quickstart
 
-Every way to integrate BehaviorGuard, from a single tag to the ES module and the optional
-server, plus the full configuration surface.
+Every way to integrate BehaviorGuard, from the recommended backend mode to a single tag on
+a static page, plus the full configuration surface.
 
-There is no build step, no package to install, and no service to sign up for. The library
-is one file with zero dependencies.
+No build step and no third-party service. The browser library is one file with zero
+dependencies; the server side is pure Python on Flask, and it runs on your own server.
+
+**Two modes, one engine:**
+
+| | Backend mode (recommended) | Local mode |
+| --- | --- | --- |
+| Profile, model, verdicts | on your server, per **account** | in this browser (IndexedDB) |
+| Attacker on another device | judged against the owner's profile from the first window | meets an empty profile |
+| Sensitive actions | your route asks `guard.check()`; the page cannot talk past it | the page decides |
+| Verifications | rhythm checked on the server; your OTP reported by your server | reported by the page |
+| What leaves the page | 34 numbers per window and counts | nothing |
+| Needs | `data-endpoint` + a token from your backend | `data-user` |
+
+The decisions are identical: `server/test_parity.py` checks the server engine against the
+library window by window.
 
 ---
 
-## 1. The fastest path - one script tag
+## 1. The recommended path - backend mode
 
-Put `dist/behaviorguard.js` anywhere your page can load it, and add one tag before
-`</body>`:
+Your backend mounts BehaviorGuard's API, signs a token after login, and asks before each
+sensitive action. The full walk-through, with Flask, Node, PHP and Laravel:
+[INTEGRATION.md](INTEGRATION.md). In short (Flask):
+
+```python
+from guard import Guard, create_blueprint                    # server/ or dist/server/
+guard = Guard('behaviorguard.db', tenant=(BG_PK, BG_SK))
+app.register_blueprint(create_blueprint(guard), url_prefix='/bg')
+
+@app.get('/api/bg-token')
+def bg_token():                                              # user AND this login's id
+    return {'token': guard.mint_token(session['user'], session['login_id'], ttl=900)}
+```
+
+```html
+<script src="/dist/behaviorguard.js" data-endpoint="/bg" data-token-url="/api/bg-token" defer></script>
+<script>
+  addEventListener('behaviorguard:risk', e => {
+    const { level, action, reasons } = e.detail;     // the server's verdict, for your UI
+  });
+</script>
+```
+
+The user id comes from the signed token; the page never says who it is. Add the tag to every
+page after login. If the backend cannot be reached, verdicts are `UNKNOWN` (`offline: true`),
+never "safe".
+
+## 1b. Local mode - one script tag, no server
+
+For a static page, a prototype, or the research harness:
 
 ```html
 <script src="/dist/behaviorguard.js" data-user="andi@example.com" defer></script>
@@ -23,14 +65,10 @@ Put `dist/behaviorguard.js` anywhere your page can load it, and add one tag befo
 </script>
 ```
 
-`data-user` is required - it is the identity the baseline belongs to. Use your own stable
-account identifier; an email is fine, so is an opaque user id.
-
-Add the tag to **every page you want covered**. Each page load continues the same stored
-baseline for that user.
-
-That is the entire integration. Capture, scoring, enrollment, retraining and the step-up
-prompt all start automatically.
+`data-user` is the identity the baseline belongs to - in this browser only. Use your own
+stable account identifier. Capture, scoring, enrollment, retraining and the step-up prompt
+all start automatically. Remember the limit: someone logging in from another device starts
+from an empty profile, and every decision is made in a page the user controls.
 
 ### See it working immediately
 
@@ -201,11 +239,16 @@ Pasting is blocked, modified keypresses are ignored, and a sample whose keystrok
 not match the field is rejected before verification runs. Three failed attempts end the
 challenge as failed.
 
-### Using only your own step-up (OTP, WebAuthn, email link)
+### Using your own step-up (OTP, WebAuthn, email link)
 
-To keep the built-in dialog but route everything through your factor, use `onFallback`
-above. To replace the dialog entirely, set `mfa.enabled = false`, act on `REQUIRE_MFA` /
-`REQUIRE_STEPUP`, and **report the result back**:
+**Backend mode:** your server checks the factor and reports it -
+`guard.report_verified(None, user, login_id, passed)` in Flask, or `POST /v1/report` with the
+`sk` from any stack. `onFallback` opens your dialog; when it returns `true` the library asks
+the server whether the report arrived, and only then counts it. A page that merely returns
+`true`, or calls `reportStepUp({ passed: true })`, changes nothing.
+
+**Local mode:** to replace the dialog entirely, set `mfa.enabled = false`, act on
+`REQUIRE_MFA` / `REQUIRE_STEPUP`, and **report the result back**:
 
 ```js
 window.BehaviorGuardConfig = { userId: 'andi@example.com', mfa: { enabled: false } };
@@ -257,15 +300,15 @@ Useful methods:
 | Method | Purpose |
 | --- | --- |
 | `bg.init(opts)` | Start. Required before anything else. Calling it again (logout A, login B) starts B from zero. Concurrent calls are queued. |
-| `bg.assessNow()` | Verdict right now for a sensitive action. No side effects; `UNKNOWN` + `REQUIRE_STEPUP` when evidence is short. `verifiedRecently` says whether a step-up passed within `graceSec`. |
+| `bg.assessNow()` | Verdict right now for a sensitive action (a Promise in backend mode, also recorded on the server for `guard.check()`). No side effects; `UNKNOWN` + `REQUIRE_STEPUP` when evidence is short. `verifiedRecently` says whether a step-up passed within `graceSec`. |
 | `bg.stepUp({level, reason})` | Show the step-up dialog now (or run `onFallback`). Resolves `{verified, method}`. Use it before a transfer or a password change. |
-| `bg.reportStepUp({passed})` | Report your own step-up result. `passed:true` clears the verdict and lets the window train. |
+| `bg.reportStepUp({passed})` | Local mode: report your own step-up result (`passed:true` clears the verdict and lets the window train). Backend mode: only picks up what your server reported with `report_verified`. |
 | `bg.status()` | What to show in your UI: `phase` (`learning` / `protecting`), enrollment progress, last verdict, rhythm-template state, remaining grace. No vectors. |
 | `bg.enrollMfa()` / `bg.forgetMfa()` | Set up / remove the typing-rhythm template from your settings page. |
 | `bg.stop()` | Logout: bank the evidence, stop capturing, cancel the step-up grace. The profile stays. |
-| `bg.forget()` | Delete everything stored about this user on this device (right to erasure). |
+| `bg.forget()` | Right to erasure. Local mode: everything stored on this device. Backend mode: the account's profile and template on the server, after a fresh verification. |
 | `bg.on('risk', fn)` | Subscribe to verdicts; returns an unsubscribe function. |
-| `bg.setUserToken(t)` | Refresh the short-lived user token for the optional server. |
+| `bg.setUserToken(t)` | Backend mode: replace the user token (or let `tokenUrl` / `getToken` refresh it). |
 | `bg.endSession()` | Score whatever evidence is buffered now (at least 150 events). Returns the verdict or `null`. |
 | `bg.getVector()` | Current 34-float vector without closing the session. |
 | `bg.getState()` | Sessions, config, thresholds - for dashboards and debugging. |
@@ -276,11 +319,11 @@ Useful methods:
 
 ## 6. Configuration
 
-Every option, with its default. All are optional except `userId`.
+Every option, with its default. Backend mode needs `endpoint` plus `token`, `tokenUrl` or `getToken`; local mode needs `userId`.
 
 ```js
 window.BehaviorGuardConfig = {
-  userId: 'andi@example.com',       // REQUIRED
+  userId: 'andi@example.com',       // local mode only; in backend mode it comes from the token
   onRisk: evt => {},
 
   calibration: { k_low: 1.75 },     // THE operating-point knob: smaller = stricter
@@ -306,9 +349,11 @@ window.BehaviorGuardConfig = {
 
   panel: false,                     // mount the built-in live status panel
 
-  pk: null,                         // optional server: public key
-  endpoint: null,                   // optional server: base URL
-  userToken: null,                  // optional server: token minted by YOUR backend
+  endpoint: null,                   // backend mode: BehaviorGuard's API ('/bg', or the service URL)
+  pk: null,                         // backend mode: public key (optional when mounted in your app)
+  token: null,                      // backend mode: user token minted by YOUR backend after login
+  tokenUrl: null,                   // ...or a route that returns {token}; used again when it expires
+  getToken: null,                   // ...or an async function that returns one
 };
 ```
 
@@ -329,7 +374,7 @@ email in 20 seconds can finish before the first one. Gate every sensitive action
 email, password or phone, add a device or payee, payout - on an immediate verdict:
 
 ```js
-const v = BehaviorGuard.assessNow();       // or bg.assessNow() in the ES-module form
+const v = await BehaviorGuard.assessNow(); // a Promise in backend mode; await is harmless in local mode
 if (v.level === 'LOW') return proceed();
 const s = await BehaviorGuard.stepUp({ level: v.level === 'HIGH' ? 'HIGH' : 'MEDIUM', reason: 'change your email' });
 if (s.verified) proceed();                 // MEDIUM, HIGH, and UNKNOWN (too little evidence)
@@ -342,31 +387,43 @@ sensitive action as `UNKNOWN`** - never let the absence of the security script m
 `assessNow()` does not drain the buffer, train, move the sticky floor or count toward the
 block rule. During enrollment it returns `UNKNOWN` - there is nothing to compare against yet.
 
+In backend mode the client-side check above is only for the user experience. The decision
+that counts is `guard.check(user, login_id, money=True)` in the route that does the action:
+it allows after a fresh `LOW` assessment (the `assessNow()` call is what records it) or a
+verification in this login, and answers "verify first" otherwise. Answer 403, step up, and
+send the request again - `demo/shop-checkout/plug-behaviorguard.js` does exactly that.
+
 ---
 
-## 8. Optional server (cross-device baselines, operator dashboard)
-
-By default a baseline is per-device: a user on a new laptop starts enrollment again. The
-optional server stores the account baseline on **your** server so a new device adopts it,
-and logs verdicts for an operator dashboard.
+## 8. Backend mode details
 
 ```html
 <script src="/dist/behaviorguard.js"
-        data-user="andi@example.com"
-        data-pk="pk_your_tenant_key"
         data-endpoint="https://risk.yourcompany.com"
-        data-user-token="<minted by your backend after login>"
+        data-pk="pk_your_tenant_key"
+        data-token-url="/api/bg-token"
         defer></script>
 ```
 
-The public `pk` opens nothing by itself. Every account call needs the short-lived user
-token, `HMAC-SHA256(sk, pk|userId|exp)`, minted by your backend with the tenant secret `sk`
-after a real login; refresh it with `BehaviorGuard.setUserToken()`. Without a token the
-library stays fully on-device. Only 34-number feature vectors and verdicts are transmitted,
-and a device that already has its own enrollment never adopts a server baseline.
+When BehaviorGuard is mounted inside your own app, `data-endpoint="/bg"` and `data-pk` can be
+left out.
 
-Setup, the Node minting snippet and the dashboard: [server/README.md](../server/README.md).
-Residual risks: [THREAT-MODEL.md](../THREAT-MODEL.md) §4.7.
+- **The token** is `b64url(userId).b64url(sessionId).exp.hex(HMAC-SHA256(sk, pk|userId|sessionId|exp))`,
+  signed by your backend after a real login. `sessionId` is new on every login: verifications
+  belong to it, the profile belongs to the account. Pass it as `data-token`, or let the
+  library fetch it from `data-token-url` (or `getToken()` in the config); on a 401 it fetches a
+  fresh one and retries once.
+- **What is sent** per window: the 34 numbers, the event count, active seconds, the gap before
+  the window, whether keystrokes were bypassed, how many inputs were made by a script, the
+  integrity result, and the longest absence. Never events, never characters.
+- **What the server keeps** per account: the training pool, the verdict state, the rhythm
+  template (timings, not letters), and per login the verification time and the last
+  assessment.
+- **`forget()`** asks for a verification first, then erases the account's profile on the
+  server. `forgetMfa()` likewise removes the rhythm template.
+
+Setup, endpoints and the dashboard: [server/README.md](../server/README.md). Residual risks:
+[THREAT-MODEL.md](../THREAT-MODEL.md).
 
 ---
 
@@ -391,8 +448,8 @@ Do not call `init()` inside a component that remounts; call it once at app start
 useEffect(() => { import('/sdk/behaviorguard.js').then(m => m.default.init({ userId })); }, []);
 ```
 
-**Content Security Policy** - the library needs no `unsafe-eval` and makes no network
-requests unless you enable hybrid mode. If you use the built-in step-up prompt or
+**Content Security Policy** - the library needs no `unsafe-eval`. In backend mode it
+connects to your endpoint (`connect-src`); in local mode it makes no network requests. If you use the built-in step-up prompt or
 `data-panel`, they set inline styles, so allow `style-src 'unsafe-inline'` or disable both.
 
 ---
@@ -402,12 +459,13 @@ requests unless you enable hybrid mode. If you use the built-in step-up prompt o
 | Symptom | Cause and fix |
 | --- | --- |
 | Verdict is always `LOW` | Enrollment is not finished. Check `evt.reasons` for the count. |
-| No verdicts at all | `data-user` missing, or fewer than 150 events of evidence yet (`UNKNOWN`/`ABSTAIN`). |
+| No verdicts at all | No `data-endpoint` + token (backend) or `data-user` (local), or fewer than 150 events of evidence yet (`UNKNOWN`/`ABSTAIN`). |
+| Every verdict is `UNKNOWN` with `offline: true` | The backend refused or could not be reached: check the token route and the endpoint. |
 | `evt.eligible === false` | Window failed the quality gate (<100 events, <5 s, <6 non-zero features, or pasted/autofilled typing), was a replay, or was a graced `MEDIUM`. It is scored but never trains. |
 | Step-up never appears | Its template is enrolled during a `LOW` session first; also check `mfa.enabled`. |
-| Step-up rejects the real owner | Rhythm drifted (new keyboard, injury). Clear the template with `bg.clear()` and re-enroll. |
+| Step-up rejects the real owner | Rhythm drifted (new keyboard, injury). Remove it with `forgetMfa()` (asks for another verification first) and re-enroll. |
 | Storage empty in private mode | Expected. The library falls back to memory and does not crash. |
-| Owner asked again right after passing your OTP | You are not calling `reportStepUp({passed:true})`. |
+| Owner asked again right after passing your OTP | Backend: your server did not call `report_verified` for this login's session id. Local: you are not calling `reportStepUp({passed:true})`. |
 | Too many / too few step-ups | `init({calibration:{k_low}})`. Higher = more permissive; see the README table. |
 
 ---
@@ -415,10 +473,12 @@ requests unless you enable hybrid mode. If you use the built-in step-up prompt o
 ## 11. Verifying your install
 
 ```bash
-python core/conformance.py       # engine matches the spec        -> 319/319
-node   core/lifecycle.test.mjs   # lifecycle and integrator APIs  -> 49/49
-node   core/challenge.test.mjs   # step-up layer is fail-closed
-python -m http.server 8080       # then open /demo/monitor/
+python core/conformance.py           # engine matches the spec           -> 319/319
+node   core/lifecycle.test.mjs       # lifecycle and integrator APIs     -> 49/49
+node   core/challenge.test.mjs       # step-up layer is fail-closed
+python server/test_app.py            # server API, tokens, gate          -> 58/58
+python server/test_backend_sdk.py    # the library over HTTP vs a server -> 21/21
+python demo/arunika/server.py        # then open http://127.0.0.1:8300
 ```
 
 If `conformance.py` does not print `319 / 319`, something in `sdk/core/` has been modified
