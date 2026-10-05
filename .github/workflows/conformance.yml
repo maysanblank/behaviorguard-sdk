@@ -17,10 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Golden file in sync with bg_core.py
-        run: |
-          python core/gen_golden.py
-          git diff --exit-code core/golden.json \
-            || (echo '::error::golden.json is stale - run `python core/gen_golden.py` and commit'; exit 1)
+        run: python core/gen_golden.py --check
       - name: Python conformance
         run: python core/conformance.py
 

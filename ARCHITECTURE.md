@@ -300,6 +300,6 @@ enrollment block is always kept and only the progressive history is shortened.
 ## 8. Where to look next
 
 - [`core/SPEC.md`](core/SPEC.md) - the normative contract
-- [`core/DRIFT.md`](core/DRIFT.md) - measured gaps between engines, and the C-1..C-45 audit
+- [`core/DRIFT.md`](core/DRIFT.md) - measured gaps between engines, and the C-1..C-48 audit
 - [`ports/README.md`](ports/README.md) - how to add a sixth runtime
 - [`THREAT-MODEL.md`](THREAT-MODEL.md) - trust boundaries and known attacks

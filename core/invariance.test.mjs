@@ -180,8 +180,8 @@ const MIN = 60_000;
 const failed = results.filter(r => !r.ok);
 const summary = `\nINVARIANSI PANJANG SESI (C-24)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
-  `\n\n  lulus ${results.length - failed.length} / ${results.length}\n` +
-  `  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`;
+  `\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 if (typeof window !== 'undefined') {
   window.BG_INV_TEST = { total: results.length, failed: failed.length, results };

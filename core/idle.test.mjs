@@ -143,7 +143,7 @@ const failed = results.filter(r => !r.ok);
 const summary = `\nIDLE SEGMENTATION (C-23)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
   `\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
-  `  RESULT: ${failed.length ? 'FAILURES PRESENT' : 'MATCHES'}\n`;
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 if (typeof window !== 'undefined') {
   window.BG_IDLE_TEST = { total: results.length, failed: failed.length, results };

@@ -81,10 +81,10 @@ check('C-20 penyusup pola relatif beda -> tetap ditolak',
 
 // --- Laporan ---
 const failed = results.filter(r => !r.ok);
-const lines = results.map(r => `  ${r.ok ? 'OK  ' : 'GAGAL'} ${r.name}`).join('\n');
+const lines = results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}`).join('\n');
 const summary =
-  `\nUJI STEP-UP (C-1)\n${lines}\n\n  lulus ${results.length - failed.length} / ${results.length}\n` +
-  `  HASIL: ${failed.length ? 'ADA YANG GAGAL' : 'SESUAI'}\n`;
+  `\nUJI STEP-UP (C-1)\n${lines}\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 if (typeof window !== 'undefined') {
   window.BG_CHALLENGE_TEST = { total: results.length, failed: failed.length, results };

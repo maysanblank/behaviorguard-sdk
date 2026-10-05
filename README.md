@@ -7,13 +7,21 @@
 **Detect account takeover from how someone moves, types and navigates - entirely on the
 device, with a built-in step-up challenge. One script tag. No backend required.**
 
-[![conformance](https://img.shields.io/badge/conformance-319%2F319%20across%205%20runtimes-brightgreen)](core/golden.json)
+[![conformance](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml/badge.svg)](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#no-dependencies-anywhere)
 
 > Versi bahasa Indonesia: [README.id.md](README.id.md)
 
 ## Demo
+
+Owner vs attacker, same account, same password:
+
+<p align="center">
+  <img src="assets/detection.gif" alt="The owner passes the typing-rhythm check and the transfer goes through; a second person on the same account fails it and the session is ended" width="100%">
+</p>
+
+Plugging it into a plain checkout site:
 
 <p align="center">
   <img src="assets/demo.gif" alt="BehaviorGuard plugged into a plain checkout site" width="100%">
@@ -89,7 +97,7 @@ if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'change your ema
 `BehaviorGuard.status()` gives you what to show in your own UI (learning vs protecting,
 enrollment progress, last verdict), `stop()` is logout, `forget()` erases the user's data.
 
-For production, serve `dist/behaviorguard.min.js` (118 KB, **37 KB gzip**). It is the same
+For production, serve `dist/behaviorguard.min.js` (144 KB, **44 KB gzip**). It is the same
 bundle with whole-line comments and indentation removed, and `node tools/min_check.mjs`
 proves it returns the identical verdict sequence.
 
@@ -222,6 +230,25 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
   ship. The table above is the first measurement of the library users actually get
   ([core/DRIFT.md](core/DRIFT.md) C-27, C-29).
 
+### Data and reproducibility
+
+- **The data.** 16 volunteers, 653 sessions, recorded in task-based scenarios (browse, search,
+  fill in forms, check out). Those sessions are dense, with few long pauses; real use is not,
+  which is why idle handling exists ([docs/CONTEXT-AND-IDLE-PROPOSAL.md](docs/CONTEXT-AND-IDLE-PROPOSAL.md)).
+- **Not published.** Every volunteer agreed to their interaction data being used for this
+  research. It is behavioral biometric data of real people, so it stays out of this
+  repository: `tools/export_sessions.py` writes to the OS temp directory, never to the repo.
+- **Run the same measurement on your own data.** `tools/eval_sdk.mjs` reads one JSON file,
+  `{"subjects": {"<id>": [[event, ...], ...]}}`, sessions in recording order, events in the
+  capture format of [core/SPEC.md](core/SPEC.md) section 8 (what
+  `BehaviorGuard._instance.capture.peek()` returns). At least 11 sessions per subject (10 to
+  enroll) and two or more subjects:
+
+  ```bash
+  node tools/eval_sdk.mjs --data my_sessions.json --live
+  node tools/eval_sdk.mjs --data my_sessions.json --live --same-hour
+  ```
+
 ---
 
 ## One brain, five runtimes
@@ -251,7 +278,7 @@ detector gate and the integrity heuristics.
 
 No `npm install`, no `pip install`, no model download, no network call. Every port uses
 only its standard library - including a hand-written JSON reader in the compiled ones. The
-entire browser build is one ~160 KB classic script.
+entire browser build is one ~250 KB classic script (144 KB minified).
 
 ---
 
@@ -278,11 +305,11 @@ never stored, and the step that matters - enrolling the typing rhythm. Enroll it
 behavioral check is what users actually meet; skip it and every verification falls through to
 the one-time code, which is the recovery path, not the product.
 
-Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integrasi.js` (init,
+Everything BehaviorGuard-specific is in one file, `demo/arunika/assets/bg-integration.js` (init,
 verdict handling, a risk-based gate for transfers, and the code fallback). A presenter panel in
 the bottom-left corner shows the live phase, evidence, verdict gauge and plain-language
 reasons, and can simulate a lunch-break return, a replay of your own recorded behavior, and a
-bot. Security -> *Ulangi demo dari awal* wipes everything and returns you to the sign-up screen.
+bot. Security -> *Restart the demo* wipes everything and returns you to the sign-up screen.
 
 **The zero-code view:** <http://localhost:8080/demo/pemantau/>.
 
@@ -342,7 +369,10 @@ drop into a site.
 | --- | --- | --- |
 | [njanakiev/keystroke-biometrics](https://github.com/njanakiev/keystroke-biometrics) | Keras keystroke-rhythm impostor classifier | Research notebook, keystroke-only, offline training |
 | [belyabl9/Dynamics](https://github.com/belyabl9/Dynamics) | Keystroke dynamics as an auth factor | Keystroke-only, no drop-in browser runtime |
+| [JUSTRUST-swu/continuous-authentication-behavioral-biometrics](https://github.com/JUSTRUST-swu/continuous-authentication-behavioral-biometrics) | Keystroke and mouse continuous authentication, evaluated on the KMT dataset | Offline Python evaluation, not an embeddable runtime |
 | CyberSignature | ML behavioral-biometrics identity core | Server-side Python, not an embeddable library |
+| [TypingDNA](https://www.typingdna.com/) | Typing biometrics; a JS recorder collects patterns in the browser | Matching runs behind a commercial API; keystroke-only |
+| BioCatch | Behavioral biometrics for banks | Commercial, closed, server-side |
 | BehavioSec / ForgeRock | Enterprise continuous authentication | Commercial, closed, server-side; data leaves the device |
 
 The combination below is what we have not found elsewhere:
@@ -371,7 +401,7 @@ client-only check. For a real security boundary, pair it with a server-verified 
 
 We audited our own defenses adversarially and fixed more than forty logic flaws, each with
 its failure mode, its evidence and a regression test in [`core/DRIFT.md`](core/DRIFT.md)
-(C-1 to C-47). A few that defeated the product entirely:
+(C-1 to C-48). A few that defeated the product entirely:
 
 - **Script-generated events counted as behavior.** The capture layer never checked
   `isTrusted`, so anything running JavaScript in the page could `dispatchEvent` a humanlike
@@ -417,7 +447,7 @@ endpoint **and** a short-lived user token minted by your own backend.
 ## Project layout
 
 ```
-sdk/          the library (entry + 17 core modules)    <- single source of truth
+sdk/          the library (entry + 18 core modules)    <- single source of truth
 dist/         one-file bundle for a plain <script> tag
 loader/       one-line drop-in loader for the ES-module build
 core/         SPEC.md, golden.json, conformance runners, DRIFT.md, tests
@@ -425,6 +455,7 @@ ports/        Rust, Java and WASM implementations
 demo/         offline demos (clean site + external monitor, shops, accuracy lab)
 tools/        eval_sdk.mjs (measures the shipped library), research scripts, bundler
 server/       optional backend (baseline sync, verdict log) and operator dashboard
+extension/    experimental Chrome extension: the same engine on any site (copy of sdk/)
 docs/         documentation set - start at docs/README.md
 assets/       banner and screenshots used in this README
 ```
@@ -440,7 +471,7 @@ assets/       banner and screenshots used in this README
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, module map, lifecycle, design decisions |
 | [core/SPEC.md](core/SPEC.md) | Normative engine specification |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Trust boundaries, known bypasses, what this is not |
-| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-45 audit: every defect, its evidence and its test |
+| [core/DRIFT.md](core/DRIFT.md) | The C-1..C-48 audit: every defect, its evidence and its test |
 | [server/README.md](server/README.md) | Optional server: keys, user tokens, dashboard |
 | [ports/README.md](ports/README.md) | Porting guide and conformance status |
 | [BACKLOG.md](BACKLOG.md) | Roadmap - what is planned and explicitly out of scope |

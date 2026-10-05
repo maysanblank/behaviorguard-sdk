@@ -26,7 +26,7 @@ ex.dealloc(outPtr, outLen);
 ex.dealloc(inPtr, inBytes.length);
 
 console.log();
-console.log(`KESESUAIAN (di dalam WASM)  spec ${result.spec}`);
-console.log(`  lulus ${result.passed} / ${result.total}`);
-console.log(`  HASIL: ${result.verdict}`);
-process.exit(result.verdict === 'SESUAI' ? 0 : 1);
+console.log(`CONFORMANCE (inside WASM)  spec ${result.spec}`);
+console.log(`  passed ${result.passed} / ${result.total}`);
+console.log(`  RESULT: ${result.verdict}`);
+process.exit(result.verdict === 'PASS' ? 0 : 1);

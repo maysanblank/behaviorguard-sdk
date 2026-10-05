@@ -17,7 +17,7 @@ single compiled artifact that everything calls.
 | `run.mjs` | the same demo for Node (headless / CI) |
 
 **Verified:** the module runs the full contract inside WASM and returns
-`{"passed":255,"total":255,"verdict":"SESUAI"}` - identical to the native Rust, Python,
+`{"passed":319,"total":319,"verdict":"PASS"}` - identical to the native Rust, Python,
 Java and JS runs.
 
 > **Honest scope - what this artifact does *not* do yet.** The only public entry point is

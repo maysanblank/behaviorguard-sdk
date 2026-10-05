@@ -2,7 +2,7 @@
 name = "bg_core"
 version = "1.1.0"
 edition = "2021"
-description = "BehaviorGuard core - port acuan Rust + target WASM, nol dependensi, lulus core/golden.json"
+description = "BehaviorGuard core - Rust reference port + WASM target, zero dependencies, passes core/golden.json"
 
 [lib]
 name = "bg_core"

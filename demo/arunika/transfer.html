@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,58 +22,58 @@
 <body>
 <header id="top"></header>
 <main class="wrap">
-  <div class="page-hd"><div><h1>Transfer</h1><p>Kirim uang ke rekening Arunika atau bank lain.</p></div></div>
+  <div class="page-hd"><div><h1>Transfer</h1><p>Send money to an Arunika account or another bank.</p></div></div>
   <div class="grid g-2">
     <section class="card card-b" id="kartu">
-      <div class="steps" id="steps"><span class="on" data-s="1"><b>1</b>Isi data</span><i></i><span data-s="2"><b>2</b>Periksa</span><i></i><span data-s="3"><b>3</b>Selesai</span></div>
+      <div class="steps" id="steps"><span class="on" data-s="1"><b>1</b>Details</span><i></i><span data-s="2"><b>2</b>Review</span><i></i><span data-s="3"><b>3</b>Done</span></div>
 
       <form id="f1" novalidate>
-        <h3 style="margin-bottom:10px">Rekening tujuan</h3>
+        <h3 style="margin-bottom:10px">Recipient</h3>
         <div class="pick" id="pick"></div>
         <div id="baru" hidden>
           <div class="two">
             <div class="field"><label for="bank">Bank</label>
-              <select class="input" id="bank"><option>Arunika</option><option>Bank Lain</option></select></div>
-            <div class="field"><label for="rek">Nomor rekening</label>
-              <input class="input num" id="rek" inputmode="numeric" autocomplete="off" placeholder="10 digit"></div>
+              <select class="input" id="bank"><option>Arunika</option><option>Other bank</option></select></div>
+            <div class="field"><label for="rek">Account number</label>
+              <input class="input num" id="rek" inputmode="numeric" autocomplete="off" placeholder="10 digits"></div>
           </div>
           <div class="cek" id="cek"></div>
         </div>
-        <div class="field"><label for="nom">Nominal</label>
+        <div class="field"><label for="nom">Amount</label>
           <div class="prefix"><span>Rp</span><input class="input num" id="nom" inputmode="numeric" autocomplete="off" placeholder="0"></div>
           <div class="chips" style="margin-top:4px" id="cepat"></div>
         </div>
-        <div class="field"><label for="cat">Catatan <span class="muted" style="font-weight:500">(opsional)</span></label>
-          <input class="input" id="cat" maxlength="60" autocomplete="off" placeholder="mis. bayar arisan"></div>
+        <div class="field"><label for="cat">Note <span class="muted" style="font-weight:500">(optional)</span></label>
+          <input class="input" id="cat" maxlength="60" autocomplete="off" placeholder="e.g. rent share"></div>
         <div class="err" id="e1" role="alert"></div>
-        <button class="btn btn-pri" type="submit">Lanjut</button>
+        <button class="btn btn-pri" type="submit">Continue</button>
       </form>
 
       <div id="p2" hidden>
-        <h3 style="margin-bottom:12px">Periksa lagi sebelum mengirim</h3>
+        <h3 style="margin-bottom:12px">Check before you send</h3>
         <dl class="kv" id="ringkas"></dl>
         <div class="err" id="e2" role="alert" style="margin-top:12px"></div>
-        <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" id="kembali" type="button">Ubah</button><button class="btn btn-pri" id="kirim" type="button">Kirim sekarang</button></div>
+        <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" id="kembali" type="button">Edit</button><button class="btn btn-pri" id="kirim" type="button">Send now</button></div>
       </div>
 
       <div id="p3" hidden>
         <div class="receipt">
           <div class="okc"></div>
-          <h2>Transfer berhasil</h2>
+          <h2>Transfer sent</h2>
           <div class="big num" id="r-nom"></div>
           <p class="muted" id="r-ke"></p>
         </div>
         <dl class="kv" id="r-kv" style="margin-top:14px"></dl>
-        <div style="display:flex;gap:8px;margin-top:18px"><a class="btn" href="beranda.html">Ke beranda</a><button class="btn btn-pri" id="lagi" type="button">Transfer lagi</button></div>
+        <div style="display:flex;gap:8px;margin-top:18px"><a class="btn" href="home.html">Home</a><button class="btn btn-pri" id="lagi" type="button">Another transfer</button></div>
       </div>
     </section>
     <aside class="grid" style="align-content:start">
-      <section class="card card-b"><h3>Saldo tersedia</h3><div class="num" style="font-size:22px;font-weight:700;margin-top:4px" id="saldo"></div>
-        <p class="small muted" style="margin-top:6px">Batas transfer harian Rp 50.000.000.</p></section>
+      <section class="card card-b"><h3>Available balance</h3><div class="num" style="font-size:22px;font-weight:700;margin-top:4px" id="saldo"></div>
+        <p class="small muted" style="margin-top:6px">Daily transfer limit Rp 50,000,000.</p></section>
       <section class="card card-b" id="guard"></section>
       <section class="card card-b">
-        <h3>Kapan kami minta verifikasi?</h3>
-        <p class="small muted" style="margin-top:6px">Saat cara akunmu dipakai terlihat tidak biasa, dan untuk setiap transfer selama perangkat ini masih dikenali. Verifikasi utamanya memakai irama ketikmu; kode sekali pakai tersedia sebagai cara lain.</p>
+        <h3>When do we ask you to verify?</h3>
+        <p class="small muted" style="margin-top:6px">When your account is being used in an unusual way, and for every transfer while this device is still being learned. The main check is your typing rhythm; a one-time code is available as another way.</p>
       </section>
     </aside>
   </div>
@@ -81,9 +81,9 @@
 <footer id="foot"></footer>
 <script src="../../dist/behaviorguard.js"></script>
 <script src="assets/app.js"></script>
-<script src="assets/bg-integrasi.js"></script>
+<script src="assets/bg-integration.js"></script>
 <script src="assets/status.js"></script>
-<script src="assets/panel-demo.js"></script>
+<script src="assets/demo-panel.js"></script>
 <script>
 (function () {
   const A = Arunika, a = A.shell('transfer.html');
@@ -101,7 +101,7 @@
   $('pick').innerHTML = a.penerima.map((p, i) => `<label class="opt"><input type="radio" name="tuj" value="${i}" ${ke === p.rek || (!ke && i === 0) ? 'checked' : ''}>
       <div class="avatar" style="background:#e5e7eb;color:#374151">${A.esc(A.inisial(p.nama))}</div>
       <div class="main"><div class="t">${A.esc(p.nama)}</div><div class="s num">${A.esc(p.bank)} · ${A.esc(p.rek)}</div></div></label>`).join('') +
-    `<label class="opt"><input type="radio" name="tuj" value="baru"${a.penerima.length ? '' : ' checked'}><div class="main"><div class="t">Rekening baru</div><div class="s">Masukkan nomor rekening tujuan</div></div></label>`;
+    `<label class="opt"><input type="radio" name="tuj" value="baru"${a.penerima.length ? '' : ' checked'}><div class="main"><div class="t">New recipient</div><div class="s">Enter the account number</div></div></label>`;
   if (!a.penerima.length) { $('baru').hidden = false; }
   const tujuan = () => (document.querySelector('input[name=tuj]:checked') || {}).value;
   document.querySelectorAll('input[name=tuj]').forEach(r => r.addEventListener('change', () => { $('baru').hidden = tujuan() !== 'baru'; if (tujuan() === 'baru') $('rek').focus(); }));
@@ -111,8 +111,8 @@
     $('rek').value = $('rek').value.replace(/\D/g, '').slice(0, 10);
     namaBaru = null; $('cek').textContent = '';
     if ($('rek').value.length === 10) {
-      $('cek').innerHTML = '<span class="muted">Memeriksa rekening...</span>';
-      setTimeout(() => { if ($('rek').value.length !== 10) return; namaBaru = NAMA[+$('rek').value.slice(-1) % NAMA.length]; $('cek').innerHTML = `Nama pemilik: <b>${A.esc(namaBaru)}</b>`; }, 700);
+      $('cek').innerHTML = '<span class="muted">Checking the account</span>';
+      setTimeout(() => { if ($('rek').value.length !== 10) return; namaBaru = NAMA[+$('rek').value.slice(-1) % NAMA.length]; $('cek').innerHTML = `Account holder: <b>${A.esc(namaBaru)}</b>`; }, 700);
     }
   });
   A.nominalInput($('nom'));
@@ -125,37 +125,37 @@
     const t = tujuan(), nom = A.angka($('nom').value);
     let p;
     if (t === 'baru') {
-      if ($('rek').value.length !== 10) return ($('e1').textContent = 'Nomor rekening harus 10 digit.');
-      if (!namaBaru) return ($('e1').textContent = 'Tunggu nama pemilik rekening muncul.');
+      if ($('rek').value.length !== 10) return ($('e1').textContent = 'The account number must have 10 digits.');
+      if (!namaBaru) return ($('e1').textContent = 'Wait for the account holder name to appear.');
       p = { nama: namaBaru, bank: $('bank').value, rek: $('rek').value, baru: true };
     } else p = a.penerima[+t];
-    if (nom < 10000) return ($('e1').textContent = 'Nominal minimal Rp 10.000.');
-    if (nom > A.akun().saldo) return ($('e1').textContent = 'Saldo tidak cukup.');
-    if (nom > 50000000) return ($('e1').textContent = 'Melebihi batas transfer harian.');
+    if (nom < 10000) return ($('e1').textContent = 'The minimum amount is Rp 10,000.');
+    if (nom > A.akun().saldo) return ($('e1').textContent = 'Insufficient balance.');
+    if (nom > 50000000) return ($('e1').textContent = 'Over the daily transfer limit.');
     $('e1').textContent = '';
     const biaya = p.bank === 'Arunika' ? 0 : 2500;
     draf = { p, nom, biaya, cat: $('cat').value.trim() };
-    $('ringkas').innerHTML = `<dt>Penerima</dt><dd>${A.esc(p.nama)}</dd><dt>Rekening</dt><dd class="num">${A.esc(p.bank)} · ${A.esc(p.rek)}</dd>
-      <dt>Nominal</dt><dd class="num">${A.rupiah(nom)}</dd><dt>Biaya</dt><dd class="num">${biaya ? A.rupiah(biaya) : 'Gratis'}</dd>
-      ${draf.cat ? `<dt>Catatan</dt><dd>${A.esc(draf.cat)}</dd>` : ''}<dt>Total</dt><dd class="num">${A.rupiah(nom + biaya)}</dd>`;
+    $('ringkas').innerHTML = `<dt>Recipient</dt><dd>${A.esc(p.nama)}</dd><dt>Account</dt><dd class="num">${A.esc(p.bank)} · ${A.esc(p.rek)}</dd>
+      <dt>Amount</dt><dd class="num">${A.rupiah(nom)}</dd><dt>Fee</dt><dd class="num">${biaya ? A.rupiah(biaya) : 'Free'}</dd>
+      ${draf.cat ? `<dt>Note</dt><dd>${A.esc(draf.cat)}</dd>` : ''}<dt>Total</dt><dd class="num">${A.rupiah(nom + biaya)}</dd>`;
     step(2);
     $('kirim').focus();
   });
   $('kembali').onclick = () => step(1);
   $('kirim').onclick = async () => {
-    const b = $('kirim'); b.disabled = true; b.textContent = 'Memeriksa...'; $('e2').textContent = '';
-    const g = await Guard.gerbang('transfer', { nominal: draf.nom, label: 'transfer' });
-    b.disabled = false; b.textContent = 'Kirim sekarang';
-    if (!g.ok) { $('e2').textContent = 'Transfer dibatalkan karena verifikasi tidak diselesaikan. Tidak ada dana yang terkirim.'; return; }
+    const b = $('kirim'); b.disabled = true; b.textContent = 'Checking'; $('e2').textContent = '';
+    const g = await Guard.gate('transfer', { amount: draf.nom, label: 'send this transfer' });
+    b.disabled = false; b.textContent = 'Send now';
+    if (!g.ok) { $('e2').textContent = 'Transfer cancelled because verification was not completed. No money was sent.'; return; }
     const acc = A.akun();
-    if (draf.nom + draf.biaya > acc.saldo) { $('e2').textContent = 'Saldo tidak cukup.'; return; }
+    if (draf.nom + draf.biaya > acc.saldo) { $('e2').textContent = 'Insufficient balance.'; return; }
     const ref = 'ARN' + Date.now().toString().slice(-9);
-    A.catatTx(acc, { id: ref, t: Date.now(), ket: 'Transfer ke ' + draf.p.nama, kat: 'Transfer', jml: -(draf.nom + draf.biaya) });
+    A.catatTx(acc, { id: ref, t: Date.now(), ket: 'Transfer to ' + draf.p.nama, kat: 'Transfer', jml: -(draf.nom + draf.biaya) });
     if (draf.p.baru && !acc.penerima.some(x => x.rek === draf.p.rek)) { acc.penerima.push({ nama: draf.p.nama, bank: draf.p.bank, rek: draf.p.rek }); A.simpanAkun(acc); }
     $('r-nom').textContent = A.rupiah(draf.nom);
-    $('r-ke').textContent = 'ke ' + draf.p.nama + ' · ' + draf.p.bank;
-    $('r-kv').innerHTML = `<dt>Nomor referensi</dt><dd class="num">${ref}</dd><dt>Waktu</dt><dd>${A.tanggal(Date.now())}, ${A.jam(Date.now())}</dd>
-      <dt>Biaya</dt><dd class="num">${draf.biaya ? A.rupiah(draf.biaya) : 'Gratis'}</dd><dt>Sisa saldo</dt><dd class="num">${A.rupiah(acc.saldo)}</dd>`;
+    $('r-ke').textContent = 'to ' + draf.p.nama + ' · ' + draf.p.bank;
+    $('r-kv').innerHTML = `<dt>Reference</dt><dd class="num">${ref}</dd><dt>Time</dt><dd>${A.tanggal(Date.now())}, ${A.jam(Date.now())}</dd>
+      <dt>Fee</dt><dd class="num">${draf.biaya ? A.rupiah(draf.biaya) : 'Free'}</dd><dt>Balance left</dt><dd class="num">${A.rupiah(acc.saldo)}</dd>`;
     saldo(); step(3);
   };
   $('lagi').onclick = () => { $('f1').reset(); $('baru').hidden = true; step(1); };

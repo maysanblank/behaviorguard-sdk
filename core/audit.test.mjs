@@ -175,8 +175,8 @@ function session(startTs, { typed = true, paste = false, n = 200 } = {}) {
 const failed = results.filter(r => !r.ok);
 const summary = `\nAUDIT VALIDITAS PENGUKURAN (A1..A5, B1..B7)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
-  `\n\n  lulus ${results.length - failed.length} / ${results.length}\n` +
-  `  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`;
+  `\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 console.log(summary);
 if (failed.length) process.exit(1);

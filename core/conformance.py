@@ -47,7 +47,7 @@ def run(verbose=False):
                 passed += 1
             else:
                 failed += 1
-                problems.append('%s / vector[%d] (%s): dapat %r, harus %r'
+                problems.append('%s / vector[%d] (%s): got %r, want %r'
                                 % (fcase['id'], i, g['features'][i], got_vec[i], want))
 
     for case in g['cases']:
@@ -61,7 +61,7 @@ def run(verbose=False):
                 passed += 1
             else:
                 failed += 1
-                problems.append('%s / %s: dapat %r, harus %r' % (case['id'], label, got, want))
+                problems.append('%s / %s: got %r, want %r' % (case['id'], label, got, want))
             return ok
 
         check('thresholds.low', model['thresholds']['low'], exp['thresholds']['low'])
@@ -86,18 +86,18 @@ def run(verbose=False):
             if verbose:
                 print('  %s probe[%d] %-6s score=%+.9f %s'
                       % (case['id'], i, v['level'], v['score'],
-                         'OK' if (ok_s and ok_l) else 'BEDA'))
+                         'OK' if (ok_s and ok_l) else 'DIFF'))
 
     print()
-    print('KESESUAIAN  spec %s  toleransi %g' % (g['spec_version'], tol))
-    print('  lulus %d / %d' % (passed, passed + failed))
+    print('CONFORMANCE  spec %s  tolerance %g' % (g['spec_version'], tol))
+    print('  passed %d / %d' % (passed, passed + failed))
     if problems:
-        print('  GAGAL:')
+        print('  FAILED:')
         for p in problems[:25]:
             print('    - ' + p)
         if len(problems) > 25:
-            print('    ... %d lagi' % (len(problems) - 25))
-    print('  HASIL: %s' % ('SESUAI' if failed == 0 else 'TIDAK SESUAI'))
+            print('    ... %d more' % (len(problems) - 25))
+    print('  RESULT: %s' % ('PASS' if failed == 0 else 'FAIL'))
     return 0 if failed == 0 else 1
 
 

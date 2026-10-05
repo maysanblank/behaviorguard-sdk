@@ -309,6 +309,6 @@ const feedOne = async (g, evs) => { NOW = Math.max(NOW, evs[evs.length - 1].time
 const failed = results.filter(r => !r.ok);
 console.log(`\nSIKLUS HIDUP & API INTEGRATOR (C-31..C-33, C-42, C-43)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
-  `\n\n  lulus ${results.length - failed.length} / ${results.length}\n  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`);
+  `\n\n  passed ${results.length - failed.length} / ${results.length}\n  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`);
 if (failed.length) process.exit(1);
 export { results };

@@ -65,7 +65,7 @@ const close = (a, b, tol) =>
     const gotVec = featuresToVector(extractF4(fc.events, fc.session_start_ts));
     fc.expect_vector.forEach((want, i) => {
       if (close(gotVec[i], want, tol)) passed++;
-      else { failed++; problems.push(`${fc.id} / vector[${i}] (${g.features[i]}): dapat ${gotVec[i]}, harus ${want}`); }
+      else { failed++; problems.push(`${fc.id} / vector[${i}] (${g.features[i]}): got ${gotVec[i]}, want ${want}`); }
     });
   }
 
@@ -74,7 +74,7 @@ const close = (a, b, tol) =>
     const exp = cs.expect;
     const check = (label, got, want) => {
       const ok = typeof want === 'number' ? close(got, want, tol) : got === want;
-      if (ok) passed++; else { failed++; problems.push(`${cs.id} / ${label}: dapat ${got}, harus ${want}`); }
+      if (ok) passed++; else { failed++; problems.push(`${cs.id} / ${label}: got ${got}, want ${want}`); }
     };
 
     check('thresholds.low', model.thresholds.low, exp.thresholds.low);
@@ -100,15 +100,15 @@ const close = (a, b, tol) =>
   }
 
   log('');
-  log(`KESESUAIAN  spec ${g.spec_version}  toleransi ${tol}`);
-  log(`  lulus ${passed} / ${passed + failed}`);
+  log(`CONFORMANCE  spec ${g.spec_version}  tolerance ${tol}`);
+  log(`  passed ${passed} / ${passed + failed}`);
   if (problems.length) {
-    log('  GAGAL:');
+    log('  FAILED:');
     problems.slice(0, 25).forEach(p => log('    - ' + p));
     if (problems.length > 25) log(`    ... ${problems.length - 25} lagi`);
   }
-  const verdict = failed === 0 ? 'SESUAI' : 'TIDAK SESUAI';
-  log(`  HASIL: ${verdict}`);
+  const verdict = failed === 0 ? 'PASS' : 'FAIL';
+  log(`  RESULT: ${verdict}`);
 
   document.getElementById('out').textContent = lines.join('\n');
   document.getElementById('out').className = failed === 0 ? 'ok' : 'bad';

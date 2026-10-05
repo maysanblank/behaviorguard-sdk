@@ -76,7 +76,7 @@ const mem=new Map();
 // hanya DITERIMA di konteks yang memang tidak punya crypto, supaya di https tidak melemah.
 const hasSubtle=()=>{ try{ return !!(globalThis.crypto && globalThis.crypto.subtle); }catch{ return false; } };
 let warnedInsecure=false;
-function warnInsecure(){ if(warnedInsecure) return; warnedInsecure=true; try{ console.warn('[BG] konteks tidak aman (bukan https/localhost): profil disimpan tanpa tanda tangan anti-rusak. Pasang situs di https.'); }catch{} }
+function warnInsecure(){ if(warnedInsecure) return; warnedInsecure=true; try{ console.warn('[BG] insecure context (not https/localhost): the profile is stored without its tamper-evidence signature. Serve the site over https.'); }catch{} }
 // enkripsi ringan: XOR + base64 + HMAC (anti-tamper)
 async function hmacKey(k){ const hk=await crypto.subtle.importKey('raw', new TextEncoder().encode(k.slice(0,16).padEnd(16,'0')), {name:'HMAC',hash:'SHA-256'}, false, ['sign']); return hk; }
 async function seal(obj, keyHint='bg-key'){

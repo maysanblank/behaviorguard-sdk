@@ -114,7 +114,7 @@ check('D: jendela idle pertama belum menerbitkan apa-apa', r1 === null);
 check('D: jendela idle kedua menerbitkan ABSTAIN',
   r2 && r2.action === 'ABSTAIN' && r2.level === 'UNKNOWN');
 check('D: ABSTAIN tidak dibanjiri tiap jendela', r3 === null);
-check('D: ABSTAIN menjelaskan alasannya', r2.reasons[0].includes('ditinggal'), r2.reasons[0]);
+check('D: ABSTAIN menjelaskan alasannya', r2.reasons[0].includes('left open'), r2.reasons[0]);
 check('D: ABSTAIN tidak pernah dianggap sesi layak latih', r2.eligible === false);
 check('D: hanya satu callback untuk seluruh rentetan idle', seen.length === 1);
 
@@ -166,8 +166,8 @@ check('E: kompresi 0 = jalur segmentasi lama',
 const failed = results.filter(r => !r.ok);
 const summary = `\nIDLE - JALUR PENUH ORKESTRATOR (C-23 + C-28)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
-  `\n\n  lulus ${results.length - failed.length} / ${results.length}\n` +
-  `  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`;
+  `\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 console.log(summary);
 if (failed.length) process.exit(1);

@@ -55,7 +55,7 @@ let passed = 0, failed = 0;
 const problems = [];
 const check = (label, got, want) => {
   const ok = typeof want === 'number' ? close(got, want, tol) : got === want;
-  if (ok) passed++; else { failed++; problems.push(`${label}: dapat ${got}, harus ${want}`); }
+  if (ok) passed++; else { failed++; problems.push(`${label}: got ${got}, want ${want}`); }
 };
 
 // --- SPEC v1.1: ekstraksi fitur ---
@@ -90,11 +90,11 @@ for (const cs of g.cases) {
 }
 
 console.log();
-console.log(`KESESUAIAN  spec ${g.spec_version}  toleransi ${tol}`);
-console.log(`  lulus ${passed} / ${passed + failed}`);
+console.log(`CONFORMANCE  spec ${g.spec_version}  tolerance ${tol}`);
+console.log(`  passed ${passed} / ${passed + failed}`);
 if (problems.length) {
-  console.log('  GAGAL:');
+  console.log('  FAILED:');
   problems.slice(0, 25).forEach(p => console.log('    - ' + p));
 }
-console.log(`  HASIL: ${failed === 0 ? 'SESUAI' : 'TIDAK SESUAI'}`);
+console.log(`  RESULT: ${failed === 0 ? 'PASS' : 'FAIL'}`);
 process.exit(failed === 0 ? 0 : 1);

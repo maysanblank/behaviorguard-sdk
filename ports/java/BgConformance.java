@@ -611,11 +611,11 @@ public class BgConformance {
     static final List<String> problems=new ArrayList<>();
     static void chk(String id,String label,double got,double want,double tol){
         if(close(got,want,tol)) passed++;
-        else { failed++; problems.add(id+" / "+label+": dapat "+got+", harus "+want); }
+        else { failed++; problems.add(id+" / "+label+": got "+got+", want "+want); }
     }
     static void chkStr(String id,String label,String got,String want){
         if(got.equals(want)) passed++;
-        else { failed++; problems.add(id+" / "+label+": dapat "+got+", harus "+want); }
+        else { failed++; problems.add(id+" / "+label+": got "+got+", want "+want); }
     }
 
     public static void main(String[] args) throws Exception {
@@ -693,13 +693,13 @@ public class BgConformance {
         }
 
         System.out.println();
-        System.out.println("KESESUAIAN  spec "+g.get("spec_version")+"  toleransi "+tol);
-        System.out.println("  lulus "+passed+" / "+(passed+failed));
+        System.out.println("CONFORMANCE  spec "+g.get("spec_version")+"  tolerance "+tol);
+        System.out.println("  passed "+passed+" / "+(passed+failed));
         if(!problems.isEmpty()){
-            System.out.println("  GAGAL:");
+            System.out.println("  FAILED:");
             for(int i=0;i<Math.min(25,problems.size());i++) System.out.println("    - "+problems.get(i));
         }
-        System.out.println("  HASIL: "+(failed==0?"SESUAI":"TIDAK SESUAI"));
+        System.out.println("  RESULT: "+(failed==0?"PASS":"FAIL"));
         System.exit(failed==0?0:1);
     }
 }

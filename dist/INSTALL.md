@@ -78,7 +78,7 @@ const card = BehaviorGuard.mountEnrollment('#enrollment', { brand: 'My Shop' });
 // or as a dialog, from any button
 button.onclick = () => BehaviorGuard.openEnrollment();
 ```
-Options: `lang` (`id`/`en`), `theme` (`auto`/`light`/`dark`), `accent`, `brand`, `practice:false`
+Options: `lang` (`en`/`id`; default: the page `lang`, then the browser language, then English), `theme` (`auto`/`light`/`dark`), `accent`, `brand`, `practice:false`
 (no typing practice), `mfaSetup:false` (no typing-rhythm card), `sentences:[...]`, `texts:{...}`
 (override texts), `onComplete(status)` (once, when the main detector switches on). Colour/brand/theme
 are taken from `mfa` when not given. The floating `data-panel` now has a **see details** button that

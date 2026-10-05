@@ -233,6 +233,6 @@ check('F3 canEnroll false kalau sudah terdaftar', g2.status().mfa.canEnroll === 
 // ---- laporan
 let ok = 0;
 for (const r of results) { console.log(`  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note != null && r.note !== '' ? `  [${r.note}]` : ''}`); if (r.ok) ok++; }
-console.log(`\n  lulus ${ok} / ${results.length}`);
-console.log(`  HASIL: ${ok === results.length ? 'SESUAI' : 'ADA KEGAGALAN'}`);
+console.log(`\n  passed ${ok} / ${results.length}`);
+console.log(`  RESULT: ${ok === results.length ? 'PASS' : 'FAIL'}`);
 process.exit(ok === results.length ? 0 : 1);

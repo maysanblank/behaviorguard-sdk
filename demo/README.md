@@ -350,4 +350,4 @@ Three architectures, **exactly the same two lines**:
 | Pasar Loka | `pasar-spa/index.html` | Ctrl+End (349) |
 | Butik Rasa | `butik-react/index.html` | Ctrl+End (411) |
 
-Zero dependencies, zero build, zero backend, one file of ~89 KB.
+Zero dependencies, zero build, zero backend, one file of ~250 KB (44 KB gzip minified).

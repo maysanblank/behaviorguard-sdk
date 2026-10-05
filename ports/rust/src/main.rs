@@ -9,14 +9,14 @@ fn main() {
     let r = run_conformance(&text);
 
     println!();
-    println!("KESESUAIAN  spec {}", r.spec_version);
-    println!("  lulus {} / {}", r.passed, r.passed + r.failed);
+    println!("CONFORMANCE  spec {}", r.spec_version);
+    println!("  passed {} / {}", r.passed, r.passed + r.failed);
     if !r.problems.is_empty() {
-        println!("  GAGAL:");
+        println!("  FAILED:");
         for p in r.problems.iter().take(25) {
             println!("    - {}", p);
         }
     }
-    println!("  HASIL: {}", if r.failed == 0 { "SESUAI" } else { "TIDAK SESUAI" });
+    println!("  RESULT: {}", if r.failed == 0 { "PASS" } else { "FAIL" });
     std::process::exit(if r.failed == 0 { 0 } else { 1 });
 }

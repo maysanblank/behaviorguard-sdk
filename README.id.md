@@ -8,6 +8,14 @@ berpindah halaman - seluruhnya di perangkat pengguna, lengkap dengan verifikasi 
 
 ## Demo
 
+Pemilik vs penyusup, akun dan kata sandi yang sama:
+
+<p align="center">
+  <img src="assets/detection.gif" alt="Pemilik lolos cek ritme ketik dan transfernya jalan; orang lain di akun yang sama gagal dan sesinya dihentikan" width="100%">
+</p>
+
+Dicolok ke situs checkout polos:
+
 <p align="center">
   <img src="assets/demo.gif" alt="BehaviorGuard dicolok ke situs checkout polos" width="100%">
 </p>
@@ -72,7 +80,7 @@ if (v.level !== 'LOW' && !(await BehaviorGuard.stepUp({ reason: 'ganti email' })
 `BehaviorGuard.status()` memberi keadaan untuk UI Anda sendiri (masih mengenali / melindungi,
 progres pendaftaran, vonis terakhir), `stop()` untuk logout, `forget()` menghapus data pengguna.
 
-Untuk produksi, pakai `dist/behaviorguard.min.js` (118 KB, **37 KB gzip**): bundel yang sama
+Untuk produksi, pakai `dist/behaviorguard.min.js` (144 KB, **44 KB gzip**): bundel yang sama
 tanpa baris komentar dan indentasi; `node tools/min_check.mjs` membuktikan urutan vonisnya
 identik.
 
@@ -181,6 +189,25 @@ tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
   atas adalah pengukuran pertama atas pustaka yang benar-benar dipakai
   ([core/DRIFT.md](core/DRIFT.md) C-27, C-29).
 
+### Data dan reproduksi
+
+- **Datanya.** 16 relawan, 653 sesi, direkam dalam skenario berbasis tugas (menjelajah,
+  mencari, mengisi formulir, checkout). Sesinya padat dan jarang ada jeda panjang, beda dengan
+  pemakaian nyata; karena itu ada penanganan idle
+  ([docs/CONTEXT-AND-IDLE-PROPOSAL.md](docs/CONTEXT-AND-IDLE-PROPOSAL.md)).
+- **Tidak dipublikasikan.** Setiap relawan setuju data interaksinya dipakai untuk riset ini.
+  Data itu biometrik perilaku orang sungguhan, jadi tidak masuk repo ini:
+  `tools/export_sessions.py` menulis ke direktori sementara OS, tidak pernah ke repo.
+- **Ukur dengan data sendiri.** `tools/eval_sdk.mjs` membaca satu berkas JSON,
+  `{"subjects": {"<id>": [[event, ...], ...]}}`, sesi urut waktu rekam, event dengan format
+  capture di [core/SPEC.md](core/SPEC.md) bagian 8 (isi `BehaviorGuard._instance.capture.peek()`).
+  Minimal 11 sesi per subjek (10 untuk pendaftaran) dan dua subjek atau lebih:
+
+  ```bash
+  node tools/eval_sdk.mjs --data sesi_saya.json --live
+  node tools/eval_sdk.mjs --data sesi_saya.json --live --same-hour
+  ```
+
 ---
 
 ## Satu otak, lima bahasa
@@ -211,7 +238,7 @@ python -m http.server 8080
 
 **Situs realistis yang sudah memasang pustaka:** <http://localhost:8080/demo/arunika/> - bank
 digital fiktif (masuk, transfer, bayar tagihan, riwayat, keamanan). Semua kode khusus
-BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integrasi.js`. Panel presentasi di
+BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integration.js`. Panel presentasi di
 pojok kiri bawah menampilkan fase, bukti, vonis, dan alasannya dalam bahasa biasa, serta bisa
 mensimulasikan kembali-setelah-absen, rekam-ulang, dan bot.
 
@@ -271,7 +298,7 @@ pengguna berumur pendek yang dicetak backend Anda sendiri.
 | [dist/INSTALL.md](dist/INSTALL.md) | Panduan pasang satu tag (bahasa Inggris) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline, peta modul, keputusan desain |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Batas kepercayaan, serangan yang belum tertutup |
-| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-45: tiap cacat, buktinya, dan ujinya |
+| [core/DRIFT.md](core/DRIFT.md) | Audit C-1..C-48: tiap cacat, buktinya, dan ujinya |
 | [core/SPEC.id.md](core/SPEC.id.md) | Spesifikasi mesin |
 
 ---

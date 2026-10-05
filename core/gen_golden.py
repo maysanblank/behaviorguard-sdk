@@ -243,18 +243,55 @@ def build():
     return out
 
 
+def same(a, b, tol, path='$'):
+    """Structural compare; numbers within the golden relative tolerance.
+
+    A byte diff is not usable here: libm on Linux and on Windows can differ in the last
+    ulp (atan2, log, exp), so the printed digits change while the value is the same to
+    1e-16. The contract is 1e-9, so the staleness check uses it too.
+    """
+    if isinstance(a, bool) or isinstance(b, bool) or a is None or b is None:
+        return [] if a == b else [path]
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return [] if a == b or abs(a - b) <= tol * max(1.0, abs(a), abs(b)) else [path]
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a) != set(b):
+            return [path + ' (keys)']
+        return [p for k in a for p in same(a[k], b[k], tol, path + '.' + k)]
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return [path + ' (length)']
+        return [p for i, (x, y) in enumerate(zip(a, b)) for p in same(x, y, tol, '%s[%d]' % (path, i))]
+    return [] if a == b else [path]
+
+
+def check(dest):
+    """CI: is the committed golden.json what bg_core.py produces today?"""
+    with open(dest, encoding='utf-8') as f:
+        committed = json.load(f)
+    diffs = same(build(), committed, committed['tolerance'])
+    if diffs:
+        print('golden.json is stale (%d values differ), first: %s' % (len(diffs), ', '.join(diffs[:5])))
+        print('run `python core/gen_golden.py` and commit the result')
+        return 1
+    print('golden.json matches bg_core.py (tolerance %g)' % committed['tolerance'])
+    return 0
+
+
 def main():
-    out = build()
     dest = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'golden.json')
+    if '--check' in sys.argv:
+        sys.exit(check(dest))
+    out = build()
     with open(dest, 'w', encoding='utf-8') as f:
         json.dump(out, f, indent=1, ensure_ascii=False)
     n_probe = sum(len(c['probes']) for c in out['cases'])
-    print('OK -> core/golden.json (%d kasus fitur, %d kasus mesin, %d probe, %.1f KB)'
+    print('OK -> core/golden.json (%d feature cases, %d engine cases, %d probes, %.1f KB)'
           % (len(out['feature_cases']), len(out['cases']), n_probe,
              os.path.getsize(dest) / 1024))
     for fc in out['feature_cases']:
         nz = sum(1 for v in fc['expect_vector'] if v != 0)
-        print('  %-24s %d event -> vektor %d/%d nonzero'
+        print('  %-24s %d events -> vector %d/%d nonzero'
               % (fc['id'], len(fc['events']), nz, len(bg.F4)))
     for c in out['cases']:
         lv = [v['level'] for v in c['expect']['verdicts']]

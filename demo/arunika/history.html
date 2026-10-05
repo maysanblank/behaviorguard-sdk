@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Riwayat · Arunika</title>
+<title>History · Arunika</title>
 <link rel="stylesheet" href="assets/app.css">
 <style>
   .tools{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line-2)}
@@ -17,34 +17,34 @@
 <body>
 <header id="top"></header>
 <main class="wrap">
-  <div class="page-hd"><div><h1>Riwayat transaksi</h1><p>Mutasi rekening 60 hari terakhir.</p></div>
+  <div class="page-hd"><div><h1>Transaction history</h1><p>Account statement for the last 60 days.</p></div>
     <div class="grid g-3" style="gap:10px;min-width:min(100%,420px)">
-      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Masuk</div><div class="num" style="font-weight:700;color:var(--ok)" id="s-in"></div></div>
-      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Keluar</div><div class="num" style="font-weight:700" id="s-out"></div></div>
-      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Transaksi</div><div class="num" style="font-weight:700" id="s-n"></div></div>
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">In</div><div class="num" style="font-weight:700;color:var(--ok)" id="s-in"></div></div>
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Out</div><div class="num" style="font-weight:700" id="s-out"></div></div>
+      <div class="card card-b" style="padding:12px 14px"><div class="small muted">Transactions</div><div class="num" style="font-weight:700" id="s-n"></div></div>
     </div></div>
   <section class="card">
     <div class="tools">
-      <div class="chips" id="filter" role="group" aria-label="Jenis transaksi">
-        <button class="chip" aria-pressed="true" data-f="semua">Semua</button>
-        <button class="chip" aria-pressed="false" data-f="masuk">Masuk</button>
-        <button class="chip" aria-pressed="false" data-f="keluar">Keluar</button>
+      <div class="chips" id="filter" role="group" aria-label="Transaction type">
+        <button class="chip" aria-pressed="true" data-f="semua">All</button>
+        <button class="chip" aria-pressed="false" data-f="masuk">In</button>
+        <button class="chip" aria-pressed="false" data-f="keluar">Out</button>
       </div>
-      <input class="input" id="cari" type="search" placeholder="Cari transaksi" aria-label="Cari transaksi" autocomplete="off">
+      <input class="input" id="cari" type="search" placeholder="Search transactions" aria-label="Search transactions" autocomplete="off">
     </div>
-    <div class="scroll-x"><table class="tbl"><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th class="r">Nominal</th></tr></thead><tbody id="tb"></tbody></table></div>
-    <div class="empty" id="kosong" hidden>Tidak ada transaksi yang cocok.</div>
-    <div class="pager"><span id="info"></span><span style="display:flex;gap:6px"><button class="btn btn-sm" id="prev">Sebelumnya</button><button class="btn btn-sm" id="next">Berikutnya</button></span></div>
+    <div class="scroll-x"><table class="tbl"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="r">Amount</th></tr></thead><tbody id="tb"></tbody></table></div>
+    <div class="empty" id="kosong" hidden>No matching transactions.</div>
+    <div class="pager"><span id="info"></span><span style="display:flex;gap:6px"><button class="btn btn-sm" id="prev">Previous</button><button class="btn btn-sm" id="next">Next</button></span></div>
   </section>
 </main>
 <footer id="foot"></footer>
 <script src="../../dist/behaviorguard.js"></script>
 <script src="assets/app.js"></script>
-<script src="assets/bg-integrasi.js"></script>
-<script src="assets/panel-demo.js"></script>
+<script src="assets/bg-integration.js"></script>
+<script src="assets/demo-panel.js"></script>
 <script>
 (function () {
-  const A = Arunika, a = A.shell('riwayat.html');
+  const A = Arunika, a = A.shell('history.html');
   if (!a) return;
   const $ = id => document.getElementById(id);
   const PER = 10;
@@ -63,7 +63,7 @@
       <td><span class="cat"><span class="ico">${A.I[k.ic]}</span>${A.esc(t.kat)}</span></td>
       <td class="r"><span class="amt ${t.jml > 0 ? 'in' : ''}">${t.jml > 0 ? '+' : '−'}${A.rupiah(Math.abs(t.jml))}</span></td></tr>`; }).join('');
     $('kosong').hidden = rows.length > 0;
-    $('info').textContent = rows.length ? `${hal * PER + 1}-${hal * PER + sl.length} dari ${rows.length}` : '';
+    $('info').textContent = rows.length ? `${hal * PER + 1}-${hal * PER + sl.length} of ${rows.length}` : '';
     $('prev').disabled = hal === 0; $('next').disabled = hal >= maks;
   }
   $('filter').addEventListener('click', e => {

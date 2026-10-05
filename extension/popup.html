@@ -7,25 +7,25 @@ header{padding:12px 14px;display:flex;align-items:center;gap:8px;border-bottom:1
 .small{color:#94a3b8;font-size:11px}
 </style></head><body>
 <header><b>BehaviorGuard</b><span class="small" id="origin" style="margin-left:auto">-</span></header>
-<div class="card"><div class="small">Status di situs ini</div><div id="risk" class="badge LOW" style="display:inline-block;margin-top:6px">-</div></div>
-<div class="card"><div class="small">Pendaftaran (per situs)</div>
+<div class="card"><div class="small">Status on this site</div><div id="risk" class="badge LOW" style="display:inline-block;margin-top:6px">-</div></div>
+<div class="card"><div class="small">Enrollment (per site)</div>
   <div style="height:7px;background:#2a2a3a;border-radius:99px;overflow:hidden;margin:6px 0"><div id="bar" style="height:100%;width:0;background:#4ade80"></div></div>
   <div id="enroll" class="small">-</div><div id="buf" class="small"></div></div>
-<div class="card small">Semua penilaian terjadi di perangkat ini. Karakter yang Anda ketik tidak disimpan
-(diganti token per halaman). Penyimpanan lokal di-HMAC untuk mendeteksi perubahan, <b>tidak dienkripsi</b>.</div>
+<div class="card small">Every assessment happens on this device. The characters you type are not stored
+(replaced by per-page tokens). Local storage is HMAC-signed to detect tampering, <b>not encrypted</b>.</div>
 <script type="module">
-// C-41: tombol "Latih" dan "Proteksi" dulu tidak terhubung ke apa pun, dan label
-// "encrypted" tidak benar. Popup kini hanya menampilkan state yang sungguh ada.
+// C-41: the "Train" and "Protect" buttons used to be wired to nothing, and the "encrypted"
+// label was not true. The popup now only shows state that really exists.
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 let origin = '';
 try { origin = new URL(tab.url).origin; } catch {}
 document.getElementById('origin').textContent = origin || '-';
 if (origin.startsWith('http')) chrome.runtime.sendMessage({ type: 'GET_STATE', origin }, s => {
   if (!s || !s.ok) return;
-  const r = document.getElementById('risk'); r.textContent = s.enrolled < s.baseline ? 'MENDAFTAR' : s.lastRisk; r.className = 'badge ' + (s.lastRisk || 'LOW');
-  document.getElementById('enroll').textContent = `${s.enrolled}/${s.baseline} penilaian terkumpul`;
+  const r = document.getElementById('risk'); r.textContent = s.enrolled < s.baseline ? 'ENROLLING' : s.lastRisk; r.className = 'badge ' + (s.lastRisk || 'LOW');
+  document.getElementById('enroll').textContent = `${s.enrolled}/${s.baseline} assessments collected`;
   document.getElementById('bar').style.width = Math.min(100, s.enrolled / s.baseline * 100) + '%';
-  document.getElementById('buf').textContent = `bukti berjalan: ${s.buffered}/${s.need} event`;
+  document.getElementById('buf').textContent = `evidence so far: ${s.buffered}/${s.need} events`;
 });
 </script>
 </body></html>

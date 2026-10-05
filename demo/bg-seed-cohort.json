@@ -1,4 +1,0 @@
-{
-  "note": "cohort guard eval-only: seed dari 60 vektor impostor FOLD-TUNE, load via storage.set('bg:cohort', JSON.parse(await fetch('bg-seed-cohort.json').then(r=>r.json())))",
-  "vectors": []
-}

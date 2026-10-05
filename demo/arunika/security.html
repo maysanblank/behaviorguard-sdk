@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<header id="top"></header>
+<main class="wrap">
+  <div class="page-hd"><div><h1>Security</h1><p>How Arunika makes sure this account is used by you.</p></div></div>
+  <div class="grid g-2">
+    <div class="grid" style="align-content:start">
+      <section class="card">
+        <div class="card-h"><div><h2>Behavior protection</h2><p>Recognised from how you type, move the mouse and move between pages.</p></div></div>
+        <div class="card-b" id="guard"></div>
+        <div class="card-b" style="border-top:1px solid var(--line-2);padding-top:14px" id="detail"></div>
+      </section>
+
+      <section class="card" id="irama">
+        <div class="card-h"><div><h2>Verification methods</h2><p>Used when activity looks unusual or before a sensitive action.</p></div></div>
+        <div class="sec-item"><div class="ico"></div>
+          <div class="main"><div class="t">Typing rhythm <span class="badge b-plain">Main method</span> <span id="b-irama"></span></div>
+            <div class="d" id="d-irama"></div></div>
+          <div id="a-irama"></div></div>
+        <div class="sec-item"><div class="ico" id="ic-sms"></div>
+          <div class="main"><div class="t">One-time code <span class="badge b-plain">Fallback</span> <span class="badge b-ok">On</span></div>
+            <div class="d" id="d-sms"></div></div></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><div><h2>Change password</h2><p>Security changes always ask you to verify.</p></div></div>
+        <form class="card-b" id="fs" novalidate>
+          <div class="field"><label for="s0">Current password</label><input class="input" id="s0" type="password" autocomplete="current-password"></div>
+          <div class="field"><label for="s1">New password</label><input class="input" id="s1" type="password" autocomplete="new-password"><span class="hint">At least 8 characters, letters and numbers.</span></div>
+          <div class="field"><label for="s2">Repeat new password</label><input class="input" id="s2" type="password" autocomplete="new-password"></div>
+          <div class="err" id="es" role="alert"></div>
+          <button class="btn btn-pri" type="submit">Save password</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="grid" style="align-content:start">
+      <section class="card">
+        <div class="card-h"><div><h2>Security activity</h2><p>Assessments and verifications on this device.</p></div></div>
+        <ul class="list" id="log"></ul>
+      </section>
+      <section class="card">
+        <div class="card-h"><div><h2>Data on this device</h2></div></div>
+        <div class="card-b">
+          <p class="small muted">The behavior profile and typing rhythm are stored only in this browser and never sent to an Arunika server. Deleting them makes Arunika learn you from the start.</p>
+          <button class="btn btn-danger" id="hapus" style="margin-top:12px"></button>
+          <hr style="border:0;border-top:1px solid var(--line-2);margin:16px 0">
+          <p class="small muted">To restart the demo at the sign-up screen: delete the demo accounts, session and behavior profile in one go.</p>
+          <button class="btn" id="ulangi" style="margin-top:12px">Restart the demo</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script src="../../dist/behaviorguard.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/bg-integration.js"></script>
+<script src="assets/status.js"></script>
+<script src="assets/demo-panel.js"></script>
+<script>
+(function () {
+  const A = Arunika, a = A.shell('security.html');
+  if (!a) return;
+  const $ = id => document.getElementById(id);
+  document.querySelector('#irama .sec-item .ico').innerHTML = A.I.keys;
+  $('ic-sms').innerHTML = A.I.msg;
+  $('hapus').innerHTML = A.I.trash + 'Delete behavior profile';
+  $('d-sms').textContent = 'Sent to ' + a.hp.replace(/(\+62 \d{3})-(\d{4})-(\d{2})(\d{2})/, '$1-••••-••$4')
+    + '. Only used when typing rhythm is not available: not set up, a different keyboard, or you chose another method.';
+
+  function irama(st) {
+    const en = st && st.mfa.enrolled;
+    $('b-irama').innerHTML = en ? '<span class="badge b-ok">On</span>' : '<span class="badge">Not set up</span>';
+    $('d-irama').textContent = en
+      ? 'When asked, type a short phrase in your usual rhythm. The rhythm is matched, not the letters - so the phrase can be seen by others.' + (st.mfa.mode === 'soft' ? ' Set up with a touch-screen keyboard.' : '')
+      : 'Type a short phrase 3 times to teach Arunika your typing rhythm. After that, verifying takes one phrase.';
+    $('a-irama').innerHTML = en ? '<button class="btn btn-sm" id="x-irama">Remove</button>' : '<button class="btn btn-sm btn-pri" id="x-irama">Set up</button>';
+    $('x-irama').onclick = async () => {
+      if (en) {
+        const r = await BehaviorGuard.forgetMfa();
+        if (r.removed) { Guard.record({ lv: 'info', t1: 'Typing-rhythm verification removed', t2: 'The next verification uses a one-time code.' }); A.toast('Typing-rhythm verification removed.'); }
+        else A.toast('Not removed: ' + r.reason);
+      } else {
+        const r = await BehaviorGuard.enrollMfa();
+        if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Stored on this device.' }); A.toast('Typing-rhythm verification is ready.'); }
+        else if (!/cancelled|timed out/.test(r.reason || '')) A.toast(r.reason === 'session is under suspicion - verify first (stepUp)' ? 'Finish verifying first, then try again.' : 'Not done yet: ' + (r.reason || 'try again'));
+      }
+      render();
+    };
+  }
+  function detail(st) {
+    if (!st || !st.ready) { $('detail').innerHTML = ''; return; }
+    const e = st.lastVerdict;
+    const alasan = e && e.level !== 'LOW' ? Guard.explain(BehaviorGuard._instance._lastEvt) : [];
+    $('detail').innerHTML = `<dl class="kv">
+      <dt>This device's profile</dt><dd>${st.phase === 'learning' ? `learning ${st.enrollment.done}/${st.enrollment.need}` : 'ready'}</dd>
+      <dt>Latest assessment</dt><dd>${e && e.at ? Guard.levelLabel(e.level) + ' · ' + A.jam(e.at) : '-'}</dd>
+      <dt>Verification grace</dt><dd>${st.mfa.graceLeftSec > 0 ? Math.ceil(st.mfa.graceLeftSec / 60) + ' min left' : '-'}</dd>
+    </dl>${alasan.length ? `<p class="small muted" style="margin-top:10px">Triggers: ${A.esc(alasan.join('; '))}.</p>` : ''}`;
+  }
+  function log() {
+    const L = Guard.log();
+    const C = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)', info: 'var(--info)' };
+    $('log').innerHTML = L.slice(0, 12).map(x => `<li class="row" style="align-items:flex-start"><span class="log-lv" style="background:${C[x.lv] || 'var(--ink-3)'}"></span>
+      <div class="main"><div class="t" style="white-space:normal">${A.esc(x.t1)}</div><div class="s">${A.esc(x.t2 || '')}</div><div class="s">${A.tanggal(x.t)}, ${A.jam(x.t)}</div></div></li>`).join('')
+      || '<li class="empty">No security activity recorded yet.</li>';
+  }
+  function render() {
+    if (!window.BehaviorGuard) { $('irama').querySelector('.sec-item').hidden = true; $('hapus').disabled = true; log(); return; }
+    const st = Guard.status(); irama(st); detail(st); log();
+  }
+  Guard.onChange(render);
+  render();
+
+  $('fs').addEventListener('submit', async e => {
+    e.preventDefault();
+    const s0 = $('s0').value, s1 = $('s1').value, s2 = $('s2').value;
+    if (s0.length < 6) return ($('es').textContent = 'Enter your current password.');
+    if (s1.length < 8 || !/\d/.test(s1) || !/[a-z]/i.test(s1)) return ($('es').textContent = 'The new password needs at least 8 characters, letters and numbers.');
+    if (s1 !== s2) return ($('es').textContent = 'The new passwords do not match.');
+    $('es').textContent = '';
+    const g = await Guard.gate('ganti-sandi', { label: 'change your password' });
+    if (!g.ok) return ($('es').textContent = 'Password not changed because verification was not completed.');
+    $('fs').reset();
+    Guard.record({ lv: 'info', t1: 'Password changed', t2: 'From this device.' });
+    A.toast('Password changed.');
+    render();
+  });
+  $('hapus').onclick = async () => {
+    const ok = await A.konfirmasi({ judul: 'Delete the behavior profile?', isi: 'Arunika will learn how you use your account from the start on this device, and typing-rhythm verification is removed too. Transaction history is not affected.', ya: 'Delete', bahaya: true });
+    if (!ok) return;
+    await BehaviorGuard.forget();
+    Guard.record({ lv: 'info', t1: 'Behavior profile deleted', t2: 'Learning starts over.' });
+    A.toast('Behavior profile deleted.');
+    render();
+  };
+  $('ulangi').onclick = async () => {
+    const ok = await A.konfirmasi({ judul: 'Restart the demo?', isi: 'Every demo account, history and behavior profile in this browser is deleted. You go back to the sign-up screen.', ya: 'Delete everything', bahaya: true });
+    if (!ok) return;
+    await A.resetDemo();
+    location.href = 'signup.html';
+  };
+  StatusGuard.mount($('guard'));
+  if (location.hash === '#irama') setTimeout(() => $('irama').scrollIntoView({ behavior: 'smooth' }), 200);
+})();
+</script>
+</body>
+</html>

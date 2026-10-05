@@ -1108,7 +1108,7 @@ fn chk(
         *passed += 1;
     } else {
         *failed += 1;
-        problems.push(format!("{} / {}: dapat {}, harus {}", id, label, got, want));
+        problems.push(format!("{} / {}: got {}, want {}", id, label, got, want));
     }
 }
 
@@ -1125,7 +1125,7 @@ fn chk_str(
         *passed += 1;
     } else {
         *failed += 1;
-        problems.push(format!("{} / {}: dapat {}, harus {}", id, label, got, want));
+        problems.push(format!("{} / {}: got {}, want {}", id, label, got, want));
     }
 }
 
@@ -1163,7 +1163,7 @@ pub fn run_conformance(text: &str) -> Report {
                 } else {
                     failed += 1;
                     problems.push(format!(
-                        "{} / vector[{}] ({}): dapat {}, harus {}",
+                        "{} / vector[{}] ({}): got {}, want {}",
                         id, i, features[i], got[i], want[i]
                     ));
                 }
@@ -1268,7 +1268,7 @@ pub unsafe extern "C" fn run_golden(ptr: *const u8, len: usize) -> u64 {
     let slice = std::slice::from_raw_parts(ptr, len);
     let text = String::from_utf8_lossy(slice);
     let r = run_conformance(&text);
-    let verdict = if r.failed == 0 { "SESUAI" } else { "TIDAK SESUAI" };
+    let verdict = if r.failed == 0 { "PASS" } else { "FAIL" };
     let out = format!(
         "{{\"passed\":{},\"total\":{},\"spec\":\"{}\",\"verdict\":\"{}\"}}",
         r.passed,

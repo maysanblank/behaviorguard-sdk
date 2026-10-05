@@ -24,7 +24,7 @@ import { checkIntegrity } from './core/integrity.js';
 import { getFingerprint, FP_VERSION } from './core/fingerprint.js';
 import { checkCollect } from './core/ratelimit.js';
 import { buildTemplate, verify as verifyChallenge } from './core/challenge.js';
-import { runMfaChallenge } from './core/mfa.js';
+import { runMfaChallenge, pickLang } from './core/mfa.js';
 import { mountEnrollment, openEnrollment } from './core/enroll_ui.js';
 
 const VERSION = '2.2.0';
@@ -76,7 +76,7 @@ class BehaviorGuard {
     this.pk=pk||null; this.endpoint=endpoint?endpoint.replace(/\/+$/,''):null; this.userToken=userToken||null;
     this.cloud=!!(this.pk&&this.endpoint&&this.userToken);
     if(this.pk && this.endpoint && !this.userToken){
-      try{ console.warn('[BG] mode cloud butuh userToken dari server Anda (lihat server/README.md) - berjalan on-device saja'); }catch{}
+      try{ console.warn('[BG] cloud mode needs a userToken minted by your server (see server/README.md) - running on-device only'); }catch{}
     }
     if(weights) this.cfg.weights=normalizeWeights(weights);
     if(baseline) this.cfg.baseline=baseline;
@@ -91,7 +91,7 @@ class BehaviorGuard {
     // C-45: frasa < 8 karakter tidak pernah bisa jadi template (challenge.js MIN_DWELL_POINTS)
     // -> pendaftaran selalu gagal dan MFA bawaan tak pernah tersedia, tanpa pesan apa pun.
     if(this.cfg.mfa && this.cfg.mfa.enabled && String(this.cfg.mfa.phrase||'').replace(/\s+/g,' ').trim().length < 8){
-      try{ console.warn('[BG] mfa.phrase terlalu pendek (minimal 8 karakter) - verifikasi irama ketik tidak akan bisa didaftarkan'); }catch{}
+      try{ console.warn('[BG] mfa.phrase is too short (at least 8 characters) - typing-rhythm verification cannot be enrolled'); }catch{}
     }
     // C-46: KUNCI MATI. `lockAfterFailures` mengunci jalur irama sesudah N dialog gagal
     // beruntun, dan satu-satunya yang membuka kunci itu adalah verifikasi yang BERHASIL.
@@ -101,9 +101,9 @@ class BehaviorGuard {
     // produk, jadi diperingatkan di awal, bukan ditemukan pengguna saat sudah terkunci.
     if(this.cfg.mfa && this.cfg.mfa.enabled && (this.cfg.mfa.lockAfterFailures ?? 3) > 0
        && typeof this.cfg.mfa.onFallback!=='function'){
-      try{ console.warn('[BG] mfa.onFallback kosong sedangkan mfa.lockAfterFailures aktif - sesudah '
-        + (this.cfg.mfa.lockAfterFailures ?? 3) + ' kegagalan beruntun, pemilik tidak punya jalan verifikasi lain. '
-        + 'Isi mfa.onFallback (OTP/WebAuthn yang dicek server), atau set mfa.lockAfterFailures: 0.'); }catch{}
+      try{ console.warn('[BG] mfa.onFallback is not set while mfa.lockAfterFailures is on - after '
+        + (this.cfg.mfa.lockAfterFailures ?? 3) + ' failures in a row the owner has no other way to verify. '
+        + 'Set mfa.onFallback (a server-checked OTP/WebAuthn), or set mfa.lockAfterFailures: 0.'); }catch{}
     }
     // C-23: sama pola dengan `mfa` - digabung, bukan ditimpa, supaya konfigurasi
     // parsial ({idleGapSec:60}) tetap mewarisi sisa default.
@@ -128,7 +128,7 @@ class BehaviorGuard {
     // vektor baru, dan menambal kolom kosong dengan nol akan meracuni model. Profil lama
     // dibuang sekali; pengguna mendaftar ulang (10 langkah) dengan fitur yang baru.
     if(saved && Array.isArray(saved.sessions) && saved.sessions.some(s=> s && Array.isArray(s.vector) && s.vector.length!==this.cfg.features.length)){
-      console.warn('[BG] profil tersimpan memakai jumlah fitur lama - pendaftaran diulang');
+      console.warn('[BG] the stored profile uses an older feature count - enrollment restarts');
       saved.sessions=[]; saved.stats=null;
     }
     if(saved){ this.sessions=saved.sessions||[]; this.stats=saved.stats||null; this.lastRisk=saved.lastRisk||'LOW'; this._highRun=saved.highRun||0; this.challengeTemplate=saved.challengeTemplate||null;
@@ -146,7 +146,7 @@ class BehaviorGuard {
       // cek ganti device. C-36: sidik versi lama (dengan nomor versi UA) tidak dibandingkan
       // - kalau dibandingkan, SEMUA pengguna lama dicurigai sekali sesudah pembaruan ini.
       if(saved.fingerprint && saved.fpv===FP_VERSION && saved.fingerprint!==this.fingerprint){
-        console.warn('[BG] device fingerprint berubah - sesi dianggap berisiko');
+        console.warn('[BG] device fingerprint changed - session treated as risky');
         this.lastRisk='MEDIUM'; this._mfaPassedAt=null;
       }
     }
@@ -223,7 +223,7 @@ class BehaviorGuard {
   _emit(evt){
     if(!evt) return;
     this._lastEvt={...evt, at: evt.at || Date.now()};
-    try{ this.onRisk(evt); }catch(e){ try{ console.error('[BG] onRisk melempar', e); }catch{} }
+    try{ this.onRisk(evt); }catch(e){ try{ console.error('[BG] onRisk threw', e); }catch{} }
     try{ if(typeof window!=='undefined' && typeof CustomEvent==='function') window.dispatchEvent(new CustomEvent('behaviorguard:risk', {detail: evt})); }catch{}
   }
   // C-23: satu-satunya sumber kebenaran "kapan pengguna terakhir memberi input".
@@ -576,7 +576,7 @@ class BehaviorGuard {
       await this._persist();
       let doneEnroll=false;
       if(this.sessions.filter(s=>s.eligible!==false).length >= this.cfg.baseline){ this._rebuildModel(); doneEnroll=true; }
-      const enrollEvt={...M, level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'sesi tidak layak - tidak masuk kolam'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
+      const enrollEvt={...M, level:'LOW', score:0, reasons:[eligible?'enrollment '+this.sessions.filter(s=>s.eligible!==false).length+'/'+this.cfg.baseline:'ineligible window - not added to the training pool'], topFeatures:[], features: feat, thresholds: {...this.cfg.thresholds}, convergence: 'enrollment', eligible};
       this._cloudLog(enrollEvt);
       if(doneEnroll) this._cloudPush(); // enrollment selesai -> unggah baseline akun ke VPS
       // C-19: jalur pendaftaran DULU tidak pernah memanggil onRisk, jadi selama 10
@@ -586,8 +586,10 @@ class BehaviorGuard {
       // baru mendaftar dan ingin tahu sistemnya sedang belajar, bukan menggantung.
       // Hanya `endSession()` yang mengembalikan nilainya, sehingga integrasi berbasis
       // event (cara yang didokumentasikan) tidak melihat apa pun.
-      enrollEvt.enrollment = { selesai: this.sessions.filter(s=>s.eligible!==false).length,
-                               perlu: this.cfg.baseline, siap: doneEnroll };
+      const doneN=this.sessions.filter(s=>s.eligible!==false).length;
+      // done/need/ready; selesai/perlu/siap are the original names, kept for existing integrations
+      enrollEvt.enrollment = { done: doneN, need: this.cfg.baseline, ready: doneEnroll,
+                               selesai: doneN, perlu: this.cfg.baseline, siap: doneEnroll };
       enrollEvt.action = 'ALLOW_SESSION';
       this._emit(enrollEvt);
       return enrollEvt;
@@ -611,7 +613,7 @@ class BehaviorGuard {
     // Skor rusak karena itu gagal-TERBUKA. Perlakukan sebagai anomali, bukan aman.
     if(!Number.isFinite(score)){
       const badEvt={...M, level:'HIGH', score:null, action:'REQUIRE_STEPUP', blocked:false,
-        reasons:['skor tidak finit - model/statistik rusak'], topFeatures:[], features: feat,
+        reasons:['non-finite score - model or statistics corrupted'], topFeatures:[], features: feat,
         thresholds: {...this.cfg.thresholds}, eligible:false, degraded:true};
       this.sessions.push({vector: vec, feat, ts: Date.now(), risk:'HIGH', score:null, eligible:false});
       await this._persist();
@@ -633,7 +635,7 @@ class BehaviorGuard {
       (this._aggBuf=this._aggBuf||[]).push({score, vec, feat});
       if(this._aggBuf.length < AGG){
         const pend={...M, level:'UNKNOWN', score, action:'PENDING', blocked:false,
-          reasons:[`mengumpulkan bukti ${this._aggBuf.length}/${AGG} jendela`],
+          reasons:[`collecting evidence ${this._aggBuf.length}/${AGG} windows`],
           topFeatures:[], features:feat, thresholds:{...this.cfg.thresholds},
           eligible, aggregating:{have:this._aggBuf.length, need:AGG}};
         this._cloudLog(pend);
@@ -868,11 +870,11 @@ class BehaviorGuard {
       const p=Promise.resolve(f(ctx)).then(v=> v===true);
       if(!(ms>0)) return await p;
       const race=new Promise(res=>{ timer=setTimeout(()=>{
-        try{ console.warn(`[BG] mfa.onFallback tidak selesai dalam ${ms>=1000? Math.round(ms/1000)+' dtk' : ms+' ms'} - dianggap tidak terverifikasi`); }catch{}
+        try{ console.warn(`[BG] mfa.onFallback did not settle within ${ms>=1000? Math.round(ms/1000)+' s' : ms+' ms'} - treated as not verified`); }catch{}
         res(false);
       }, ms); });
       return await Promise.race([p, race]);
-    }catch(e){ try{ console.error('[BG] mfa.onFallback melempar', e); }catch{} return false; }
+    }catch(e){ try{ console.error('[BG] mfa.onFallback threw', e); }catch{} return false; }
     finally{ if(timer) clearTimeout(timer); }
   }
   // Popup MFA otomatis saat vonis MEDIUM/HIGH (bila cfg.mfa.enabled & ada DOM).
@@ -961,7 +963,7 @@ class BehaviorGuard {
    *    bawaan (lantai lengket dibersihkan, masa berlaku graceSec dimulai).
    */
   async stepUp({ level='MEDIUM', reason }={}){
-    if(!this.inited || !this.userId) return { verified:false, method:null, unavailable:true, reason:'belum init' };
+    if(!this.inited || !this.userId) return { verified:false, method:null, unavailable:true, reason:'not initialised' };
     if(this._mfaBusy) return { verified:false, method:null, busy:true };
     const r=await this._stepUpFlow({ level, reasons: reason?[reason]:[], trigger:'integrator' });
     if(r.verified){ const evt={}; this._applyMfaVerified(evt); await this._persist(); }
@@ -1008,7 +1010,7 @@ class BehaviorGuard {
   // C-39: token pengguna berumur pendek; server integrator memperbaruinya.
   setUserToken(token){ this.userToken=token||null; this.cloud=!!(this.pk&&this.endpoint&&this.userToken); }
   async reportStepUp({ passed } = {}){
-    if(!this.userId) return { applied:false, lastRisk:this.lastRisk, reason:'belum init' };
+    if(!this.userId) return { applied:false, lastRisk:this.lastRisk, reason:'not initialised' };
     const evt={};
     if(passed===true){ this._applyMfaVerified(evt); await this._persist(); }
     else { this._stepUpFailures=(this._stepUpFailures||0)+1; }
@@ -1039,7 +1041,7 @@ class BehaviorGuard {
     const eligibleCount=this.sessions.filter(s=>s.eligible!==false).length;
     if(!this.model || eligibleCount < this.cfg.baseline){
       return {...base, level:'UNKNOWN', action:'REQUIRE_STEPUP', enrollment:true,
-        reasons:['pendaftaran belum selesai - belum ada pembanding, verifikasi dengan cara lain']};
+        reasons:['enrollment not finished - nothing to compare against yet, verify another way']};
     }
     let events=dropExactDuplicates(this.capture ? this.capture.peek() : []);
     if(S.idleCompressSec>0) events=compressIdle(events, S.idleCompressSec*1000);
@@ -1047,7 +1049,7 @@ class BehaviorGuard {
     const away=this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000;
     if(events.length < minEvents){
       return {...base, level:'UNKNOWN', action:'REQUIRE_STEPUP', evidence:{events:events.length, partial:true},
-        reasons:[`bukti belum cukup (${events.length} event) - perlakukan sebagai belum terverifikasi`]};
+        reasons:[`not enough evidence (${events.length} events) - treat as not verified`]};
     }
     const feat=extractF4(events), vec=featuresToVector(feat);
     const xstd=standardize(vec, this.stats);
@@ -1059,7 +1061,7 @@ class BehaviorGuard {
     const top=topFeatures(xstd, F4, 3);
     return {...base, level, score, action: toAction(level), modelLevel: Number.isFinite(score)? toRisk(score, this.cfg.thresholds):'HIGH',
       evidence:{ events:events.length, partial: events.length < S.minEventsAssess },
-      reasons:[...(away?['kembali setelah absen - verifikasi ulang']:[]), ...reasonsFrom(top)], topFeatures: top};
+      reasons:[...(away?['returned after being away - verify again']:[]), ...reasonsFrom(top)], topFeatures: top};
   }
   // Pendaftaran template ritme HANYA di sesi tepercaya: vonis LOW, model sudah
   // terbentuk, dan belum pernah punya template. Ini pasangan dari C-2 - kalau
@@ -1092,7 +1094,7 @@ class BehaviorGuard {
   }
   async _enrollFlow(){
     const m=this.cfg.mfa||{};
-    if(this._mfaBusy) return { enrolled:false, busy:true, reason:'dialog lain sedang terbuka' };
+    if(this._mfaBusy) return { enrolled:false, busy:true, reason:'another dialog is open' };
     this._mfaBusy=true;
     try{
       const res=await runMfaChallenge(this._mfaUi({ template:null, timeoutMs:m.enrollTimeoutMs }));
@@ -1101,7 +1103,7 @@ class BehaviorGuard {
         await this._persist();
         return { enrolled:true, mode: res.template.mode||'hard' };
       }
-      return { enrolled:false, reason: res.reason || (res.timedOut ? 'waktu habis' : 'dibatalkan') };
+      return { enrolled:false, reason: res.reason || (res.timedOut ? 'timed out' : 'cancelled') };
     }catch(e){ return { enrolled:false, reason:String(e&&e.message||e) }; }
     finally{ this._mfaBusy=false; }
   }
@@ -1114,13 +1116,13 @@ class BehaviorGuard {
    * yang menuntut verifikasi lebih dulu.
    */
   async enrollMfa(){
-    if(!this.inited || !this.userId) return { enrolled:false, reason:'belum init' };
-    if(typeof document==='undefined') return { enrolled:false, reason:'tanpa DOM' };
-    if(this.challengeTemplate) return { enrolled:false, already:true, reason:'sudah terdaftar' };
+    if(!this.inited || !this.userId) return { enrolled:false, reason:'not initialised' };
+    if(typeof document==='undefined') return { enrolled:false, reason:'no DOM' };
+    if(this.challengeTemplate) return { enrolled:false, already:true, reason:'already enrolled' };
     const last=this._lastEvt;
     const suspicious= this.lastRisk!=='LOW' || (this._awayReturn && this._awayReturn.awayMs >= this.cfg.idle.reverifyAfterSec*1000)
       || (last && !last.enrollment && !last.abstain && last.level && last.level!=='LOW' && last.level!=='UNKNOWN');
-    if(suspicious) return { enrolled:false, reason:'sesi sedang dicurigai - verifikasi dulu (stepUp)' };
+    if(suspicious) return { enrolled:false, reason:'session is under suspicion - verify first (stepUp)' };
     const r=await this._enrollFlow();
     if(r.enrolled){ this._mfaEnrollSnoozeUntil=0; await this._persist(); }
     return r;
@@ -1131,9 +1133,9 @@ class BehaviorGuard {
    * mendaftarkan iramanya sendiri.
    */
   async forgetMfa(){
-    if(!this.inited || !this.challengeTemplate) return { removed:false, reason: this.challengeTemplate ? 'belum init' : 'belum terdaftar' };
-    const v=await this.stepUp({ level:'MEDIUM', reason:'hapus verifikasi irama ketik' });
-    if(!v.verified) return { removed:false, reason:'verifikasi tidak lolos' };
+    if(!this.inited || !this.challengeTemplate) return { removed:false, reason: this.challengeTemplate ? 'not initialised' : 'not enrolled' };
+    const v=await this.stepUp({ level:'MEDIUM', reason: pickLang(this.cfg.mfa && this.cfg.mfa.lang)==='id' ? 'hapus verifikasi irama ketik' : 'remove typing-rhythm verification' });
+    if(!v.verified) return { removed:false, reason:'verification failed' };
     this.challengeTemplate=null; await this._persist();
     return { removed:true };
   }
@@ -1328,8 +1330,8 @@ class BehaviorGuard {
     const evt={
       level:'UNKNOWN', score:null, action:'ABSTAIN', blocked:false, abstain:true,
       reasons:[ n===0
-        ? 'tidak ada input - halaman kemungkinan ditinggal'
-        : `bukti tidak cukup untuk menilai (${n} event, ambang ${this.cfg.session.minEventsAssess})` ],
+        ? 'no input - the page was probably left open'
+        : `not enough evidence to assess (${n} events, threshold ${this.cfg.session.minEventsAssess})` ],
       topFeatures:[], features:null, thresholds:{...this.cfg.thresholds}, eligible:false,
       idle:{ activeMs:acct.activeMs, idleMs:acct.idleMs, activeRatio:acct.activeRatio,
              segments:acct.segments, droppedSegments:dropped.length, events:n,
@@ -1507,7 +1509,7 @@ const uiOpts=o=>{ const m=(singleton.cfg && singleton.cfg.mfa) || {}; return { a
 // dipanggil integrator mengenai instance yang berbeda dari yang memegang profil. Yang pertama
 // dimuat yang dipakai; yang kedua diam.
 if(typeof window!=='undefined' && window.BehaviorGuard && window.BehaviorGuard._instance){
-  try{ console.warn('[BG] behaviorguard.js dimuat lebih dari sekali - salinan kedua diabaikan'); }catch{}
+  try{ console.warn('[BG] behaviorguard.js loaded more than once - the second copy is ignored'); }catch{}
 } else if(typeof window!=='undefined'){
   window.BehaviorGuard={
     version: VERSION,

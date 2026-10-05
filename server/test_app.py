@@ -114,7 +114,7 @@ failed = [r for r in results if not r[1]]
 print('\nSERVER - AUTENTIKASI (C-39)')
 for n, ok, note in results:
     print(f"  {'OK  ' if ok else 'FAIL'} {n}" + (f'  [{note}]' if note != '' and not ok else ''))
-print(f'\n  lulus {len(results) - len(failed)} / {len(results)}\n  HASIL: {"ADA KEGAGALAN" if failed else "SESUAI"}')
+print(f'\n  passed {len(results) - len(failed)} / {len(results)}\n  RESULT: {"FAIL" if failed else "PASS"}')
 try:
     os.unlink(_tmp.name)
 except OSError:

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Built-in enrollment card example · BehaviorGuard</title>
+<style>
+  body{margin:0;font-family:Georgia,serif;background:#faf7f2;color:#2b2118}
+  header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #e8dfd2;background:#fff}
+  main{max-width:760px;margin:24px auto;padding:0 16px}
+  .note{font:14px/1.6 system-ui,sans-serif;background:#fff;border:1px solid #e8dfd2;border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  button{font:600 14px system-ui,sans-serif;background:#2b2118;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+</style>
+</head>
+<body>
+<header><b>Senja Coffee</b><button id="open">Recognition status</button></header>
+<main>
+  <div class="note">This site <b>writes no HTML or CSS at all</b> for the card below. It comes from
+  <code>BehaviorGuard.mountEnrollment('#enrollment')</code>. The button in the top right calls
+  <code>BehaviorGuard.openEnrollment()</code>. The site's styles (this serif font) do not leak into the card.</div>
+  <div id="enrollment"></div>
+</main>
+<script>window.BehaviorGuardConfig = { userId: 'card-example@demo.example', panel: true, mfa: { brand: 'Senja Coffee', accent: '#8a4b16', theme: 'light', lang: 'en', phrase: 'senja coffee guards my account' } };</script>
+<script src="behaviorguard.js"></script>
+<script>
+  BehaviorGuard.mountEnrollment('#enrollment', { lang: 'en' });
+  document.getElementById('open').onclick = () => BehaviorGuard.openEnrollment({ practice: false, lang: 'en' });
+</script>
+</body>
+</html>

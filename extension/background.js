@@ -1,17 +1,17 @@
 /**
- * background.js - MV3 service worker: penilaian on-device dengan orkestrator ASLI.
+ * background.js - MV3 service worker: on-device scoring with the REAL orchestrator.
  *
- * C-41: versi lama adalah mesin salinan-tangan yang basi - centroid-OCSVM, bobot IF 0,70
- * (terbalik dari DEFAULTS), ambang kuantil, satu baseline campuran SEMUA situs, dan buffer
- * event mentah (berisi karakter ketikan) disimpan ke chrome.storage.local. Orkestrator
- * yang disinkron oleh tools/sync_core.ps1 (C-9) tidak pernah dipakainya.
+ * C-41: the old version was a stale hand-copied engine - centroid OCSVM, IF weight 0.70
+ * (the reverse of DEFAULTS), quantile thresholds, one baseline mixing ALL sites, and the raw
+ * event buffer (with typed characters) saved to chrome.storage.local. It never used the
+ * orchestrator that tools/sync_core.ps1 (C-9) keeps in sync.
  *
- * Kini: satu BehaviorGuard per origin (perilaku di bank dan di forum berbeda - mencampurnya
- * melebarkan baseline untuk keduanya). Event datang dari content.js sudah ditokenisasi;
- * buffer tiruan + endSession() memakai jalur penilaian SDK yang sama persis (kompresi,
- * dedup, integritas, bukti >= minEventsAssess, carry-back ekor). State per origin
- * disimpan storage.js (IndexedDB tersedia di service worker). MFA popup tidak ada di
- * service worker, jadi vonis dikembalikan ke halaman sebagai pemberitahuan.
+ * Now: one BehaviorGuard per origin (behavior on a bank and on a forum differs - mixing them
+ * widens the baseline for both). Events from content.js arrive already tokenised; a buffer
+ * plus endSession() use exactly the SDK's scoring path (compression, dedup, integrity,
+ * evidence >= minEventsAssess, tail carry-back). Per-origin state lives in storage.js
+ * (IndexedDB is available in a service worker). There is no MFA popup in a service worker,
+ * so verdicts go back to the page as a notice.
  */
 import { BehaviorGuard } from './behaviorguard.js';
 

@@ -47,10 +47,10 @@ const p = s => { log.push(s); out.textContent = log.join('\n'); };
 
   const r = JSON.parse(resultJson);
   p('');
-  p(`KESESUAIAN (di dalam WASM)  spec ${r.spec}`);
-  p(`  lulus ${r.passed} / ${r.total}`);
-  p(`  HASIL: ${r.verdict}`);
-  out.className = r.verdict === 'SESUAI' ? 'ok' : 'bad';
+  p(`CONFORMANCE (inside WASM)  spec ${r.spec}`);
+  p(`  passed ${r.passed} / ${r.total}`);
+  p(`  RESULT: ${r.verdict}`);
+  out.className = r.verdict === 'PASS' ? 'ok' : 'bad';
   window.BG_WASM = r;
 })().catch(e => {
   out.textContent = 'ERROR: ' + (e && e.stack || e);

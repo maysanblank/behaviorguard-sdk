@@ -112,6 +112,6 @@ check('kolom biasa: huruf tetap tidak tersimpan', cap.peek().every(e => e.key !=
 const failed = results.filter(r => !r.ok);
 console.log(`\nPRIVASI CAPTURE (C-30)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.note ? '  [' + r.note + ']' : ''}`).join('\n') +
-  `\n\n  lulus ${results.length - failed.length} / ${results.length}\n  HASIL: ${failed.length ? 'ADA KEGAGALAN' : 'SESUAI'}\n`);
+  `\n\n  passed ${results.length - failed.length} / ${results.length}\n  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`);
 if (failed.length) process.exit(1);
 export { results };

@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>BehaviorGuard install example</title></head>
+<body>
+<h1>Example shop</h1>
+<input placeholder="search products"><button>Checkout</button>
+
+<!-- ====== THIS IS ALL YOU ADD TO ANY SITE ====== -->
+<script src="behaviorguard.js" data-user="andi@example.com" defer></script>
+<script>
+  // No callback needed: listen to the DOM event. No other application code changes.
+  addEventListener('behaviorguard:risk', e => {
+    const r = e.detail;                 // {level, score, action, reasons, topFeatures}
+    console.log('[BG]', r.level, r.score, r.reasons);
+    if (r.level === 'HIGH')   alert('Extra verification required');
+    // if (r.level === 'MEDIUM') showGentleReauth();
+  });
+</script>
+<!-- ============================================== -->
+</body></html>

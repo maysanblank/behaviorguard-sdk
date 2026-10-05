@@ -71,7 +71,7 @@ const failed = results.filter(r => !r.ok);
 const summary = `\nDETECTOR GATE (C-15 / C-8)\n` +
   results.map(r => `  ${r.ok ? 'OK  ' : 'FAIL'} ${r.name}`).join('\n') +
   `\n\n  passed ${results.length - failed.length} / ${results.length}\n` +
-  `  RESULT: ${failed.length ? 'FAILURES PRESENT' : 'MATCHES'}\n`;
+  `  RESULT: ${failed.length ? 'FAIL' : 'PASS'}\n`;
 
 if (typeof window !== 'undefined') {
   window.BG_GATE_TEST = { total: results.length, failed: failed.length, results };

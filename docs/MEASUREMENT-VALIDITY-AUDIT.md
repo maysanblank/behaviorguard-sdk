@@ -52,7 +52,7 @@ Run on a realistic throttled `mousemove` stream:
 
 | Real mousemove rate | Interval after throttle | Verdict |
 |---|---|---|
-| 60 Hz | 50.0 ms, std **0.00 ms** | `interval konstan` (constant interval) -> **blocked** |
+| 60 Hz | 50.0 ms, std **0.00 ms** | `constant interval` -> **blocked** |
 | 100 Hz | 50.0 ms, std **0.00 ms** | **blocked** |
 | 125 Hz | 56.0 ms, std **0.00 ms** | **blocked** |
 | 144 Hz | 55.6 ms, std 0.50 ms | **blocked** |

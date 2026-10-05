@@ -31,13 +31,13 @@ export function checkIntegrity(events, opts={}){
   // mundur berkali-kali; ambangnya >= 3 langkah DAN > 1% event.
   let back=0;
   for(let i=1;i<ts.length;i++) if(ts[i] < ts[i-1]-5) back++;
-  if(back>=3 && back > 0.01*ts.length) reasons.push(`timestamp non-monoton (${back}x)`);
+  if(back>=3 && back > 0.01*ts.length) reasons.push(`non-monotonic timestamps (${back}x)`);
   const intervals=[];
   for(let i=1;i<ts.length;i++) intervals.push(ts[i]-ts[i-1]);
   const mean = intervals.reduce((a,b)=>a+b,0)/intervals.length;
   const std = Math.sqrt(intervals.reduce((a,b)=>a+(b-mean)**2,0)/intervals.length);
   // A1: cek interval hanya sahih pada aliran yang TIDAK kita throttle.
-  if(!throttledStream && std < 3) reasons.push(`interval konstan std=${std.toFixed(2)}ms`);
+  if(!throttledStream && std < 3) reasons.push(`constant interval std=${std.toFixed(2)}ms`);
   // C-45: tombol dari keyboard layar sentuh (`soft`) tidak punya waktu tahan yang bermakna -
   // Android menembakkan keydown/keyup berdempetan untuk tiap huruf, jadi tahannya ~0 ms
   // SERAGAM. Dulu itu terbaca "hold identik" -> pengguna ponsel diblokir sebagai bot.
@@ -45,7 +45,7 @@ export function checkIntegrity(events, opts={}){
   if(holds.length>=10){
     const hm = holds.reduce((a,b)=>a+b,0)/holds.length;
     const hs = Math.sqrt(holds.reduce((a,b)=>a+(b-hm)**2,0)/holds.length);
-    if(hs < 1.5) reasons.push(`hold identik std=${hs.toFixed(2)}ms`);
+    if(hs < 1.5) reasons.push(`identical hold std=${hs.toFixed(2)}ms`);
   }
   // C-16: hanya nilai event yang BENAR-BENAR membawa velocity. Memakai
   // `e.velocity||0` pada event tanpa field itu menghasilkan deret nol -> std 0 ->
@@ -53,7 +53,7 @@ export function checkIntegrity(events, opts={}){
   const vels = evs.filter(e=>e.x!=null && Number.isFinite(e.velocity)).map(e=>e.velocity);
   if(vels.length>=10){
     const vs = Math.sqrt(vels.reduce((a,b)=>a+(b-vels.reduce((x,y)=>x+y,0)/vels.length)**2,0)/vels.length);
-    if(vs < 0.01) reasons.push('velocity konstan');
+    if(vs < 0.01) reasons.push('constant velocity');
   }
   const dur = (ts[ts.length-1]-ts[0])/1000;
   const rate = dur>0 ? evs.length/dur : 0;
@@ -67,6 +67,6 @@ export function checkIntegrity(events, opts={}){
   // Ambang mutlak itu menyempit seiring panjang batch (pending bisa 800 event), jadi
   // dibuat relatif: > 5 DAN > 5% event yang diperiksa. Bot yang menyuntik event sintetis
   // bertumpuk di milidetik yang sama jauh di atas keduanya.
-  if(dup>Math.max(5, 0.05*evs.length)) reasons.push(`timestamp duplikat ${dup}`);
+  if(dup>Math.max(5, 0.05*evs.length)) reasons.push(`duplicate timestamps ${dup}`);
   return {suspected: reasons.length>0, reasons};
 }

@@ -131,9 +131,9 @@ const TEXT = {
 export function pickLang(lang) {
   if (lang && TEXT[lang]) return lang;
   try {
-    const l = (document.documentElement.getAttribute('lang') || navigator.language || 'id').toLowerCase();
-    return l.startsWith('en') ? 'en' : 'id';
-  } catch { return 'id'; }
+    const l = (document.documentElement.getAttribute('lang') || navigator.language || 'en').toLowerCase();
+    return l.startsWith('id') ? 'id' : 'en';
+  } catch { return 'en'; }
 }
 
 const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -515,7 +515,7 @@ export function runMfaChallenge(o) {
         }
         const tmpl = buildTemplate(samples);
         if (!tmpl) {
-          finish({ passed: false, enrolled: false, verified: false, reason: 'template-ditolak' },
+          finish({ passed: false, enrolled: false, verified: false, reason: 'template-rejected' },
                  { kind: 'bad', title: L.enrollFailed, sub: L.enrollFailedSub });
           return;
         }

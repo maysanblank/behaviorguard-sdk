@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open an account · Arunika</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-l">
+    <div class="auth-box">
+      <a class="logo" href="index.html" id="logo"></a>
+      <h1>Open an Arunika account</h1>
+      <p class="lead">Free, no minimum balance. Fill in your details, then we learn how you use this account.</p>
+
+      <form id="f" novalidate>
+        <div class="field">
+          <label for="nama">Full name</label>
+          <input class="input" id="nama" type="text" autocomplete="name" required placeholder="As on your ID">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input class="input" id="email" type="email" autocomplete="email" required placeholder="name@example.com">
+        </div>
+        <div class="field">
+          <label for="hp">Mobile number</label>
+          <div class="prefix"><span>+62</span><input class="input" id="hp" type="tel" inputmode="numeric" autocomplete="tel-national" required placeholder="812 3456 7890"></div>
+          <span class="hint">Used to send a verification code if you need another way to verify.</span>
+        </div>
+        <div class="field">
+          <label for="sandi">Password</label>
+          <input class="input" id="sandi" type="password" autocomplete="new-password" required>
+          <span class="hint">At least 8 characters, letters and numbers.</span>
+        </div>
+        <div class="field">
+          <label for="sandi2">Repeat password</label>
+          <input class="input" id="sandi2" type="password" autocomplete="new-password" required>
+        </div>
+        <label class="small" style="display:flex;gap:9px;align-items:flex-start;margin:4px 0 16px;color:var(--ink-2)">
+          <input type="checkbox" id="setuju" style="margin-top:3px">
+          <span>I agree that Arunika learns <b>how I use this device</b> (typing rhythm, cursor movement, page flow) to protect my account. The data never leaves this browser.</span>
+        </label>
+        <div class="err" id="err" role="alert"></div>
+        <button class="btn btn-pri btn-block" type="submit">Open account</button>
+      </form>
+
+      <p class="small" style="margin-top:18px;text-align:center;color:var(--ink-3)">
+        Already have an account? <a href="index.html"><b>Log in</b></a>
+      </p>
+      <div class="note"><b>Demo site.</b> No data is sent anywhere; everything stays in this browser and can be deleted at any time from the Security page.</div>
+    </div>
+  </div>
+  <div class="auth-r" aria-hidden="true">
+    <p class="q">Once your account exists, Arunika starts from zero: it knows nothing about you yet, and learns from your own everyday use.</p>
+    <p class="who">No ready-made profile. No data from other users.</p>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  const A = Arunika;
+  document.getElementById('logo').innerHTML = A.I.logo + '<span>arunika</span>';
+  if (A.sesi()) { location.replace('home.html'); return; }
+  const $ = id => document.getElementById(id);
+  const f = $('f'), err = $('err');
+  $('nama').focus();
+
+  const tandai = (el, pesan) => { err.textContent = pesan; el.setAttribute('aria-invalid', 'true'); el.focus(); };
+
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    err.textContent = '';
+    ['nama', 'email', 'hp', 'sandi', 'sandi2'].forEach(id => $(id).removeAttribute('aria-invalid'));
+    const nama = $('nama').value.trim(), email = $('email').value.trim().toLowerCase();
+    const hp = $('hp').value.replace(/\D/g, ''), s1 = $('sandi').value, s2 = $('sandi2').value;
+    if (nama.length < 3 || !nama.includes(' ')) return tandai($('nama'), 'Enter your full name (at least two words).');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return tandai($('email'), 'That email is not valid.');
+    if (A.adaAkun(email)) { err.innerHTML = 'This email already has an account. <a href="index.html">Log in instead</a>.'; $('email').setAttribute('aria-invalid', 'true'); $('email').focus(); return; }
+    if (hp.length < 9) return tandai($('hp'), 'The mobile number is incomplete.');
+    if (s1.length < 8 || !/\d/.test(s1) || !/[a-z]/i.test(s1)) return tandai($('sandi'), 'Password needs at least 8 characters, letters and numbers.');
+    if (s1 !== s2) return tandai($('sandi2'), 'The passwords do not match.');
+    if (!$('setuju').checked) return (err.textContent = 'Tick the consent box to continue.');
+
+    const r = A.daftar({ email, nama });
+    if (!r.ok) { err.textContent = 'Could not sign up. Try another email.'; return; }
+    const akun = r.akun;
+    akun.hp = '+62 ' + hp.slice(0, 3) + '-' + hp.slice(3, 7) + '-' + hp.slice(7, 11);
+    A.simpanAkun(akun);
+    localStorage.setItem('arunika:email-terakhir', email);
+    location.href = 'start.html';
+  });
+})();
+</script>
+</body>
+</html>

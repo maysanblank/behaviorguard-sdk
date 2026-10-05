@@ -119,7 +119,7 @@ export function verify(sample, tmpl) {
     const gotF = sample && Array.isArray(sample.flight) ? sample.flight.length : 0;
     return {
       ok: false,
-      reasons: [`ritme tidak lengkap: dwell ${gotD}/${nD}, flight ${gotF}/${nF} (tempel/autofill tidak diterima)`],
+      reasons: [`incomplete rhythm: dwell ${gotD}/${nD}, flight ${gotF}/${nF} (paste/autofill is not accepted)`],
       checks: nD + nF, misses: nD + nF, budget: 0,
     };
   }
@@ -127,7 +127,7 @@ export function verify(sample, tmpl) {
   if (modeOf(sample) !== modeOf(tmpl)) {
     return {
       ok: false, modeMismatch: true,
-      reasons: [`jenis keyboard berbeda dari saat pendaftaran (${modeOf(tmpl)} vs ${modeOf(sample)})`],
+      reasons: [`different keyboard type than at enrollment (${modeOf(tmpl)} vs ${modeOf(sample)})`],
       checks: nD + nF, misses: nD + nF, budget: 0,
     };
   }

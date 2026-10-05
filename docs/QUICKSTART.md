@@ -178,7 +178,7 @@ window.BehaviorGuardConfig = {
     rounds: 3,                           // enrollment repetitions
     triggerOn: ['MEDIUM', 'HIGH'],
     brand: 'Your Site', accent: '#1f5fd6', theme: 'auto',   // 'light' | 'dark' | 'auto'
-    lang: 'id',                          // 'id' | 'en'; texts: {...} overrides any string
+    lang: 'en',                          // 'en' | 'id'; null = page lang, then browser; texts: {...} overrides any string
     onFallback: async ({ level, reasons, trigger, why }) => runMyOtpFlow(),  // see below
     autoEnroll: true,
     lockAfterFailures: 3,                // failed dialogs in a row before rhythm is locked

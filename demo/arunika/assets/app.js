@@ -1,24 +1,24 @@
 /*
- * app.js - aplikasi Arunika (situs demo). Tidak ada hubungannya dengan BehaviorGuard:
- * inilah "situs yang sudah ada" sebelum pustaka dipasang. Semua data disimpan di
- * localStorage browser ini; tidak ada server, tidak ada uang sungguhan.
+ * app.js - the Arunika application (demo site). Nothing here is BehaviorGuard: this is the
+ * "existing site" before the library is installed. All data lives in this browser's
+ * localStorage; no server, no real money.
  */
 (function () {
   'use strict';
   const KEY_SESI = 'arunika:sesi';
   const keyAkun = email => 'arunika:akun:' + email.toLowerCase();
 
-  // ---------------- format ----------------
+  // ---------------- formatting ----------------
   const fmtRp = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
   const rupiah = n => fmtRp.format(Math.round(n)).replace(/ /g, ' ');
-  const tanggal = t => new Date(t).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-  const jam = t => new Date(t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const tanggal = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const jam = t => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const inisial = nama => nama.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'A';
   const angka = s => Number(String(s || '').replace(/[^\d]/g, '')) || 0;
-  const salam = () => { const h = new Date().getHours(); return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 19 ? 'Selamat sore' : 'Selamat malam'; };
+  const salam = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
 
-  // ---------------- ikon (garis, 24px) ----------------
+  // ---------------- icons (line, 24px) ----------------
   const I = {
     logo: '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 22a11 11 0 0122 0" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M2 26h28" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M16 5v3M7.5 9.5l2 2M24.5 9.5l-2 2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
@@ -45,42 +45,42 @@
     msg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"/></svg>',
   };
   const KAT = {
-    'Makan & minum': { ic: 'food', c: '#b4501a' }, 'Belanja': { ic: 'bag', c: '#2563eb' },
-    'Tagihan': { ic: 'bill', c: '#7c3aed' }, 'Transportasi': { ic: 'car', c: '#0f766e' },
-    'Transfer': { ic: 'send', c: '#475569' }, 'Pemasukan': { ic: 'in', c: '#15803d' },
+    'Food & drink': { ic: 'food', c: '#b4501a' }, 'Shopping': { ic: 'bag', c: '#2563eb' },
+    'Bills': { ic: 'bill', c: '#7c3aed' }, 'Transport': { ic: 'car', c: '#0f766e' },
+    'Transfer': { ic: 'send', c: '#475569' }, 'Income': { ic: 'in', c: '#15803d' },
   };
 
-  // ---------------- data contoh ----------------
+  // ---------------- sample data ----------------
   function contohTransaksi() {
     const now = Date.now(), D = 86400000;
     const list = [
-      [0.2, 'Warung Makan Sederhana', 'Makan & minum', -38000],
-      [0.9, 'Ojek daring ke kantor', 'Transportasi', -24500],
-      [1.3, 'Transfer dari Rina Wulandari', 'Pemasukan', 250000],
-      [1.8, 'Apotek Sehat Selalu', 'Belanja', -67500],
-      [2.4, 'Token listrik prabayar', 'Tagihan', -202500],
-      [3.1, 'Toko Buku Pelita', 'Belanja', -129000],
-      [4.2, 'Kedai Kopi Senja Pagi', 'Makan & minum', -31000],
-      [5.0, 'Transfer ke Budi Santoso', 'Transfer', -500000],
-      [6.3, 'Pulsa & data 50.000', 'Tagihan', -51500],
-      [7.1, 'Laundry Bersih Kilat', 'Belanja', -45000],
-      [8.6, 'Belanja bulanan Pasar Segar', 'Belanja', -412300],
-      [9.4, 'Gaji September - PT Kencana Abadi', 'Pemasukan', 8750000],
-      [10.2, 'Iuran air bersih', 'Tagihan', -96000],
-      [12.5, 'Bakso Pak Kumis', 'Makan & minum', -28000],
-      [13.9, 'Transfer ke Ibu', 'Transfer', -1500000],
-      [15.2, 'Parkir & tol', 'Transportasi', -36000],
-      [17.8, 'Langganan internet rumah', 'Tagihan', -335000],
-      [19.4, 'Martabak Bangka 88', 'Makan & minum', -55000],
-      [22.0, 'Tiket kereta Jakarta-Bandung', 'Transportasi', -150000],
-      [24.6, 'Transfer dari Dimas Pratama', 'Pemasukan', 120000],
-      [27.3, 'Sepatu lari', 'Belanja', -489000],
-      [30.1, 'Sate Madura Cak Mat', 'Makan & minum', -42000],
+      [0.2, 'Warung Makan Sederhana', 'Food & drink', -38000],
+      [0.9, 'Ride-hailing to the office', 'Transport', -24500],
+      [1.3, 'Transfer from Rina Wulandari', 'Income', 250000],
+      [1.8, 'Apotek Sehat Selalu', 'Shopping', -67500],
+      [2.4, 'Prepaid electricity token', 'Bills', -202500],
+      [3.1, 'Toko Buku Pelita', 'Shopping', -129000],
+      [4.2, 'Kedai Kopi Senja Pagi', 'Food & drink', -31000],
+      [5.0, 'Transfer to Budi Santoso', 'Transfer', -500000],
+      [6.3, 'Phone credit & data 50,000', 'Bills', -51500],
+      [7.1, 'Laundry Bersih Kilat', 'Shopping', -45000],
+      [8.6, 'Monthly groceries, Pasar Segar', 'Shopping', -412300],
+      [9.4, 'September salary - PT Kencana Abadi', 'Income', 8750000],
+      [10.2, 'Water bill', 'Bills', -96000],
+      [12.5, 'Bakso Pak Kumis', 'Food & drink', -28000],
+      [13.9, 'Transfer to Mum', 'Transfer', -1500000],
+      [15.2, 'Parking & tolls', 'Transport', -36000],
+      [17.8, 'Home internet subscription', 'Bills', -335000],
+      [19.4, 'Martabak Bangka 88', 'Food & drink', -55000],
+      [22.0, 'Train ticket Jakarta-Bandung', 'Transport', -150000],
+      [24.6, 'Transfer from Dimas Pratama', 'Income', 120000],
+      [27.3, 'Running shoes', 'Shopping', -489000],
+      [30.1, 'Sate Madura Cak Mat', 'Food & drink', -42000],
     ];
     return list.map(([hari, ket, kat, jml], i) => ({ id: 'TX' + (900100 + i), t: now - hari * D, ket, kat, jml }));
   }
   function akunBaru(email, namaDiisi) {
-    const nm = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim() || 'Nasabah';
+    const nm = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim() || 'Customer';
     const nama = namaDiisi && namaDiisi.trim()
       ? namaDiisi.trim().replace(/\s+/g, ' ')
       : nm.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
@@ -91,29 +91,29 @@
       saldo: 12847300, dibuat: Date.now(), tx: contohTransaksi(),
       penerima: [
         { nama: 'Budi Santoso', bank: 'Arunika', rek: '2203419876' },
-        { nama: 'Rina Wulandari', bank: 'Bank Lain', rek: '0081223344' },
-        { nama: 'Ibu', bank: 'Arunika', rek: '1900345671' },
+        { nama: 'Rina Wulandari', bank: 'Other bank', rek: '0081223344' },
+        { nama: 'Mum', bank: 'Arunika', rek: '1900345671' },
       ],
     };
   }
 
-  // ---------------- penyimpanan ----------------
+  // ---------------- storage ----------------
   const baca = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const tulis = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const sesi = () => baca(KEY_SESI, null);
   function akun() { const s = sesi(); return s ? baca(keyAkun(s.email), null) : null; }
   function simpanAkun(a) { tulis(keyAkun(a.email), a); }
-  // Daftar dan masuk DIPISAH, seperti situs sungguhan. Sebelum ini `masuk()` diam-diam
-  // membuat akun untuk email apa pun, sehingga demo tidak pernah punya momen "akun baru,
-  // profil perilaku masih kosong" - padahal justru itu yang ingin diperlihatkan.
+  // Sign-up and log-in are SEPARATE, as on a real site. `masuk()` used to create an account
+  // for any email silently, so the demo never had the "new account, empty behavior profile"
+  // moment - which is exactly what it is meant to show.
   const adaAkun = email => !!baca(keyAkun(String(email || '').trim().toLowerCase()), null);
   function daftar({ email, nama }) {
     email = String(email || '').trim().toLowerCase();
     if (adaAkun(email)) return { ok: false, alasan: 'terdaftar' };
     const a = akunBaru(email, nama);
-    a.tx = [];                       // akun BARU: riwayat masih kosong, saldo setoran awal
+    a.tx = [];                       // NEW account: empty history, opening deposit only
     a.saldo = SALDO_DEMO;
-    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Setoran awal pembukaan rekening', kat: 'Pemasukan', jml: SALDO_DEMO });
+    a.tx.unshift({ id: 'TX000001', t: Date.now(), ket: 'Opening deposit', kat: 'Income', jml: SALDO_DEMO });
     a.penerima = [];
     a.baruDaftar = true;
     simpanAkun(a);
@@ -127,15 +127,15 @@
     tulis(KEY_SESI, { email, masukPada: Date.now() });
     return { ok: true, akun: a };
   }
-  // Akun contoh untuk presentasi: riwayat sudah terisi, supaya halaman tidak kosong
-  // saat menunjukkan fitur transfer/riwayat. Profil PERILAKUnya tetap dari nol.
+  // Sample account for presentations: history is pre-filled so the pages are not empty
+  // when showing transfer/history. Its BEHAVIOR profile still starts from zero.
   function akunContoh(email, nama) {
     const a = akunBaru(email, nama);
     a.tx = contohTransaksi(); a.saldo = 12847300;
     a.penerima = [
       { nama: 'Budi Santoso', bank: 'Arunika', rek: '2203419876' },
-      { nama: 'Rina Wulandari', bank: 'Bank Lain', rek: '0081223344' },
-      { nama: 'Ibu', bank: 'Arunika', rek: '1900345671' },
+      { nama: 'Rina Wulandari', bank: 'Other bank', rek: '0081223344' },
+      { nama: 'Mum', bank: 'Arunika', rek: '1900345671' },
     ];
     simpanAkun(a);
     tulis(KEY_SESI, { email: a.email, masukPada: Date.now() });
@@ -147,17 +147,17 @@
     location.href = 'index.html' + (alasan ? '?keluar=' + encodeURIComponent(alasan) : '');
   }
   function catatTx(a, tx) { a.tx.unshift(tx); a.saldo += tx.jml; simpanAkun(a); }
-  // Situs demo: saldo yang habis dipakai latihan transfer diisi ulang sendiri, supaya demo
-  // (dan uji penyusup) tidak berhenti karena "saldo tidak cukup". Profil perilaku tidak disentuh.
+  // Demo site: a balance drained by practice transfers refills itself, so the demo (and the
+  // impostor test) never stops at "insufficient balance". The behavior profile is untouched.
   const SALDO_DEMO = 25000000, SALDO_BATAS = 1000000;
   function isiUlangDemo(a) {
     if (!a || a.saldo >= SALDO_BATAS) return a;
-    catatTx(a, { id: 'TOPUP' + Date.now().toString().slice(-8), t: Date.now(), ket: 'Isi ulang saldo demo', kat: 'Pemasukan', jml: SALDO_DEMO - a.saldo });
+    catatTx(a, { id: 'TOPUP' + Date.now().toString().slice(-8), t: Date.now(), ket: 'Demo balance top-up', kat: 'Income', jml: SALDO_DEMO - a.saldo });
     return a;
   }
 
-  // ---------------- kerangka halaman ----------------
-  const NAV = [['beranda.html', 'Beranda'], ['transfer.html', 'Transfer'], ['bayar.html', 'Bayar'], ['riwayat.html', 'Riwayat'], ['keamanan.html', 'Keamanan']];
+  // ---------------- page shell ----------------
+  const NAV = [['home.html', 'Home'], ['transfer.html', 'Transfer'], ['pay.html', 'Pay'], ['history.html', 'History'], ['security.html', 'Security']];
   function shell(aktif) {
     const s = sesi();
     if (!s) { location.replace('index.html'); return null; }
@@ -166,18 +166,18 @@
     const top = document.getElementById('top');
     top.className = 'top';
     top.innerHTML = `<div class="top-in">
-      <a class="logo" href="beranda.html">${I.logo}<span>arunika</span></a>
-      <nav class="nav" aria-label="Menu utama">${NAV.map(([h, t]) => `<a href="${h}"${h === aktif ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>
+      <a class="logo" href="home.html">${I.logo}<span>arunika</span></a>
+      <nav class="nav" aria-label="Main menu">${NAV.map(([h, t]) => `<a href="${h}"${h === aktif ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>
       <div class="user"><div class="avatar" aria-hidden="true">${esc(inisial(a.nama))}</div>
         <div><div class="nm">${esc(a.nama)}</div><div class="em">${esc(a.email)}</div></div>
-        <button class="btn btn-ghost btn-sm" id="btn-keluar" title="Keluar">${I.out}<span class="sr">Keluar</span></button></div></div>`;
+        <button class="btn btn-ghost btn-sm" id="btn-keluar" title="Log out">${I.out}<span class="sr">Log out</span></button></div></div>`;
     document.getElementById('btn-keluar').addEventListener('click', () => keluar());
     const f = document.getElementById('foot');
-    if (f) { f.className = 'foot'; f.innerHTML = '<span>Arunika adalah situs demo untuk BehaviorGuard. Bukan layanan keuangan sungguhan; tidak ada uang yang berpindah.</span>'; }
+    if (f) { f.className = 'foot'; f.innerHTML = '<span>Arunika is a demo site for BehaviorGuard. Not a real financial service; no money moves.</span>'; }
     return a;
   }
 
-  // ---------------- toast & dialog situs ----------------
+  // ---------------- site toasts & dialogs ----------------
   function toast(html, { kind = '', ms = 4200, label = '' } = {}) {
     let box = document.querySelector('.toasts');
     if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.appendChild(box); }
@@ -195,7 +195,7 @@
     document.body.appendChild(bd);
     return { el: bd.firstElementChild, close: () => bd.remove() };
   }
-  function konfirmasi({ judul, isi, ya = 'Ya', tidak = 'Batal', bahaya = false }) {
+  function konfirmasi({ judul, isi, ya = 'Yes', tidak = 'Cancel', bahaya = false }) {
     return new Promise(res => {
       const d = dialog(`<h2>${esc(judul)}</h2><p class="sub">${esc(isi)}</p><div class="acts"><button class="btn" data-x>${esc(tidak)}</button><button class="btn ${bahaya ? 'btn-danger' : 'btn-pri'}" data-y>${esc(ya)}</button></div>`);
       d.el.querySelector('[data-x]').onclick = () => { d.close(); res(false); };
@@ -204,7 +204,7 @@
     });
   }
 
-  // input nominal: tampil "1.250.000" sambil diketik
+  // amount input: shows "1.250.000" while typing
   function nominalInput(el) {
     el.addEventListener('input', () => {
       const n = angka(el.value);
@@ -212,8 +212,8 @@
     });
   }
 
-  // Bersihkan SEMUA jejak demo di browser ini (akun, sesi, log, profil perilaku pustaka),
-  // supaya demo bisa diulang dari layar pendaftaran tanpa membuka jendela penyamaran.
+  // Wipe EVERY trace of the demo in this browser (accounts, session, log, the library's
+  // behavior profile), so the demo restarts at sign-up without an incognito window.
   async function resetDemo() {
     try { if (window.BehaviorGuard) { await window.BehaviorGuard.forget(); await window.BehaviorGuard.stop(); } } catch {}
     try {

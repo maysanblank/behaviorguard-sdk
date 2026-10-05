@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Masuk · Arunika</title>
+<title>Log in · Arunika</title>
 <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -11,30 +11,30 @@
   <div class="auth-l">
     <div class="auth-box">
       <a class="logo" href="index.html" id="logo"></a>
-      <h1>Masuk ke Arunika</h1>
-      <p class="lead">Kelola rekening, transfer, dan bayar tagihan dari satu tempat.</p>
+      <h1>Log in to Arunika</h1>
+      <p class="lead">Manage your account, send transfers and pay bills in one place.</p>
       <div id="alasan"></div>
       <form id="f" novalidate>
         <div class="field">
           <label for="email">Email</label>
-          <input class="input" id="email" type="email" autocomplete="username" required placeholder="nama@contoh.id">
+          <input class="input" id="email" type="email" autocomplete="username" required placeholder="name@example.com">
         </div>
         <div class="field">
-          <label for="sandi">Kata sandi</label>
+          <label for="sandi">Password</label>
           <input class="input" id="sandi" type="password" autocomplete="current-password" required minlength="6">
           <div class="err" id="err" role="alert"></div>
         </div>
-        <button class="btn btn-pri btn-block" type="submit">Masuk</button>
+        <button class="btn btn-pri btn-block" type="submit">Log in</button>
       </form>
       <p class="small" style="margin-top:18px;text-align:center;color:var(--ink-3)">
-        Belum punya akun? <a href="daftar.html"><b>Buka rekening Arunika</b></a>
+        No account yet? <a href="signup.html"><b>Open an Arunika account</b></a>
       </p>
       <div class="note" id="note"></div>
     </div>
   </div>
   <div class="auth-r" aria-hidden="true">
-    <p class="q">Kata sandi bisa dicuri. Cara kamu mengetik, menggeser, dan berpindah halaman jauh lebih sulit ditiru.</p>
-    <p class="who">Rekening Arunika dilindungi pengenalan perilaku di perangkatmu.</p>
+    <p class="q">Passwords get stolen. The way you type, move and navigate is much harder to copy.</p>
+    <p class="who">Arunika accounts are protected by behavior recognition on your device.</p>
   </div>
 </div>
 <script src="assets/app.js"></script>
@@ -42,40 +42,40 @@
 (function () {
   const A = Arunika;
   document.getElementById('logo').innerHTML = A.I.logo + '<span>arunika</span>';
-  if (A.sesi()) { location.replace('beranda.html'); return; }
+  if (A.sesi()) { location.replace('home.html'); return; }
   const q = new URLSearchParams(location.search).get('keluar');
   const box = document.getElementById('alasan');
-  if (q === 'diblokir') box.innerHTML = `<div class="banner bn-bad">${A.I.alert}<div><div class="t">Sesi sebelumnya dihentikan</div><div>Aktivitas di akun ini tidak cocok dengan pemiliknya. Kalau itu kamu, masuk lagi lalu verifikasi.</div></div></div>`;
-  else if (q) box.innerHTML = `<div class="banner bn-info">${A.I.info}<div>Kamu sudah keluar.</div></div>`;
+  if (q === 'diblokir') box.innerHTML = `<div class="banner bn-bad">${A.I.alert}<div><div class="t">Your previous session was ended</div><div>Activity on this account did not match its owner. If that was you, log in again and verify.</div></div></div>`;
+  else if (q) box.innerHTML = `<div class="banner bn-info">${A.I.info}<div>You are logged out.</div></div>`;
 
   const f = document.getElementById('f'), email = document.getElementById('email'), sandi = document.getElementById('sandi'), err = document.getElementById('err');
   const last = localStorage.getItem('arunika:email-terakhir');
   if (last && A.adaAkun(last)) { email.value = last; sandi.focus(); } else email.focus();
 
   document.getElementById('note').innerHTML =
-    '<b>Situs demo.</b> Tidak ada uang sungguhan dan tidak ada server. '
-    + 'Setiap akun punya profil perilaku sendiri yang dibangun dari nol di browser ini. '
-    + '<a href="#" id="contoh">Pakai akun contoh</a> kalau kamu hanya ingin melihat halamannya dulu.';
+    '<b>Demo site.</b> No real money and no server. '
+    + 'Every account has its own behavior profile, built from zero in this browser. '
+    + '<a href="#" id="contoh">Use the sample account</a> if you only want to look around first.';
   document.getElementById('contoh').onclick = e => {
     e.preventDefault();
-    A.akunContoh('nadia.putri@contoh.id', 'Nadia Putri');
-    localStorage.setItem('arunika:email-terakhir', 'nadia.putri@contoh.id');
-    location.href = 'beranda.html';
+    A.akunContoh('nadia.putri@example.com', 'Nadia Putri');
+    localStorage.setItem('arunika:email-terakhir', 'nadia.putri@example.com');
+    location.href = 'home.html';
   };
 
   f.addEventListener('submit', e => {
     e.preventDefault();
     err.textContent = '';
     email.removeAttribute('aria-invalid'); sandi.removeAttribute('aria-invalid');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) { err.textContent = 'Email tidak valid.'; email.setAttribute('aria-invalid', 'true'); email.focus(); return; }
-    if (sandi.value.length < 6) { err.textContent = 'Kata sandi minimal 6 karakter.'; sandi.setAttribute('aria-invalid', 'true'); sandi.focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) { err.textContent = 'That email is not valid.'; email.setAttribute('aria-invalid', 'true'); email.focus(); return; }
+    if (sandi.value.length < 6) { err.textContent = 'Password must be at least 6 characters.'; sandi.setAttribute('aria-invalid', 'true'); sandi.focus(); return; }
     const r = A.masuk(email.value);
     if (!r.ok) {
-      err.innerHTML = 'Email ini belum terdaftar. <a href="daftar.html">Buka rekening dulu</a>.';
+      err.innerHTML = 'No account uses this email. <a href="signup.html">Open an account first</a>.';
       email.setAttribute('aria-invalid', 'true'); email.focus(); return;
     }
     localStorage.setItem('arunika:email-terakhir', r.akun.email);
-    location.href = 'beranda.html';
+    location.href = 'home.html';
   });
 })();
 </script>

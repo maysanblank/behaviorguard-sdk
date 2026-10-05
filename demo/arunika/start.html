@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mulai · Arunika</title>
+<title>Get started · Arunika</title>
 <link rel="stylesheet" href="assets/app.css">
 <style>
-/* Halaman ini punya beberapa elemen yang tidak dipakai halaman lain. */
+/* This page has a few elements no other page uses. */
 .hero{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:26px 24px;box-shadow:var(--shadow);margin-bottom:18px}
 .hero h1{font-size:24px;margin-bottom:6px}
 .hero p{color:var(--ink-3);font-size:14.5px;max-width:62ch}
@@ -40,8 +40,8 @@
   <div class="steps" id="steps"></div>
 
   <div class="hero">
-    <h1 id="halo">Rekeningmu sudah jadi.</h1>
-    <p id="lead">Mulai sekarang Arunika mengenali <b>caramu</b> memakai akun ini - bukan hanya kata sandimu. Profilnya dibangun dari nol, di perangkat ini, dari pemakaian biasamu sendiri.</p>
+    <h1 id="halo">Your account is ready.</h1>
+    <p id="lead">From now on Arunika recognises <b>how</b> you use this account - not just your password. The profile is built from zero, on this device, from your own everyday use.</p>
   </div>
 
   <div class="grid g-2">
@@ -49,7 +49,7 @@
 
       <section class="card">
         <div class="card-h">
-          <div><h2>Mengenali perangkat ini</h2><p>Arunika perlu beberapa potong pemakaian normal sebelum bisa membedakan kamu dari orang lain.</p></div>
+          <div><h2>Learning this device</h2><p>Arunika needs a few pieces of normal use before it can tell you apart from someone else.</p></div>
         </div>
         <div class="card-b">
           <div class="ring">
@@ -61,12 +61,12 @@
               <b id="pct">0%</b>
             </div>
             <div class="txt">
-              <div class="st" id="st">Belum ada bukti yang terkumpul</div>
-              <div class="sd" id="sd">Pakai saja situsnya seperti biasa - mengetik, menggulir, berpindah halaman. Setiap 30 detik pemakaian jadi satu potong bukti.</div>
+              <div class="st" id="st">No evidence collected yet</div>
+              <div class="sd" id="sd">Just use the site as usual - type, scroll, move between pages. Every 30 seconds of use becomes one piece of evidence.</div>
               <div class="progress" style="margin-top:12px"><i id="bar" style="width:0%"></i></div>
               <div class="meter">
-                <span>Potong bukti <b id="m-win">0 / 10</b></span>
-                <span>Sedang dikumpulkan <b id="m-ev">0 / 150</b> kejadian</span>
+                <span>Pieces of evidence <b id="m-win">0 / 10</b></span>
+                <span>Collecting <b id="m-ev">0 / 150</b> events</span>
               </div>
             </div>
           </div>
@@ -77,15 +77,15 @@
       </section>
 
       <section class="card" id="latihan">
-        <div class="card-h"><div><h2>Cara tercepat: ketik sesuatu</h2><p>Mengetik memberi bukti paling banyak per detik. Salin kalimat di bawah dengan kecepatan biasamu.</p></div></div>
+        <div class="card-h"><div><h2>Fastest way: type something</h2><p>Typing gives the most evidence per second. Copy the sentence below at your normal speed.</p></div></div>
         <div class="card-b">
           <div class="contoh-tx" id="contoh"></div>
-          <label class="sr" for="tulis">Salin kalimat di atas</label>
-          <textarea class="input tulis" id="tulis" spellcheck="false" placeholder="Ketik di sini..."></textarea>
+          <label class="sr" for="tulis">Copy the sentence above</label>
+          <textarea class="input tulis" id="tulis" spellcheck="false" placeholder="Type here"></textarea>
           <div class="meter">
-            <span>Huruf diketik <b id="m-char">0</b></span>
-            <span>Kecepatan <b id="m-wpm">-</b></span>
-            <span><a href="#" id="ganti">ganti kalimat</a></span>
+            <span>Characters typed <b id="m-char">0</b></span>
+            <span>Speed <b id="m-wpm">-</b></span>
+            <span><a href="#" id="ganti">another sentence</a></span>
           </div>
         </div>
       </section>
@@ -94,12 +94,12 @@
 
     <div class="grid" style="align-content:start">
       <section class="card" id="verif">
-        <div class="card-h"><div><h2>Verifikasi kalau ada yang janggal</h2></div></div>
+        <div class="card-h"><div><h2>Verification when something looks off</h2></div></div>
         <div class="card-b" id="verif-b"></div>
       </section>
 
       <section class="card">
-        <div class="card-h"><div><h2>Sambil menunggu, gulir ini</h2><p>Menggulir dan menggerakkan kursor juga terhitung.</p></div></div>
+        <div class="card-h"><div><h2>While you wait, scroll this</h2><p>Scrolling and moving the cursor count too.</p></div></div>
         <ul class="list gulir" id="kabar"></ul>
       </section>
 
@@ -107,8 +107,8 @@
         <div class="card-b">
           <label class="small" style="display:flex;gap:9px;align-items:flex-start;color:var(--ink-2)">
             <input type="checkbox" id="cepat" style="margin-top:3px">
-            <span><b>Mode presentasi.</b> Perkecil ukuran bukti supaya pengenalan selesai ±3x lebih cepat.
-            <span class="muted">Angka akurasi resmi tidak berlaku di mode ini - ia diukur dengan 150 kejadian per penilaian.</span></span>
+            <span><b>Presentation mode.</b> Smaller evidence per verdict, so learning finishes about 3x faster.
+            <span class="muted">The published accuracy numbers do not apply in this mode - they were measured at 150 events per verdict.</span></span>
           </label>
         </div>
       </section>
@@ -118,41 +118,41 @@
 <footer id="foot"></footer>
 <script src="../../dist/behaviorguard.js"></script>
 <script src="assets/app.js"></script>
-<script src="assets/bg-integrasi.js"></script>
+<script src="assets/bg-integration.js"></script>
 <script>
 (function () {
-  const A = Arunika, a = A.shell('mulai.html');
+  const A = Arunika, a = A.shell('start.html');
   if (!a) return;
   const $ = id => document.getElementById(id);
   const I = A.I;
 
-  $('halo').textContent = `Halo ${a.nama.split(' ')[0]}, rekeningmu sudah jadi.`;
+  $('halo').textContent = `Hi ${a.nama.split(' ')[0]}, your account is ready.`;
   $('what').innerHTML = [
-    [I.keys, 'Irama ketik', 'Berapa lama tiap tombol ditekan dan jeda antar-tombol. Isi ketikanmu tidak pernah disimpan.'],
-    [I.device, 'Gerak kursor', 'Kecepatan, kelengkungan lintasan, dan jeda sebelum mengeklik.'],
-    [I.shield, 'Alur pemakaian', 'Halaman mana yang kamu buka, seberapa dalam menggulir, urutan mengisi kolom.'],
+    [I.keys, 'Typing rhythm', 'How long each key is held and the gaps between keys. What you type is never stored.'],
+    [I.device, 'Cursor movement', 'Speed, path curvature, and the pause before a click.'],
+    [I.shield, 'Usage flow', 'Which pages you open, how far you scroll, the order you fill in fields.'],
   ].map(([ic, t, d]) => `<div><div class="t">${ic}${A.esc(t)}</div><div class="d">${A.esc(d)}</div></div>`).join('');
-  $('privasi').textContent = 'Semua perhitungan terjadi di browser ini. Tidak ada rekaman layar, tidak ada isi ketikan, dan tidak ada yang dikirim ke server Arunika. Kamu bisa menghapusnya kapan saja lewat halaman Keamanan.';
+  $('privasi').textContent = 'Every calculation happens in this browser. No screen recording, no typed text, and nothing is sent to an Arunika server. You can delete it at any time from the Security page.';
 
-  // ---- kabar (bahan gulir) ----
+  // ---- news (something to scroll) ----
   const KABAR = [
-    ['Biaya transfer antarbank turun', 'Mulai bulan ini biaya transfer ke bank lain jadi Rp 2.500.'],
-    ['Tips: kenali modus penipuan', 'Petugas Arunika tidak pernah meminta kode verifikasi lewat telepon.'],
-    ['Tarik tunai tanpa kartu', 'Ambil uang di ATM Arunika hanya dengan kode dari aplikasi.'],
-    ['Bunga deposito naik', 'Deposito 6 bulan kini 4,25% per tahun.'],
-    ['Bayar tagihan otomatis', 'Atur sekali, tagihan listrik dan air terbayar sendiri tiap bulan.'],
-    ['Jadwal pemeliharaan sistem', 'Minggu, 02.00-04.00 WIB layanan transfer sementara tidak tersedia.'],
-    ['Kartu debit desain baru', 'Ganti kartu lamamu gratis di cabang mana pun.'],
-    ['Arunika untuk usaha kecil', 'Rekening bisnis tanpa biaya admin tahun pertama.'],
+    ['Interbank transfer fees are down', 'From this month, a transfer to another bank costs Rp 2,500.'],
+    ['Tip: spot a scam', 'Arunika staff never ask for a verification code over the phone.'],
+    ['Cardless cash withdrawal', 'Take cash at an Arunika ATM with just a code from the app.'],
+    ['Higher deposit rates', 'A 6-month deposit now earns 4.25% a year.'],
+    ['Automatic bill payments', 'Set it up once, and electricity and water bills pay themselves every month.'],
+    ['Scheduled maintenance', 'Sunday 02:00-04:00 WIB, transfers are temporarily unavailable.'],
+    ['New debit card design', 'Swap your old card for free at any branch.'],
+    ['Arunika for small business', 'A business account with no admin fee in the first year.'],
   ];
   $('kabar').innerHTML = KABAR.map(([t, d]) => `<li class="row"><div class="ico">${I.info}</div><div class="main"><div class="t" style="white-space:normal">${A.esc(t)}</div><div class="s">${A.esc(d)}</div></div></li>`).join('');
 
-  // ---- latihan mengetik ----
+  // ---- typing practice ----
   const KALIMAT = [
-    'Saya menabung sedikit demi sedikit supaya bisa membeli sepeda baru tahun depan.',
-    'Kopi pagi ini terasa lebih pahit dari biasanya, tapi hujannya enak sekali dilihat.',
-    'Tolong ingatkan saya membayar tagihan listrik sebelum tanggal dua puluh bulan ini.',
-    'Perjalanan ke Bandung memakan waktu tiga jam kalau berangkat sebelum matahari terbit.',
+    'I save a little at a time so I can buy a new bicycle next year.',
+    'This morning the coffee tasted more bitter than usual, but the rain was lovely to watch.',
+    'Please remind me to pay the electricity bill before the twentieth of this month.',
+    'The trip to Bandung takes three hours if you leave before the sun comes up.',
   ];
   let ki = Math.floor(Math.random() * KALIMAT.length);
   const pasangKalimat = () => { $('contoh').textContent = KALIMAT[ki % KALIMAT.length]; };
@@ -167,16 +167,16 @@
     if (!huruf) { mulaiKetik = 0; $('m-wpm').textContent = '-'; return; }
     if (!mulaiKetik) mulaiKetik = Date.now();
     const menit = (Date.now() - mulaiKetik) / 60000;
-    $('m-wpm').textContent = menit > 0.08 ? Math.round((huruf / 5) / menit) + ' kpm' : '-';
+    $('m-wpm').textContent = menit > 0.08 ? Math.round((huruf / 5) / menit) + ' wpm' : '-';
   }
   $('tulis').addEventListener('input', hitungKetik);
-  // kalimat selesai -> ganti otomatis, supaya orang terus mengetik tanpa berpikir
+  // sentence finished -> swap automatically, so people keep typing without thinking
   $('tulis').addEventListener('input', () => {
     const v = $('tulis').value.trim();
     if (v.length >= KALIMAT[ki % KALIMAT.length].length) { ki++; pasangKalimat(); $('tulis').value = ''; mulaiKetik = 0; hitungKetik(); }
   });
 
-  // ---- mode presentasi ----
+  // ---- presentation mode ----
   const cepatOn = localStorage.getItem('arunika:mode-cepat') === '1';
   $('cepat').checked = cepatOn;
   $('cepat').onchange = () => {
@@ -185,44 +185,44 @@
     location.reload();
   };
 
-  // ---- kemajuan ----
-  const KEL = 283;                       // keliling lingkaran r=45
+  // ---- progress ----
+  const KEL = 283;                       // circumference of a circle with r=45
   let selesai = false;
   function langkah(n) {
     const el = $('steps');
-    const L = [['Kenali perangkat', 1], ['Atur verifikasi', 2], ['Selesai', 3]];
+    const L = [['Learn the device', 1], ['Set up verification', 2], ['Done', 3]];
     el.innerHTML = L.map(([t, i], k) => (k ? '<i></i>' : '')
       + `<span class="${n === i ? 'on' : n > i ? 'done' : ''}"><b>${n > i ? '✓' : i}</b>${A.esc(t)}</span>`).join('');
   }
 
   function verif(st) {
     const b = $('verif-b');
-    if (!st) { b.innerHTML = '<p class="small muted">Pustaka keamanan tidak termuat.</p>'; return; }
+    if (!st) { b.innerHTML = '<p class="small muted">The security library did not load.</p>'; return; }
     if (st.mfa.enrolled) {
-      b.innerHTML = `<div class="banner bn-ok" style="margin:0">${I.check}<div><div class="t">Irama ketik sudah diatur</div>
-        <div>Kalau ada aktivitas janggal, kamu cukup mengetik ulang satu frasa pendek - tidak perlu menunggu kode.</div></div></div>`;
+      b.innerHTML = `<div class="banner bn-ok" style="margin:0">${I.check}<div><div class="t">Typing rhythm is set up</div>
+        <div>If something looks off, you just retype one short phrase - no waiting for a code.</div></div></div>`;
       return;
     }
     const bisa = st.mfa.canEnroll;
-    b.innerHTML = `<p style="font-size:14px;color:var(--ink-2)">Kalau Arunika melihat sesuatu yang tidak biasa, ia akan meminta kamu membuktikan diri.
-      Cara utamanya <b>bukan kode SMS</b>, melainkan <b>irama ketikmu sendiri</b>: ketik satu frasa pendek, yang dicocokkan adalah ritmenya, bukan hurufnya.</p>
-      <button class="btn btn-pri" id="atur" style="margin-top:14px"${bisa ? '' : ' disabled'}>${I.keys}Atur verifikasi irama ketik</button>
-      <p class="small muted" style="margin-top:10px">${bisa ? 'Kamu akan diminta mengetik frasa itu 3 kali.'
-        : 'Tersedia setelah penilaian terakhir kembali wajar.'}</p>
-      <p class="small muted" style="margin-top:10px">Kode verifikasi ke ponsel tetap ada sebagai <b>jalan cadangan</b>, untuk saat kamu memakai keyboard lain atau tanganmu sedang tidak bisa mengetik.</p>`;
+    b.innerHTML = `<p style="font-size:14px;color:var(--ink-2)">If Arunika sees something unusual, it asks you to prove it is you.
+      The main way is <b>not an SMS code</b> but <b>your own typing rhythm</b>: type one short phrase, and the rhythm is matched, not the letters.</p>
+      <button class="btn btn-pri" id="atur" style="margin-top:14px"${bisa ? '' : ' disabled'}>${I.keys}Set up typing-rhythm verification</button>
+      <p class="small muted" style="margin-top:10px">${bisa ? 'You will be asked to type the phrase 3 times.'
+        : 'Available once the latest assessment is back to normal.'}</p>
+      <p class="small muted" style="margin-top:10px">A verification code to your phone stays available as a <b>fallback</b>, for when you are on another keyboard or cannot type normally.</p>`;
     if (bisa) $('atur').onclick = async () => {
       $('atur').disabled = true;
       const r = await BehaviorGuard.enrollMfa();
       $('atur').disabled = false;
-      if (r.enrolled) { Guard.catat({ lv: 'ok', t1: 'Verifikasi irama ketik diatur', t2: 'Tersimpan di perangkat ini.' }); A.toast('Irama ketikmu tersimpan. Verifikasi siap dipakai.'); }
-      else if (!/dibatalkan|waktu/.test(r.reason || '')) A.toast('Belum berhasil: ' + (r.reason || 'coba lagi'));
+      if (r.enrolled) { Guard.record({ lv: 'ok', t1: 'Typing-rhythm verification set up', t2: 'Stored on this device.' }); A.toast('Your typing rhythm is saved. Verification is ready.'); }
+      else if (!/cancelled|timed out/.test(r.reason || '')) A.toast('Not done yet: ' + (r.reason || 'try again'));
       render();
     };
   }
 
-  // Bagian yang membangun ulang HTML (langkah & kartu verifikasi) hanya digambar saat
-  // keadaannya BERUBAH. Kalau digambar tiap detik, tombol yang sedang difokus hilang
-  // fokusnya dan penanganan kliknya terpasang ulang di tengah klik pengguna.
+  // The parts that rebuild HTML (steps & the verification card) are only redrawn when their
+  // state CHANGES. Redrawn every second, a focused button loses focus and its click handler
+  // is replaced in the middle of the user's click.
   let sigLama = '';
   function render() {
     const st = window.Guard && Guard.status ? Guard.status() : null;
@@ -237,20 +237,20 @@
     $('m-ev').textContent = `${st.evidence.buffered} / ${st.evidence.need}`;
 
     if (p >= 1) {
-      $('st').textContent = 'Profil perilakumu sudah terbentuk';
-      $('sd').textContent = 'Arunika sekarang bisa membedakan pemakaian biasamu dari pemakaian orang lain. Profil ini terus menyesuaikan diri selama kamu memakai akunmu.';
+      $('st').textContent = 'Your behavior profile is built';
+      $('sd').textContent = 'Arunika can now tell your everyday use apart from someone else. The profile keeps adapting as you use your account.';
       if (!selesai) {
         selesai = true;
-        A.toast('Profil perilakumu selesai dibangun. Perlindungan aktif.', { label: 'Keamanan' });
-        $('latihan').querySelector('.card-h p').textContent = 'Sudah cukup. Kamu boleh berhenti mengetik.';
+        A.toast('Your behavior profile is built. Protection is on.', { label: 'Security' });
+        $('latihan').querySelector('.card-h p').textContent = 'That is enough. You can stop typing.';
         const go = document.createElement('div');
         go.className = 'card-b';
         go.style.borderTop = '1px solid var(--line-2)';
-        go.innerHTML = '<a class="btn btn-pri" href="beranda.html">Masuk ke Beranda</a>';
+        go.innerHTML = '<a class="btn btn-pri" href="home.html">Go to Home</a>';
         $('verif').appendChild(go);
       }
     } else {
-      $('st').textContent = done ? `Sudah ${done} dari ${need} potong bukti` : 'Belum ada bukti yang terkumpul';
+      $('st').textContent = done ? `${done} of ${need} pieces of evidence so far` : 'No evidence collected yet';
     }
     const sig = `${p >= 1 ? 1 : 0}|${st.mfa.enrolled}|${st.mfa.canEnroll}`;
     if (sig !== sigLama) {
@@ -262,9 +262,9 @@
 
   if (window.Guard) Guard.onChange(render);
   render();
-  setInterval(render, 1000);        // penghitung bukti bergerak tiap detik, bukan tiap vonis
-  // fokus ke kotak ketik TANPA menggulir: kalau halaman melompat ke bawah, orang tidak
-  // pernah melihat lingkaran kemajuan - padahal itu yang menjelaskan apa yang sedang terjadi
+  setInterval(render, 1000);        // the evidence counter moves every second, not every verdict
+  // focus the typing box WITHOUT scrolling: if the page jumps down, people never see the
+  // progress ring - and that is what explains what is happening
   try { $('tulis').focus({ preventScroll: true }); } catch { }
 })();
 </script>

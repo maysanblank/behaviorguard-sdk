@@ -340,6 +340,19 @@ loads, the rhythm path is locked and only the fallback can verify; a passed veri
 unlocks it. Without a fallback configured the locked state is fail-closed (`unavailable`),
 not a pass.
 
+### 4.15 Deployment conditions that used to silence the library - FIXED (C-45)
+
+- **Plain http.** `crypto.subtle` exists only in secure contexts. Every save threw, the
+  verdict path threw with it, and the timer swallowed the error: the library was installed
+  and produced no verdict at all. It now stores unsigned data on insecure origins (the HMAC
+  was tamper-evidence keyed by a public string, not secrecy) and warns once; unsigned data is
+  refused on a secure origin, so https is not weakened.
+- **Loaded twice** (tag manager plus a manual tag): the second copy replaced the first and
+  two capture instances ran. The first copy now wins.
+- **Library missing** (blocked by an extension, CDN down): this is on the integrator. The
+  demo integration treats it as `UNKNOWN` and sends every sensitive action to OTP. Do the
+  same; never let the absence of the security script mean "safe".
+
 ### 4.16 The step-up layer could deadlock - FIXED (C-46)
 
 Two ways the verification layer could stop working entirely, both of them fail-*closed* in
@@ -356,19 +369,6 @@ the security sense but broken as a product:
   succeed, so an owner - possibly just using a different keyboard - is locked out of
   verification permanently, with nothing in the integrator's logs explaining why. `init()` now
   warns when that combination is configured, naming both escapes.
-
-### 4.15 Deployment conditions that used to silence the library - FIXED (C-45)
-
-- **Plain http.** `crypto.subtle` exists only in secure contexts. Every save threw, the
-  verdict path threw with it, and the timer swallowed the error: the library was installed
-  and produced no verdict at all. It now stores unsigned data on insecure origins (the HMAC
-  was tamper-evidence keyed by a public string, not secrecy) and warns once; unsigned data is
-  refused on a secure origin, so https is not weakened.
-- **Loaded twice** (tag manager plus a manual tag): the second copy replaced the first and
-  two capture instances ran. The first copy now wins.
-- **Library missing** (blocked by an extension, CDN down): this is on the integrator. The
-  demo integration treats it as `UNKNOWN` and sends every sensitive action to OTP. Do the
-  same; never let the absence of the security script mean "safe".
 
 ---
 
@@ -405,8 +405,9 @@ the security sense but broken as a product:
 
 ## Reporting a vulnerability
 
-Open a GitHub issue for anything already public. For an unreported bypass, please contact
-the maintainer directly first so a fix can ship before the details do.
+Open a GitHub issue for anything already public. For an unreported bypass, use
+[private vulnerability reporting](https://github.com/maysanblank/behaviorguard-sdk/security/advisories/new)
+first so a fix can ship before the details do. See [SECURITY.md](SECURITY.md).
 
 We would genuinely rather receive a working mimicry attack than not know about it. If you
 break it, we will document it here with credit.

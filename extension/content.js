@@ -1,24 +1,24 @@
 /**
- * content.js - penangkap on-device untuk ekstensi, memakai capture.js YANG SAMA dengan SDK.
+ * content.js - the extension's on-device capture, using the SAME capture.js as the SDK.
  *
- * C-41: versi lama memakai penangkap SALINAN-TANGAN di berkas ini: menyimpan KARAKTER ASLI
- * yang diketik (sandi di situs mana pun - ekstensi ini berjalan di <all_urls>), tanpa
- * velocity (C-16), tanpa mengabaikan popup MFA, lalu background menyimpan buffer mentahnya
- * ke chrome.storage.local. Kini capture.js dimuat apa adanya (token per-halaman, C-30),
- * jadi karakter tidak pernah meninggalkan halaman ini.
+ * C-41: the old version used a HAND-COPIED capture in this file: it stored the REAL
+ * characters typed (passwords on any site - this extension runs on <all_urls>), had no
+ * velocity (C-16), did not ignore the MFA popup, and background.js saved the raw buffer to
+ * chrome.storage.local. Now capture.js is loaded as is (per-page tokens, C-30), so
+ * characters never leave this page.
  *
- * Penilaian di background.js memakai orkestrator BehaviorGuard asli, satu model per origin.
+ * Scoring in background.js uses the real BehaviorGuard orchestrator, one model per origin.
  */
 (async () => {
   if (window.__bgInjected) return; window.__bgInjected = true;
   let createCapture;
   try {
     ({ createCapture } = await import(chrome.runtime.getURL('core/capture.js')));
-  } catch (e) { console.warn('[BG] capture tidak termuat', e); return; }
+  } catch (e) { console.warn('[BG] capture did not load', e); return; }
 
   const cap = createCapture(() => {});
   cap.attach();
-  const WINDOW_MS = 30000;          // = session.windowSec: irama yang sama dengan SDK
+  const WINDOW_MS = 30000;          // = session.windowSec: the same rhythm as the SDK
 
   const flush = () => {
     const batch = cap.drain();
@@ -30,12 +30,12 @@
     });
   };
   setInterval(flush, WINDOW_MS);
-  // pagehide: kirim sisa buffer sekali; background yang mengumpulkannya lintas halaman
+  // pagehide: send what is left once; background.js collects it across pages
   window.addEventListener('pagehide', flush);
 
-  // C-41: dulu layar kunci HIGH punya tombol "Saya pemilik" yang cukup DIKLIK untuk
-  // menutupnya - verifikasi yang bisa dilewati siapa pun. Ekstensi tidak punya jalur
-  // step-up sungguhan, jadi yang jujur adalah PEMBERITAHUAN, bukan kunci palsu.
+  // C-41: the HIGH lock screen used to have an "I am the owner" button that closed it with
+  // one CLICK - verification anyone could skip. The extension has no real step-up path, so
+  // the honest response is a NOTICE, not a fake lock.
   function notice(evt) {
     if (evt.level !== 'HIGH' || document.getElementById('__bg_notice')) return;
     const el = document.createElement('div');
@@ -43,10 +43,10 @@
     el.style.cssText = 'position:fixed;right:16px;bottom:16px;max-width:360px;background:#111827;color:#f9fafb;' +
       'padding:14px 16px;border-radius:10px;z-index:2147483647;font:13px/1.45 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35)';
     const reason = (evt.reasons || [])[0] || '';
-    el.textContent = 'BehaviorGuard: perilaku di situs ini tidak cocok dengan pola biasanya. ' +
-      'Kalau ini bukan Anda, keluar dan ganti sandi. ' + (reason ? '(' + reason + ')' : '');
+    el.textContent = 'BehaviorGuard: behavior on this site does not match the usual pattern. ' +
+      'If this is not you, log out and change your password. ' + (reason ? '(' + reason + ')' : '');
     const x = document.createElement('button');
-    x.textContent = 'Tutup';
+    x.textContent = 'Close';
     x.style.cssText = 'margin-left:10px;padding:4px 10px;border-radius:6px;border:0;background:#374151;color:#fff;cursor:pointer';
     x.onclick = () => el.remove();
     el.appendChild(x);

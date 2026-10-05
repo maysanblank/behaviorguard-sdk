@@ -123,11 +123,19 @@ def main():
 
     # bootstrap plug-and-play: config via data-* attribute ATAU window.BehaviorGuardConfig
     parts.append(r'''
-/* ---- panel status bawaan (opsional, aktif via cfg.panel:true / data-panel) ----
-   C-45: Shadow DOM (CSS situs tidak bisa merusaknya, CSP style-src aman), tanpa emoji,
-   teks lewat textContent, progres pendaftaran dari evt.enrollment (bukan regex alasan). */
+/* ---- built-in status panel (optional, on with cfg.panel:true / data-panel) ----
+   C-45: Shadow DOM (site CSS cannot break it, CSP style-src safe), no emoji, text via
+   textContent, enrollment progress from evt.enrollment (not a regex over reasons).
+   Language follows the page (lang attribute, then the browser), English by default. */
 function __bgMountPanel(){
   if(document.querySelector('[data-bg-panel]')) return function(){};
+  var ID=false; try{ ID=/^id/i.test(document.documentElement.getAttribute('lang')||navigator.language||'en'); }catch(_){}
+  var T=ID ? {more:'Lihat detail', learning:'Mengenali', waiting:'menunggu aktivitas', building:'membangun profil pemilik',
+      ready:'Profil siap. Jendela berikutnya dinilai.', need:function(m){ return 'Butuh '+m+' jendela aktivitas lagi.'; }, score:'skor',
+      LOW:'Aman', MEDIUM:'Perlu verifikasi', HIGH:'Berisiko', UNKNOWN:'Belum cukup bukti'}
+    : {more:'See details', learning:'Learning', waiting:'waiting for activity', building:'building the owner profile',
+      ready:'Profile ready. The next window is assessed.', need:function(m){ return m+' more activity windows needed.'; }, score:'score',
+      LOW:'Safe', MEDIUM:'Verify', HIGH:'At risk', UNKNOWN:'Not enough evidence'};
   var host=document.createElement('div');
   host.setAttribute('data-bg-panel','');
   host.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483000';
@@ -147,27 +155,28 @@ function __bgMountPanel(){
   catch(_){ var st=document.createElement('style'); st.textContent=css; root.appendChild(st); }
   var p=document.createElement('div'); p.className='p';
   p.innerHTML='<div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z"/></svg><b>BehaviorGuard</b><span class="d"></span></div>'+
-    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div><button class="m" type="button">Lihat detail</button></div>';
+    '<div class="b"><div class="l"></div><div class="s"></div><div class="bar" hidden><i></i></div><div class="r"></div><button class="m" type="button"></button></div>';
   root.appendChild(p);
   (document.body||document.documentElement).appendChild(host);
   var q=function(c){ return p.querySelector(c); };
   var L=q('.l'), S=q('.s'), R=q('.r'), D=q('.d'), BAR=q('.bar'), FILL=q('.bar i');
   q('.m').onclick=function(){ try{ window.BehaviorGuard.openEnrollment(); }catch(e){ try{ console.error(e); }catch(_){} } };
-  L.textContent='Mengenali...'; S.textContent='menunggu aktivitas';
-  var C={LOW:['#1a7f4b','Aman'],MEDIUM:['#b35c00','Perlu verifikasi'],HIGH:['#c4312b','Berisiko'],UNKNOWN:['#6b7380','Belum cukup bukti']};
+  q('.m').textContent=T.more;
+  L.textContent=T.learning; S.textContent=T.waiting;
+  var C={LOW:['#1a7f4b',T.LOW],MEDIUM:['#b35c00',T.MEDIUM],HIGH:['#c4312b',T.HIGH],UNKNOWN:['#6b7380',T.UNKNOWN]};
   return function(e){
     if(e.enrollment){
-      var k=e.enrollment.selesai, n=e.enrollment.perlu;
+      var k=e.enrollment.done, n=e.enrollment.need;
       D.style.background='#1f5fd6'; L.style.color='#1f5fd6';
-      L.textContent='Mengenali '+k+'/'+n; S.textContent='membangun profil pemilik';
+      L.textContent=T.learning+' '+k+'/'+n; S.textContent=T.building;
       BAR.hidden=false; FILL.style.width=Math.round(k/n*100)+'%';
-      R.textContent= k>=n ? 'Profil siap. Jendela berikutnya dinilai.' : 'Butuh '+(n-k)+' jendela aktivitas lagi.';
+      R.textContent= k>=n ? T.ready : T.need(n-k);
       return;
     }
     var c=C[e.level]||C.UNKNOWN;
     BAR.hidden=true; D.style.background=c[0]; L.style.color=c[0];
     L.textContent=c[1];
-    S.textContent=(e.action||'')+(e.score!=null&&isFinite(e.score)?' · skor '+e.score.toFixed(2):'');
+    S.textContent=(e.action||'')+(e.score!=null&&isFinite(e.score)?' · '+T.score+' '+e.score.toFixed(2):'');
     R.textContent=(e.reasons&&e.reasons.length)?e.reasons.slice(0,2).join(' · '):'';
   };
 }
@@ -218,7 +227,7 @@ try{
     with open(dest, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
     kb = os.path.getsize(dest)/1024
-    print("OK -> dist/behaviorguard.js  (%.1f KB, %d modul)" % (kb, len(ORDER)))
+    print("OK -> dist/behaviorguard.js  (%.1f KB, %d modules)" % (kb, len(ORDER)))
     import gzip
     full = "\n".join(parts)
     mini = strip_comments(full)
@@ -233,7 +242,7 @@ try{
     src_py = os.path.join(ROOT, "core", "bg_core.py")
     dst_py = os.path.join(out, "behaviorguard.py")
     shutil.copyfile(src_py, dst_py)
-    print("OK -> dist/behaviorguard.py (%.1f KB, SDK backend Python)"
+    print("OK -> dist/behaviorguard.py (%.1f KB, Python SDK backend)"
           % (os.path.getsize(dst_py)/1024))
 
 if __name__ == "__main__":
