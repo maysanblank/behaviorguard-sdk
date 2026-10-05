@@ -8,7 +8,7 @@ Start here. This is the map to every document in the project.
 - [INTEGRATION.md](INTEGRATION.md) - step by step: which file to touch in your backend and
   pages, with Flask, Express, PHP and Laravel examples, and what to do if your site has no
   MFA yet. ([Bahasa Indonesia](INTEGRATION.id.md))
-- [../demo/toko-checkout/](../demo/toko-checkout/) - a plain shop with its own backend, and
+- [../demo/shop-checkout/](../demo/shop-checkout/) - a plain shop with its own backend, and
   the two lines that plug BehaviorGuard into it.
 
 ## Understand the engine

@@ -418,7 +418,7 @@ requests unless you enable hybrid mode. If you use the built-in step-up prompt o
 python core/conformance.py       # engine matches the spec        -> 319/319
 node   core/lifecycle.test.mjs   # lifecycle and integrator APIs  -> 49/49
 node   core/challenge.test.mjs   # step-up layer is fail-closed
-python -m http.server 8080       # then open /demo/pemantau/
+python -m http.server 8080       # then open /demo/monitor/
 ```
 
 If `conformance.py` does not print `319 / 319`, something in `sdk/core/` has been modified

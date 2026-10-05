@@ -356,7 +356,7 @@
     var csv = baris.map(function (b) { return b.join(','); }).join('\n');
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'lab-akurasi-behaviorguard.csv';
+    a.download = 'accuracy-lab-behaviorguard.csv';
     document.body.appendChild(a); a.click(); a.remove();
   };
 

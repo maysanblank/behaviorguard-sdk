@@ -1,7 +1,7 @@
 /**
  * bridge.js - cara mencolok SDK dari LUAR tanpa ubah situs polos
  * Dipakai pemantau: 1 baris di parent, situs polos tetap NOL BG
- * <iframe id="toko" src="../situs-polos/index.html"></iframe>
+ * <iframe id="toko" src="../plain-site/index.html"></iframe>
  * <script type="module">import './bridge.js'</script>
  * Bridge otomatis capture event iframe same-origin + postMessage untuk cross-origin
  */

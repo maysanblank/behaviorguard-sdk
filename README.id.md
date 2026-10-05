@@ -228,7 +228,7 @@ sama: 319 pemeriksaan, toleransi 1e-9. Nol dependensi di semua bahasa.
 
 ## Coba demonya
 
-**Colok ke situs polos (GIF di atas):** [demo/toko-checkout](demo/toko-checkout/) - toko Flask
+**Colok ke situs polos (GIF di atas):** [demo/shop-checkout](demo/shop-checkout/) - toko Flask
 dengan backend sendiri, tanpa MFA. Dua baris yang dikomentari menyalakan BehaviorGuard;
 README di sana menjelaskan langkahnya.
 
@@ -242,7 +242,7 @@ BehaviorGuard ada di satu berkas, `demo/arunika/assets/bg-integration.js`. Panel
 pojok kiri bawah menampilkan fase, bukti, vonis, dan alasannya dalam bahasa biasa, serta bisa
 mensimulasikan kembali-setelah-absen, rekam-ulang, dan bot.
 
-Tampilan tanpa kode: <http://localhost:8080/demo/pemantau/>. Panel kiri adalah toko biasa **tanpa satu baris
+Tampilan tanpa kode: <http://localhost:8080/demo/monitor/>. Panel kiri adalah toko biasa **tanpa satu baris
 kode BehaviorGuard pun**; panel kanan menempel dari luar dan menampilkan skor langsung.
 Panduan lengkap: [demo/README.md](demo/README.md).
 

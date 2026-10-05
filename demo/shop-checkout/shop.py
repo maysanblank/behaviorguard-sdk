@@ -5,7 +5,7 @@ Toko online beneran yang cuma punya fitur login + checkout, TANPA MFA, TANPA pro
 sesi. File ini tidak tahu apa-apa soal BehaviorGuard, kecuali satu baris colok yang
 masih dikomentari di bagian bawah.
 
-Jalankan:  pip install flask  &&  python demo/toko-checkout/shop.py
+Jalankan:  pip install flask  &&  python demo/shop-checkout/shop.py
 """
 import hashlib, os, time
 from flask import Flask, request, session, jsonify, send_from_directory
@@ -14,7 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))        # repo root (buat /dist)
 
 app = Flask(__name__)
-app.secret_key = "demo-toko-checkout-bukan-rahasia"
+app.secret_key = "demo-shop-checkout-bukan-rahasia"
 
 PRODUCTS = [
     {"id": "kopi", "nama": "Kopi Gayo 250g", "harga": 75000},

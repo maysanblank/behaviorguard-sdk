@@ -2,7 +2,7 @@
 
 For sites that **already have a login** and want to protect sensitive actions (checkout,
 transfer, change email) without rewriting existing code. Working example:
-[`demo/toko-checkout/`](../demo/toko-checkout/).
+[`demo/shop-checkout/`](../demo/shop-checkout/).
 
 > Versi bahasa Indonesia: [INTEGRATION.id.md](INTEGRATION.id.md)
 
@@ -76,7 +76,7 @@ Token = `base64url(userId) "." exp "." hex(HMAC-SHA256(sk, pk|userId|exp))`, val
 
 ### Flask (used by the demo)
 
-Copy [`demo/toko-checkout/bg_backend.py`](../demo/toko-checkout/bg_backend.py) next to your
+Copy [`demo/shop-checkout/bg_backend.py`](../demo/shop-checkout/bg_backend.py) next to your
 app file and add **one line** after your login routes:
 
 ```python
@@ -179,7 +179,7 @@ include it).
 
 1. Copy two files into your public assets folder:
    - `dist/behaviorguard.js` (the library)
-   - `demo/toko-checkout/plug-behaviorguard.js` (the glue: token, badge, gate, password confirm)
+   - `demo/shop-checkout/plug-behaviorguard.js` (the glue: token, badge, gate, password confirm)
 2. Add this tag to the **layout used after login**, right before `</body>`:
 
 ```html

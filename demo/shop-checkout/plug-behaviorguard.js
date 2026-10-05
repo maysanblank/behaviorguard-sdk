@@ -106,7 +106,7 @@
     } catch (e) {}
     cfg.userId = cfg.userId || ds.user;
     if (!cfg.userId) {
-      // khusus demo toko-checkout: tanya backend siapa yang login
+      // khusus demo shop-checkout: tanya backend siapa yang login
       try { cfg.userId = (await fetch("/api/me").then(r => r.json())).user; } catch (e) {}
     }
     if (!cfg.userId) { console.info("[plug] belum login - BehaviorGuard tidak dinyalakan"); return false; }

@@ -1,4 +1,23 @@
-# Plug-and-play demo - three sites, three architectures
+# Demos
+
+To protect a website you only need `dist/behaviorguard.min.js`. Everything in this folder is a
+demo site to try it on; none of it is part of the library.
+
+| Folder | What it shows | UI language |
+|---|---|---|
+| [`arunika/`](arunika/) | **Main demo.** A bank with sign-up, transfers, the step-up and a presenter panel | English |
+| [`shop-checkout/`](shop-checkout/) | A shop with its own Flask backend; BehaviorGuard plugged in after login (the install GIF) | Indonesian |
+| [`shop-multipage/`](shop-multipage/), [`shop-spa/`](shop-spa/), [`shop-react/`](shop-react/) | The same two pasted lines on three architectures (this guide, below) | Indonesian |
+| [`monitor/`](monitor/) + [`plain-site/`](plain-site/) | A shop with zero BehaviorGuard code, scored from the outside | Indonesian |
+| [`attack_sim.html`](attack_sim.html) | Four automated attacks: paste replay, speed bot, minimal mouse, mimicry | Indonesian |
+| [`accuracy-lab/`](accuracy-lab/) | Label your own sessions as owner or other and export the results as CSV | Indonesian |
+
+Start everything from the repo root with `python -m http.server 8080` (the shop-checkout demo
+runs its own Flask server; see its README).
+
+---
+
+## Plug-and-play guide - three sites, three architectures
 
 Step by step: install BehaviorGuard **live, in front of an audience**, on three sites with
 different architectures.
@@ -8,9 +27,9 @@ then sees you paste two lines, then sees the system come alive.
 
 | Folder | Shop | Architecture | What it proves |
 |---|---|---|---|
-| `toko-klasik/` | Toko Kopi Nusantara | multi-page HTML, no framework | real page-to-page navigation |
-| `pasar-spa/` | Pasar Loka | vanilla SPA, History API | `pushState` - zero reloads |
-| `butik-react/` | Butik Rasa | React 18 | a framework with its own synthetic events |
+| `shop-multipage/` | Toko Kopi Nusantara | multi-page HTML, no framework | real page-to-page navigation |
+| `shop-spa/` | Pasar Loka | vanilla SPA, History API | `pushState` - zero reloads |
+| `shop-react/` | Butik Rasa | React 18 | a framework with its own synthetic events |
 
 **All three have their own account system**: sign up, log in, log out. Before logging in, the whole
 shop is locked. This matters for the demo - the story starts from **signing up a new account**, not
@@ -20,7 +39,7 @@ from an account that came from nowhere.
 *Keranjang* = cart, *Bayar* = pay.)
 
 For a site with its own backend and a checkout that gets gated, see
-[toko-checkout/](toko-checkout/).
+[shop-checkout/](shop-checkout/).
 
 ---
 
@@ -39,9 +58,9 @@ Leave that window open for the whole demo.
 
 ### 0.2 Check the three sites are up
 
-- <http://localhost:8080/demo/toko-klasik/index.html>
-- <http://localhost:8080/demo/pasar-spa/>
-- <http://localhost:8080/demo/butik-react/>
+- <http://localhost:8080/demo/shop-multipage/index.html>
+- <http://localhost:8080/demo/shop-spa/>
+- <http://localhost:8080/demo/shop-react/>
 
 All three go straight to a **log in / sign up** screen because there is no account yet.
 
@@ -66,7 +85,7 @@ knows its user. All three sites already publish the active account through `wind
 
 ### Step 1.1 · Show the site is still plain
 
-Open <http://localhost:8080/demo/toko-klasik/index.html>
+Open <http://localhost:8080/demo/shop-multipage/index.html>
 
 You are redirected to the log-in page. Press **F12** -> **Console**:
 
@@ -93,7 +112,7 @@ what BehaviorGuard uses as the identity - not a cookie, not the device."*
 
 ### Step 1.3 · Open the file in VS Code
 
-Open `demo/toko-klasik/index.html`, press **Ctrl+G**, type `32`, Enter.
+Open `demo/shop-multipage/index.html`, press **Ctrl+G**, type `32`, Enter.
 
 ```html
 30  </div></footer>
@@ -156,7 +175,7 @@ Just **one file**, paste **once**.
 
 ### Step 2.1 · Show it really is an SPA
 
-Open <http://localhost:8080/demo/pasar-spa/> -> sign up a new account first.
+Open <http://localhost:8080/demo/shop-spa/> -> sign up a new account first.
 
 After logging in, click through **shop -> cart -> pay -> about**. Show that:
 - the address changes (`?r=/keranjang`, `?r=/checkout`)
@@ -166,7 +185,7 @@ Every screen has a box: `rute aktif: /keranjang - tanpa muat ulang` (active rout
 
 ### Step 2.2 · Paste
 
-Open `demo/pasar-spa/index.html`, **Ctrl+End**.
+Open `demo/shop-spa/index.html`, **Ctrl+End**.
 
 ```html
 348  })();
@@ -198,14 +217,14 @@ Just **one file**, paste **once**.
 
 ### Step 3.1 · Show it really is React
 
-Open <http://localhost:8080/demo/butik-react/> -> sign up a new account.
+Open <http://localhost:8080/demo/shop-react/> -> sign up a new account.
 
 In the Console: `React.version` -> `"18.3.1"`. Click a category filter - the list is re-rendered by
 React components.
 
 ### Step 3.2 · Paste
 
-Open `demo/butik-react/index.html`, **Ctrl+End**.
+Open `demo/shop-react/index.html`, **Ctrl+End**.
 
 ```html
 410  })();
@@ -327,7 +346,7 @@ Delete everything including the account: F12 -> **Application** -> **Storage** -
 | Panel stuck at MENGENALI 0 | Too little interaction. A session needs ≥100 events and ≥5 seconds. Move the mouse and type. |
 | Sessions do not increase | Same as above. Check `getState().sessions.length`. |
 | No verification popup on HIGH | The rhythm template was never enrolled. Repeat section 4 item 2. |
-| React site is empty | `vendor/react.js` is missing. Check `demo/butik-react/vendor/` has two files. |
+| React site is empty | `vendor/react.js` is missing. Check `demo/shop-react/vendor/` has two files. |
 
 ---
 
@@ -342,12 +361,12 @@ Three architectures, **exactly the same two lines**:
 
 | Site | File | Ctrl+G |
 |---|---|---|
-| Toko Kopi | `toko-klasik/index.html` | 32 |
-| | `toko-klasik/masuk.html` | 35 |
-| | `toko-klasik/produk.html` | 30 |
-| | `toko-klasik/keranjang.html` | 32 |
-| | `toko-klasik/checkout.html` | 57 |
-| Pasar Loka | `pasar-spa/index.html` | Ctrl+End (349) |
-| Butik Rasa | `butik-react/index.html` | Ctrl+End (411) |
+| Toko Kopi | `shop-multipage/index.html` | 32 |
+| | `shop-multipage/masuk.html` | 35 |
+| | `shop-multipage/produk.html` | 30 |
+| | `shop-multipage/keranjang.html` | 32 |
+| | `shop-multipage/checkout.html` | 57 |
+| Pasar Loka | `shop-spa/index.html` | Ctrl+End (349) |
+| Butik Rasa | `shop-react/index.html` | Ctrl+End (411) |
 
 Zero dependencies, zero build, zero backend, one file of ~250 KB (44 KB gzip minified).

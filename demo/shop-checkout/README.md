@@ -42,7 +42,7 @@ Two terminals:
 python server/app.py                 # BG server + dashboard  -> http://127.0.0.1:5055
 ```
 ```bash
-python demo/toko-checkout/shop.py    # shop                   -> http://127.0.0.1:5000
+python demo/shop-checkout/shop.py    # shop                   -> http://127.0.0.1:5000
 ```
 
 ## Walkthrough
@@ -73,7 +73,7 @@ python demo/toko-checkout/shop.py    # shop                   -> http://127.0.0.
 - **Hijacked session:** someone else uses the session for 30-60 s, the badge turns red, pay
   asks for verification, the attacker does not know the password, the action is **held**.
 - **Dashboard:** `http://127.0.0.1:5055/dashboard`, paste the `sk` from
-  `demo/toko-checkout/.bg-tenant.json`.
+  `demo/shop-checkout/.bg-tenant.json`.
 
 Afterwards, comment the two lines out again so the next run starts plain.
 

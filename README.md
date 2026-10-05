@@ -286,7 +286,7 @@ entire browser build is one ~250 KB classic script (144 KB minified).
 
 No Node required.
 
-**Plug it into a plain site (the GIF above):** [demo/toko-checkout](demo/toko-checkout/) - a
+**Plug it into a plain site (the GIF above):** [demo/shop-checkout](demo/shop-checkout/) - a
 Flask shop with its own backend and no MFA. Two commented lines turn BehaviorGuard on; the
 README there walks through it.
 
@@ -311,7 +311,7 @@ the bottom-left corner shows the live phase, evidence, verdict gauge and plain-l
 reasons, and can simulate a lunch-break return, a replay of your own recorded behavior, and a
 bot. Security -> *Restart the demo* wipes everything and returns you to the sign-up screen.
 
-**The zero-code view:** <http://localhost:8080/demo/pemantau/>.
+**The zero-code view:** <http://localhost:8080/demo/monitor/>.
 
 The left pane is an ordinary shop page with **zero BehaviorGuard code inside it** - check
 the Network tab, it loads no SDK. The right pane attaches from the outside and shows live

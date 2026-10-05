@@ -544,7 +544,7 @@ in `behaviorguard.js` (not MFA / not the plug-and-play logic):
    init threw them away. (Bonus: `storage.set` writes to IndexedDB, a DIFFERENT store from
    `bg:pending` in localStorage - so that line never connected anyway.)
 
-Combined effect: on a multi-page site (e.g. `demo/toko-klasik`), browsing page to page
+Combined effect: on a multi-page site (e.g. `demo/shop-multipage`), browsing page to page
 discarded the tail on every transition -> sessions were never long enough for
 `minEventsTrain` (100) -> enrollment stuck at 0/10.
 
@@ -568,7 +568,7 @@ discarding them), is idempotent, and accumulates 22->44 across "pages"; init hol
 events triggered the C-16 bot heuristic (timing too regular) - enrollment with REAL events
 must be tested through a real DOM (rule below).
 
-Related, a **misconfiguration in the `lab-akurasi` demo**: the "end session" button unlocked
+Related, a **misconfiguration in the `accuracy-lab` demo**: the "end session" button unlocked
 at 30 events (`minEventsAssess`) while ELIGIBLE needs 100 (`minEventsTrain`) -> the first 2
 short sessions were ended, judged "not eligible", and the panel stayed at 0/10. Fixed: the
 button stays locked until `minEventsTrain`, and the counter text follows that threshold.

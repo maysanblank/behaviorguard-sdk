@@ -2,7 +2,7 @@
 
 Panduan ini untuk web yang **sudah punya login** dan ingin menjaga aksi sensitif (checkout,
 transfer, ganti email) tanpa membongkar kode yang sudah ada. Contoh hidupnya ada di
-[`demo/toko-checkout/`](../demo/toko-checkout/).
+[`demo/shop-checkout/`](../demo/shop-checkout/).
 
 > English version: [INTEGRATION.md](INTEGRATION.md)
 
@@ -75,7 +75,7 @@ Token = `base64url(userId) "." exp "." hex(HMAC-SHA256(sk, pk|userId|exp))`, ber
 
 ### Flask (dipakai demo)
 
-Salin [`demo/toko-checkout/bg_backend.py`](../demo/toko-checkout/bg_backend.py) ke sebelah
+Salin [`demo/shop-checkout/bg_backend.py`](../demo/shop-checkout/bg_backend.py) ke sebelah
 file aplikasi kamu, lalu tambahkan **satu baris** sesudah route login:
 
 ```python
@@ -177,7 +177,7 @@ POST di Laravel butuh token CSRF. Plug otomatis mengirimnya kalau layout kamu pu
 
 1. Salin dua file ke folder aset publik kamu:
    - `dist/behaviorguard.js` (pustakanya)
-   - `demo/toko-checkout/plug-behaviorguard.js` (perekat: token, badge, gerbang, konfirmasi sandi)
+   - `demo/shop-checkout/plug-behaviorguard.js` (perekat: token, badge, gerbang, konfirmasi sandi)
 2. Tambahkan tag ini di **layout halaman sesudah login**, tepat sebelum `</body>`:
 
 ```html

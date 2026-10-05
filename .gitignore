@@ -42,5 +42,5 @@ SUBMISSION-DRAFT.md
 # Panduan GitHub pribadi (scaffolding, bukan bagian rilis publik)
 PANDUAN-GITHUB.md
 
-# tenant demo toko-checkout (berisi sk, jangan commit)
-demo/toko-checkout/.bg-tenant.json
+# tenant demo shop-checkout (berisi sk, jangan commit)
+demo/shop-checkout/.bg-tenant.json

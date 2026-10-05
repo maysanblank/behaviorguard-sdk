@@ -4,9 +4,8 @@ What is planned, what is being considered, and what is deliberately out of scope
 roadmap, not a promise - items move as evidence comes in.
 
 ## Planned
-- [ ] Recorded demo GIF at the top of the README (enrol -> LOW -> HIGH -> step-up).
+- [ ] English UI for the Indonesian demo shops (`demo/shop-*`, `monitor/`, `attack_sim.html`).
 - [ ] Labeled screenshots in `assets/` (see `assets/README.md` for the shot list).
-- [ ] GitHub Actions badge wired to `.github/workflows/conformance.yml` runs.
 - [ ] Publish the minified bundle to a CDN path documented in QUICKSTART.
 
 ## Considering
@@ -23,7 +22,10 @@ roadmap, not a promise - items move as evidence comes in.
 - A hosted SaaS. The optional server is a reference implementation, not a managed service.
 
 ## Done (recent)
+- [x] Owner vs attacker recording at the top of the README; install GIF below it.
+- [x] Actions badge; CI checks the golden file within the 1e-9 contract (Windows and Linux agree).
+- [x] English demo bank (Arunika), SDK messages and test output; demo folders renamed to English.
 - [x] C-48 - gate every sensitive transfer on `UNKNOWN` or a half-built engine.
 - [x] C-46/C-47 - reject script-generated input as behavior; demo starts at sign-up.
 - [x] C-44/C-45 - keystroke-rhythm features, production step-up, integrator API.
-- [x] Verified minified bundle (37 KB gzip) with identical-verdict proof.
+- [x] Verified minified bundle (44 KB gzip) with identical-verdict proof.
