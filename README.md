@@ -4,9 +4,13 @@
 
 # BehaviorGuard
 
-**Detect account takeover from how someone moves, types and navigates - and act on it
-where it counts, on your own server. One script tag in the page, a few lines in your
-backend, a built-in step-up challenge.**
+**A stolen password gets past your login. It should not get past the session.**
+
+BehaviorGuard learns how each account's owner moves the mouse, types and navigates. When
+someone else is driving the session, even with the right password, it usually notices
+in the first 30-second window, asks them to prove who they are, and your own server refuses the payment until
+they do. Open source and self-hosted: one script tag in the page, a few lines in your
+backend, no vendor sees your users.
 
 [![conformance](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml/badge.svg)](https://github.com/maysanblank/behaviorguard-sdk/actions/workflows/conformance.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -16,10 +20,12 @@ backend, a built-in step-up challenge.**
 
 ## Demo
 
-Owner vs attacker, same account, same password:
+Owner vs attacker on Arunika, the demo bank: same account, same password. The owner's
+session stays LOW; the attacker is flagged, fails the typing-rhythm check and is logged out
+(recorded live, edited for length; [full-quality MP4](assets/arunika-demo.mp4)):
 
 <p align="center">
-  <img src="assets/detection.gif" alt="The owner passes the typing-rhythm check and the transfer goes through; a second person on the same account fails it and the session is ended" width="100%">
+  <img src="assets/arunika-demo.gif" alt="The owner signs in, sets up the typing-rhythm check and uses the bank normally, and the session is recognised as LOW. Another person signs in to the same account with the password, the session turns MEDIUM and then HIGH, the attacker types the right phrase but with the wrong rhythm, verification fails and the login is ended" width="100%">
 </p>
 
 Installing it on a plain store with its own backend, then logging in from a second browser

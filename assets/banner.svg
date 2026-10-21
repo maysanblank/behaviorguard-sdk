@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="BehaviorGuard: continuous behavioral-biometrics account-takeover detection">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="BehaviorGuard: catches account takeover mid-session, from how people move and type">
   <defs>
     <linearGradient id="bgfill" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0a0f1e"/>
@@ -61,8 +61,8 @@
   <!-- wordmark -->
   <g transform="translate(300,150)" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
     <text x="0" y="0" font-size="82" font-weight="800" fill="#f8fafc" letter-spacing="-2">Behavior<tspan fill="url(#word)">Guard</tspan></text>
-    <text x="3" y="48" font-size="27" font-weight="500" fill="#aab6c8">Continuous behavioral-biometrics account-takeover detection</text>
-    <text x="3" y="86" font-size="20" font-weight="400" fill="#6b7a90">On-device scoring. Built-in step-up MFA. One script tag. Zero dependencies.</text>
+    <text x="3" y="48" font-size="27" font-weight="500" fill="#aab6c8">Catches account takeover mid-session, from how people move and type</text>
+    <text x="3" y="86" font-size="20" font-weight="400" fill="#6b7a90">Decisions on your own server. Built-in step-up. One script tag. Zero dependencies.</text>
   </g>
 
   <!-- feature chips -->
@@ -80,7 +80,7 @@
     <g transform="translate(396,0)">
       <rect width="138" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>
       <circle cx="22" cy="20" r="5" fill="#34d399"/>
-      <text x="40" y="26" fill="#cbd5e1">37 KB gzip</text>
+      <text x="40" y="26" fill="#cbd5e1">47 KB gzip</text>
     </g>
     <g transform="translate(548,0)">
       <rect width="168" height="40" rx="20" fill="#0e1b30" stroke="#1f3a5a"/>

@@ -1,17 +1,23 @@
 # BehaviorGuard
 
-**Mendeteksi pengambilalihan akun dari cara seseorang menggerakkan mouse, mengetik, dan
-berpindah halaman - lalu bertindak di tempat yang menentukan: server Anda sendiri. Satu tag
-script di halaman, beberapa baris di backend, lengkap dengan verifikasi tambahan (step-up).**
+**Password curian bisa lolos dari halaman login. Seharusnya tidak lolos dari sesinya.**
+
+BehaviorGuard mempelajari cara pemilik tiap akun menggerakkan mouse, mengetik, dan
+berpindah halaman. Saat orang lain yang memegang sesi, meski password-nya benar, biasanya ia
+menyadarinya di jendela 30 detik pertama, meminta orang itu membuktikan dirinya, dan server Anda
+sendiri menolak pembayaran sampai terbukti. Open source dan self-hosted: satu tag script di
+halaman, beberapa baris di backend, tanpa vendor yang melihat data pengguna Anda.
 
 > English version: [README.md](README.md)
 
 ## Demo
 
-Pemilik vs penyusup, akun dan kata sandi yang sama:
+Pemilik vs penyusup di Arunika, bank demo: akun dan kata sandi yang sama. Sesi pemilik
+tetap LOW; penyusup ditandai, gagal di cek ritme ketik, lalu di-logout (rekaman langsung,
+dipotong agar ringkas; [MP4 kualitas penuh](assets/arunika-demo.mp4)):
 
 <p align="center">
-  <img src="assets/detection.gif" alt="Pemilik lolos cek ritme ketik dan transfernya jalan; orang lain di akun yang sama gagal dan sesinya dihentikan" width="100%">
+  <img src="assets/arunika-demo.gif" alt="Pemilik masuk, menyiapkan cek ritme ketik dan memakai bank seperti biasa, sesinya dikenali LOW. Orang lain masuk ke akun yang sama dengan password-nya, sesi menjadi MEDIUM lalu HIGH, penyusup mengetik frasa yang benar dengan ritme yang salah, verifikasi gagal dan login-nya diakhiri" width="100%">
 </p>
 
 Dipasang ke toko polos yang punya backend sendiri, lalu dibuka dari browser kedua dengan
