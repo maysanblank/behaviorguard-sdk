@@ -74,7 +74,8 @@ the user controls. Pick ONE way:
 
 Everything is automatic: mouse/keyboard/scroll/navigation capture, an assessment every 30 seconds
 (the verdict falls once 150 events have been collected), saving the evidence tail when the page
-changes, and the built-in typing-rhythm verification popup. Typed characters are never stored.
+changes, and the built-in typing-rhythm verification popup. Typed characters are never stored; the rhythm check keeps key timings
+only, no letters.
 
 ## Have your own OTP / WebAuthn?
 

@@ -4,7 +4,8 @@ Where BehaviorGuard's decisions are made in **backend mode** (the recommended de
 The browser library sends **34 feature numbers per 30-second window**; this side keeps each
 account's profile and model, scores, decides, keeps the typing-rhythm template and checks
 it, records verifications, and answers your routes' question *"may this session do this
-now?"*. Raw events and typed characters never reach it.
+now?"*. Raw events and typed characters never reach it; the typing-rhythm template it keeps
+is key hold times and gaps only, no letters.
 
 | File | What |
 |---|---|
