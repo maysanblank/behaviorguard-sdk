@@ -8,7 +8,7 @@
 
 BehaviorGuard learns how each account's owner moves the mouse, types and navigates. When
 someone else is driving the session, even with the right password, it usually notices
-in the first 30-second window, asks them to prove who they are, and your own server refuses the payment until
+in the first 30-second window that has enough input to judge, asks them to prove who they are, and your own server refuses the payment until
 they do. Open source and self-hosted: one script tag in the page, a few lines in your
 backend, no vendor sees your users.
 
@@ -59,7 +59,8 @@ challenge, or your OTP / WebAuthn. Your backend gets the last word on every sens
 action.
 
 The page sends **34 summary numbers per 30-second window** to your server. Raw events never
-leave the page, and the characters a user types are never sent or stored anywhere.
+leave the page, and the characters a user types are never sent or stored anywhere (the
+typing-rhythm check sends key hold times and gaps only, never the letters).
 
 ---
 
@@ -117,7 +118,8 @@ def transfer():
         return {'verify': True, 'reason': c['reason']}, 403      # the page steps up, then retries
     ...                                                          # move the money
 
-# your own OTP, checked by you, reported to the guard:
+# your own OTP, checked by you, reported to the guard
+# (None = this guard's own site; a multi-site service passes that site's pk):
 guard.report_verified(None, current_user.id, session['login_id'], passed=True)
 ```
 
@@ -197,8 +199,27 @@ Every verdict carries its reasoning - the top deviating features with their z-sc
 
 ## Results
 
-Measured on **653 sessions from 16 human subjects** by driving the **shipped library
-itself** (`node research/eval_sdk.mjs --live`): every session is replayed through the real
+**Headline (the research protocol, as in the paper):** 16 volunteers, 653 sessions; each
+owner's first 10 sessions enroll, the remaining **493 owner sessions** are scored in the
+order they were recorded, and every one of the other 15 people's sessions is tested against
+each owner's final model (**9,795 tests**). One engine: the shipped primitives
+(`core/bg_core.py`, identical to the JavaScript library on all 319 golden checks) driven by a
+port of the library's training cycle, on the 28 features stored in the research database,
+Isolation Forest 30% + Mahalanobis 70%.
+
+| Per session | |
+| --- | ---: |
+| Owner sessions not accepted as the owner (FRR) | **8.7%** (43 of 493) |
+| Other people's sessions accepted as the owner (FAR) | **13.6%** (1,331 of 9,795) |
+| Owners whose model converged | 12 of 16 |
+
+Reproduce: `BG_RESEARCH_DB=<database> python research/one_engine_replay.py M70`.
+
+**The shipped library, window by window.** The table above scores whole sessions. A
+deployment judges every 30-second window instead, with all 34 features (the six typing-rhythm
+features are computed from raw events, which the research database does not store as
+features). So the library was also measured on the same 653 sessions by driving the
+**shipped code itself** (`node research/eval_sdk.mjs --live`): every session is replayed through the real
 capture-to-verdict path in 30-second windows, exactly as `setInterval` runs in a browser.
 The harness drives the library in local mode; the server engine (`server/engine.py`) is
 checked against it decision by decision (`python server/test_parity.py`: the same level,
@@ -257,7 +278,7 @@ reuse the evidence just assessed.
 | `contextEvents: 450` | 12.5% | 7.0% | 6.3% | 0% |
 | `contextEvents: 450`, `k_low: 2.0` | 11.0% | 8.7% | 7.9% | 0% |
 
-The second row beats the default on every column here, but on the AFK variant of the data
+The second row is as good as or better than the default on every column here, but on the AFK variant of the data
 (users who walk away mid-session) impostors pass the whole session 6.5% instead of 5.6%, so
 it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
 
@@ -298,8 +319,9 @@ it is not the default. See [core/DRIFT.md](core/DRIFT.md) C-42 and C-44.
 
 ### Data and reproducibility
 
-- **The data.** 16 volunteers, 653 sessions, recorded in task-based scenarios (browse, search,
-  fill in forms, check out). Those sessions are dense, with few long pauses; real use is not,
+- **The data.** 16 volunteers, 653 sessions, recorded free-form: volunteers were only asked to
+  shop in a test store, with no script or task list. Those sessions are dense, with few long
+  pauses; real use is not,
   which is why idle handling exists ([research/notes/CONTEXT-AND-IDLE-PROPOSAL.md](research/notes/CONTEXT-AND-IDLE-PROPOSAL.md)).
 - **Not published.** Every volunteer agreed to their interaction data being used for this
   research. It is behavioral biometric data of real people, so it stays out of this
@@ -513,7 +535,8 @@ Known limitations, trust boundaries and open attacks: [THREAT-MODEL.md](THREAT-M
 
 ## Privacy
 
-Raw events never leave the page, and typed characters are never sent or stored anywhere.
+Raw events never leave the page, and typed characters are never sent or stored anywhere;
+for the typing-rhythm check the server keeps key timings only, never the letters.
 The page sends, per 30-second window, the 34 feature numbers, how many events and seconds
 they came from, and the bot-check result. Your server keeps per account: those vectors (the
 training pool), the verdicts, and the typing-rhythm template (key hold and gap times for one

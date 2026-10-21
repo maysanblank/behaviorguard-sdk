@@ -33,8 +33,8 @@ events, left alone for 12 minutes in the middle):
 | `keystroke_typing_speed` | 0.030 | 1.998 | 67× |
 
 Four of the 28 features miss by one to two orders of magnitude, and not as random noise but as a
-**one-directional bias**. This matters: the research database was collected through dense,
-task-based scenarios with almost no long pauses. So the model is trained in a dense world and
+**one-directional bias**. This matters: the research database was collected in dense,
+free-form shopping sessions (no script or task list) with almost no long pauses. So the model is trained in a dense world and
 used in a world full of pauses - a systematic **train-vs-serve mismatch**. The defect class is
 exactly the same as C-16/C-17 in `core/DRIFT.md` (features dead in production because a field
 was never filled), only this time the source is time, not an empty field.

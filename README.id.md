@@ -4,7 +4,7 @@
 
 BehaviorGuard mempelajari cara pemilik tiap akun menggerakkan mouse, mengetik, dan
 berpindah halaman. Saat orang lain yang memegang sesi, meski password-nya benar, biasanya ia
-menyadarinya di jendela 30 detik pertama, meminta orang itu membuktikan dirinya, dan server Anda
+menyadarinya di jendela 30 detik pertama yang punya cukup input untuk dinilai, meminta orang itu membuktikan dirinya, dan server Anda
 sendiri menolak pembayaran sampai terbukti. Open source dan self-hosted: satu tag script di
 halaman, beberapa baris di backend, tanpa vendor yang melihat data pengguna Anda.
 
@@ -45,7 +45,8 @@ pemilik, ia meminta verifikasi: tantangan ritme-ketik bawaan, atau OTP/WebAuthn 
 Anda. Keputusan akhir untuk aksi sensitif ada di backend Anda.
 
 Halaman mengirim **34 angka ringkasan per jendela 30 detik** ke server Anda. Event mentah
-tidak pernah keluar dari halaman, dan huruf yang diketik tidak pernah dikirim atau disimpan.
+tidak pernah keluar dari halaman, dan huruf yang diketik tidak pernah dikirim atau disimpan
+(cek ritme ketik hanya mengirim lama tekan dan jeda antar-tombol, bukan hurufnya).
 
 ---
 
@@ -104,6 +105,7 @@ def transfer():
     ...                                                          # pindahkan uangnya
 
 # OTP Anda sendiri, dicek oleh Anda, dilaporkan ke guard:
+# (None = situs milik guard ini; service multi-situs mengisi pk situs tersebut)
 guard.report_verified(None, current_user.id, session['login_id'], passed=True)
 ```
 
@@ -174,7 +176,25 @@ membatalkannya).
 
 ## Hasil
 
-Diukur pada **653 sesi dari 16 relawan** dengan menjalankan **pustaka yang dikirim itu
+**Angka utama (protokol riset, sama dengan di makalah):** 16 relawan, 653 sesi; 10 sesi
+pertama tiap pemilik untuk pendaftaran, sisa **493 sesi pemilik** dinilai menurut urutan
+rekamannya, dan setiap sesi 15 orang lainnya diuji terhadap model akhir tiap pemilik
+(**9.795 uji**). Satu mesin: primitif yang dikirim (`core/bg_core.py`, identik dengan pustaka
+JavaScript di 319 cek golden) dijalankan oleh port siklus latih pustaka, pada 28 fitur yang
+tersimpan di basis data riset, Isolation Forest 30% + Mahalanobis 70%.
+
+| Per sesi | |
+| --- | ---: |
+| Sesi pemilik yang tidak diterima sebagai pemilik (FRR) | **8,7%** (43 dari 493) |
+| Sesi orang lain yang diterima sebagai pemilik (FAR) | **13,6%** (1.331 dari 9.795) |
+| Pemilik yang modelnya konvergen | 12 dari 16 |
+
+Reproduksi: `BG_RESEARCH_DB=<basis data> python research/one_engine_replay.py M70`.
+
+**Pustaka yang dikirim, jendela demi jendela.** Tabel di atas menilai sesi utuh. Saat dipakai,
+yang dinilai adalah tiap jendela 30 detik, dengan 34 fitur (enam fitur ritme ketik dihitung
+dari event mentah, yang tidak disimpan sebagai fitur di basis data riset). Jadi pustaka juga
+diukur pada 653 sesi yang sama dengan menjalankan **kode yang dikirim itu
 sendiri** (`node research/eval_sdk.mjs --live`): tiap sesi riset diputar ulang lewat jalur
 asli dari penangkapan sampai vonis, per jendela 30 detik persis seperti di browser. Sesi
 diputar **menurut urutan rekamannya**, satu kunjungan per sesi (muat halaman, status dibaca
@@ -232,7 +252,7 @@ kunjungan ikut memakai bukti yang baru dinilai.
 | `contextEvents: 450` | 12,5% | 7,0% | 6,3% | 0% |
 | `contextEvents: 450`, `k_low: 2.0` | 11,0% | 8,7% | 7,9% | 0% |
 
-Baris kedua mengalahkan default di semua kolom ini, tapi pada varian data AFK (pengguna yang
+Baris kedua sama atau lebih baik dari default di semua kolom ini, tapi pada varian data AFK (pengguna yang
 meninggalkan layar di tengah sesi) penyusup lolos seluruh sesi 6,5% alih-alih 5,6%, jadi
 tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
 
@@ -259,8 +279,8 @@ tidak dijadikan default. Lihat [core/DRIFT.md](core/DRIFT.md) C-42 dan C-44.
 
 ### Data dan reproduksi
 
-- **Datanya.** 16 relawan, 653 sesi, direkam dalam skenario berbasis tugas (menjelajah,
-  mencari, mengisi formulir, checkout). Sesinya padat dan jarang ada jeda panjang, beda dengan
+- **Datanya.** 16 relawan, 653 sesi, direkam bebas: relawan hanya diminta berbelanja di
+  toko uji, tanpa skenario atau daftar tugas. Sesinya padat dan jarang ada jeda panjang, beda dengan
   pemakaian nyata; karena itu ada penanganan idle
   ([research/notes/CONTEXT-AND-IDLE-PROPOSAL.md](research/notes/CONTEXT-AND-IDLE-PROPOSAL.md)).
 - **Tidak dipublikasikan.** Setiap relawan setuju data interaksinya dipakai untuk riset ini.

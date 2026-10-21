@@ -654,7 +654,7 @@ in the middle):
 | `keystroke_typing_speed` | 0.030 | 1.998 | 67× |
 
 Four of the 28 features miss by one or two orders of magnitude - and not as random noise but
-as a one-directional bias. The research database contains DENSE task-based sessions, so this
+as a one-directional bias. The research database contains DENSE free-form shopping sessions, so this
 is a systematic **train-vs-serve** mismatch: the same defect class as C-16/C-17, only the
 source is time rather than an empty field. An owner who simply leaves the tab is judged as
 deviating.
